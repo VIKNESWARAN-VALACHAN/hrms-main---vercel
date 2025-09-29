@@ -5,9 +5,8 @@ const LOCAL_URL= 'https://hrms-backend-2ymw.onrender.com';
 //const LOCAL_URL= 'http://localhost:5001';
 //const PREVIEW_URL= 'https://hrms-program-dev.onrender.com';
 //const PRODUCTION_API_URL = 'https://hrms-service.onrender.com';
-const PRODUCTION_API_URL = 'https://restore-minerals-immigration-recommends.trycloudflare.com';
-const PREVIEW_URL= 'https://restore-minerals-immigration-recommends.trycloudflare.com';
-
+const PRODUCTION_API_URL = 'https://hrms-backend-2ymw.onrender.com';
+const PREVIEW_URL= 'https://hrms-backend-2ymw.onrender.com';
 // Export the appropriate API URL based on environment
 let apiUrl;
 
