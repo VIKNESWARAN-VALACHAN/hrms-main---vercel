@@ -478,6 +478,243 @@ useEffect(() => {
     }
   };
 
+  // ========= tiny utils =========
+
+// ✅ helper (optional)
+const loadXLSX = async () => {
+  const mod = await import('xlsx');               // ESM/CJS safe
+  return (mod as any).default ? (mod as any).default : mod;
+};
+
+
+const safeFetchJson = async <T,>(url: string): Promise<T | null> => {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+};
+const toYesNo = (v?: any) => (v === 1 || v === true ? 'Yes' : 'No');
+const s = (v?: any) => (v ?? '') + '';
+const d = (iso?: string) => (iso ? new Date(iso).toLocaleString() : '');
+const todayTag = () => new Date().toISOString().slice(0,10);
+
+// simple concurrency control without extra deps
+async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T, idx: number) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length) as any;
+  let i = 0;
+  const runners = new Array(Math.min(limit, items.length)).fill(0).map(async () => {
+    while (i < items.length) {
+      const idx = i++;
+      results[idx] = await worker(items[idx], idx);
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
+
+// ========= ALL-IN-ONE EXPORT =========
+// Exports ALL companies in current scope (search + filters), not just current page.
+const exportAllDetailsXLSX = async () => {
+  // base list = ALL filtered parents you’re showing across pages
+  const parents = filteredCompanies; // <- this already respects search + filters in your UI
+
+  if (!parents.length) {
+    alert('No companies to export.');
+    return;
+  }
+
+  // Prepare sheet arrays
+  const companyInfo: any[] = [];
+  const departmentsSheet: any[] = [];
+  const employeesSheet: any[] = [];
+  const leavesSheet: any[] = [];
+  const officesSheet: any[] = [];
+  const subsSheet: any[] = [];
+
+  // Fetch detail for each company with controlled concurrency
+  // Adjust endpoint paths here if your API differs.
+  const CONCURRENCY = 5;
+
+  await mapWithConcurrency(parents, CONCURRENCY, async (p) => {
+    const companyId = p.id;
+
+    const companyUrl       = `${API_BASE_URL}/api/companies/${companyId}`;
+    const departmentsUrl   = `${API_BASE_URL}/api/departments?company_id=${companyId}`;
+    const employeesUrl     = `${API_BASE_URL}/api/employees?company_id=${companyId}&limit=10000`;
+    const leaveTypesUrl    = `${API_BASE_URL}/api/leave-types?company_id=${companyId}`;
+    const officesUrl       = `${API_BASE_URL}/api/offices?company_id=${companyId}`;
+    const subsidiariesUrl  = `${API_BASE_URL}/api/companies?parent_id=${companyId}`;
+
+    const [
+      companyRaw,
+      departmentsRaw,
+      employeesRaw,
+      leaveTypesRaw,
+      officesRaw,
+      subsidiariesRaw
+    ] = await Promise.all([
+      safeFetchJson<any>(companyUrl),
+      safeFetchJson<any[]>(departmentsUrl),
+      safeFetchJson<any[]>(employeesUrl),
+      safeFetchJson<any[]>(leaveTypesUrl),
+      safeFetchJson<any[]>(officesUrl),
+      safeFetchJson<any[]>(subsidiariesUrl),
+    ]);
+
+    // --- Company Info (parents only) ---
+    const c = companyRaw ?? {};
+    companyInfo.push({
+      CompanyID: s(c.id || companyId),
+      CompanyName: s(c.company_name ?? c.name ?? p.name),
+      RegistrationNo: s(c.register_number ?? p.register_number),
+      Email: s(c.email ?? p.email),
+      Phone: s(c.phone ?? p.phone),
+      Website: s(c.website),
+      Status: c.is_active === 1 || c.is_active === true ? 'active' : (c.status ?? p.status ?? ''),
+      ParentID: s(c.parent_id ?? p.parent_id),
+      ParentName: s(c.parent_company_name ?? p.parentCompany),
+      Address: s(c.address ?? p.address),
+      EPF_No: s(c.epf_account_no),
+      SOCSO_No: s(c.socso_account_no),
+      IncomeTax_No: s(c.income_tax_no),
+      CreatedAt: d(c.created_at),
+      UpdatedAt: d(c.updated_at),
+      HasSubsidiaries: p.hasSubcompanies ? 'Yes' : 'No',
+    });
+
+    // --- Departments ---
+    for (const [i, dpt] of (departmentsRaw ?? []).entries()) {
+      departmentsSheet.push({
+        CompanyID: s(companyId),
+        CompanyName: s(c.company_name ?? c.name ?? p.name),
+        No: i + 1,
+        DepartmentID: s(dpt.id),
+        DepartmentName: s(dpt.department_name ?? dpt.name),
+        Description: s(dpt.description),
+        Status: toYesNo(dpt.is_active) === 'Yes' ? 'Active' : 'Inactive',
+        CreatedAt: d(dpt.created_at),
+        UpdatedAt: d(dpt.updated_at),
+      });
+    }
+
+    // --- Employees ---
+    for (const [i, emp] of (employeesRaw ?? []).entries()) {
+      employeesSheet.push({
+        CompanyID: s(companyId),
+        CompanyName: s(c.company_name ?? c.name ?? p.name),
+        No: i + 1,
+        EmployeeID: s(emp.employee_no ?? emp.id),
+        Name: s(emp.name),
+        Email: s(emp.email),
+        Department: s(emp.department_name ?? emp.department),
+        Position: s(emp.position_title ?? emp.position),
+        JoinedDate: d(emp.joined_date),
+        Gender: s(emp.gender),
+        Status: s(emp.status ?? (emp.is_active ? 'Active' : 'Inactive')),
+      });
+    }
+
+    // --- Leave Types ---
+    for (const [i, lt] of (leaveTypesRaw ?? []).entries()) {
+      leavesSheet.push({
+        CompanyID: s(companyId),
+        CompanyName: s(c.company_name ?? c.name ?? p.name),
+        No: i + 1,
+        LeaveTypeID: s(lt.id),
+        Name: s(lt.leave_type_name ?? lt.name),
+        Code: s(lt.code),
+        MaxDays: s(lt.max_days),
+        RequiresApproval: toYesNo(lt.requires_approval),
+        RequiresDocs: toYesNo(lt.requires_documentation ?? lt.requires_docs),
+        Status: toYesNo(lt.is_active) === 'Yes' ? 'Active' : 'Inactive',
+        CreatedAt: d(lt.created_at),
+        UpdatedAt: d(lt.updated_at),
+      });
+    }
+
+    // --- Offices ---
+    for (const [i, ofc] of (officesRaw ?? []).entries()) {
+      officesSheet.push({
+        CompanyID: s(companyId),
+        CompanyName: s(c.company_name ?? c.name ?? p.name),
+        No: i + 1,
+        OfficeID: s(ofc.id),
+        Name: s(ofc.name),
+        Address1: s(ofc.address_line1),
+        Address2: s(ofc.address_line2),
+        City: s(ofc.city),
+        State: s(ofc.state),
+        Country: s(ofc.country),
+        Postcode: s(ofc.postcode),
+        Timezone: s(ofc.timezone),
+        Lat: s(ofc.lat),
+        Lng: s(ofc.lng),
+        Status: toYesNo(ofc.is_active) === 'Yes' ? 'Active' : 'Inactive',
+        CreatedAt: d(ofc.created_at),
+        UpdatedAt: d(ofc.updated_at),
+      });
+    }
+
+    // --- Subsidiaries (separate sheet) ---
+    for (const [i, sc] of (subsidiariesRaw ?? []).entries()) {
+      subsSheet.push({
+        ParentCompanyID: s(companyId),
+        ParentCompanyName: s(c.company_name ?? c.name ?? p.name),
+//        No: i + 1,
+        CompanyID: s(sc.id),
+        Name: s(sc.company_name ?? sc.name),
+        RegistrationNo: s(sc.register_number),
+        Email: s(sc.email),
+        Phone: s(sc.phone),
+        Status: sc.is_active === 1 || sc.is_active === true ? 'active' : (sc.status ?? ''),
+      });
+    }
+  });
+
+  // Build workbook
+const XLSX = await loadXLSX(); // use the helper shown above
+const wb = XLSX.utils.book_new();
+
+const addSheet = (name: string, rows: any[]) => {
+  if (rows.length === 0) {
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['No data']]), name);
+  } else {
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), name);
+  }
+};
+
+
+  addSheet('Company Info', companyInfo);
+  //addSheet('Departments', departmentsSheet);
+  //addSheet('Employees', employeesSheet);
+  //addSheet('Leaves', leavesSheet);
+  //addSheet('Offices', officesSheet);
+  addSheet('Subsidiaries', subsSheet);
+
+  // Meta sheet
+  const meta = [
+    ['Generated At', new Date().toLocaleString()],
+    ['Scope', 'ALL companies in current filter/search (ignores pagination)'],
+    ['Companies (parents)', String(companyInfo.length)],
+    ['Departments', String(departmentsSheet.length)],
+    ['Employees', String(employeesSheet.length)],
+    ['Leave Types', String(leavesSheet.length)],
+    ['Offices', String(officesSheet.length)],
+    ['Subsidiaries', String(subsSheet.length)],
+    ['Filters', `status=${filters.status || 'All'}, parent_id=${filters.parent_id || 'Default (parents)'}, search="${searchTerm || ''}"`],
+    ['Sort', `${sortBy} ${sortOrder}`],
+  ];
+
+//XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(meta), 'Report');
+
+
+XLSX.writeFile(wb, `all_companies_full_report_${todayTag()}.xlsx`);
+};
+
+
   return (
     <div className={`container mx-auto px-4 py-6 min-h-screen ${theme === 'light' ? 'bg-white text-slate-900' : 'bg-slate-900 text-slate-100'}`}>
       {error && (
@@ -496,6 +733,13 @@ useEffect(() => {
         </h1>
         
         <div className="flex gap-2 justify-end">
+            <button
+    className={`btn ${theme === 'light' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-emerald-500 hover:bg-emerald-600'} text-white border-0`}
+    onClick={exportAllDetailsXLSX}
+    title="Exports all companies (filtered) with departments, employees, leaves, offices, subsidiaries"
+  >
+    Export
+  </button>
           <Link href="/companies/add" className="btn bg-blue-600 hover:bg-blue-700 text-white border-0">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
