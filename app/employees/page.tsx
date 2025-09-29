@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { API_BASE_URL } from '../config';
 import BulkTransfer from './bulkTransfer';
 import { useTheme } from '../components/ThemeProvider';
-
+import * as XLSX from 'xlsx';
 interface User {
   id: string;
   name: string;
@@ -34,6 +34,44 @@ interface Employee {
   passport_expired_date?: string;
   visa_expired_date?: string;
   nationality?: string;
+
+  salary?: string;
+  currency?: string;
+  leave_balance?: string | null;
+  manager_id?: string;
+  resigned_date?: string | null;
+  resignation_reason?: string | null;
+  ic_passport?: string | null;
+  confirmation_date?: string | null;
+  marital_status?: string;
+  dob?: string;
+  age?: number;
+  mobile_number?: string;
+  country_code?: string;
+  payment_company?: string;
+  pay_interval?: string;
+  payment_method?: string;
+  bank_name?: string;
+  bank_currency?: string;
+  bank_account_name?: string;
+  bank_account_no?: string;
+  income_tax_no?: string | null;
+  socso_account_no?: string | null;
+  epf_account_no?: string | null;
+  office?: string;
+  office_id?: string;
+  address?: string | null;
+  qualification?: string | null;
+  education_level?: string;
+  emergency_contact_name?: string | null;
+  emergency_contact_relationship?: string | null;
+  emergency_contact_phone?: string | null;
+  emergency_contact_email?: string | null;
+  current_position_start_date?: string | null;
+  time_zone?: string;
+  company_name?: string;
+  position_title?: string;
+  superior?: string;
 }
 
 interface BulkResetResult {
@@ -532,6 +570,43 @@ const handleBulkResetPassword = async () => {
           passport_expired_date: emp.passport_expired_date || '',
           visa_expired_date: emp.visa_expired_date || '',
           nationality: emp.nationality || '',
+        salary: emp.salary || '',
+        currency: emp.currency || '',
+        leave_balance: emp.leave_balance || null,
+        manager_id: emp.manager_id || '',
+        resigned_date: emp.resigned_date || null,
+        resignation_reason: emp.resignation_reason || null,
+        ic_passport: emp.ic_passport || null,
+        confirmation_date: emp.confirmation_date || null,
+        marital_status: emp.marital_status || '',
+        dob: emp.dob || '',
+        age: emp.age || 0,
+        mobile_number: emp.mobile_number || '',
+        country_code: emp.country_code || '',
+        payment_company: emp.payment_company || '',
+        pay_interval: emp.pay_interval || '',
+        payment_method: emp.payment_method || '',
+        bank_name: emp.bank_name || '',
+        bank_currency: emp.bank_currency || '',
+        bank_account_name: emp.bank_account_name || '',
+        bank_account_no: emp.bank_account_no || '',
+        income_tax_no: emp.income_tax_no || null,
+        socso_account_no: emp.socso_account_no || null,
+        epf_account_no: emp.epf_account_no || null,
+        office: emp.office || '',
+        office_id: emp.office_id || '',
+        address: emp.address || null,
+        qualification: emp.qualification || null,
+        education_level: emp.education_level || '',
+        emergency_contact_name: emp.emergency_contact_name || null,
+        emergency_contact_relationship: emp.emergency_contact_relationship || null,
+        emergency_contact_phone: emp.emergency_contact_phone || null,
+        emergency_contact_email: emp.emergency_contact_email || null,
+        current_position_start_date: emp.current_position_start_date || null,
+        time_zone: emp.time_zone || '',
+        company_name: emp.company_name || '',
+        position_title: emp.position_title || '',
+        superior: emp.superior || ''
         };
       });
       
@@ -542,6 +617,117 @@ const handleBulkResetPassword = async () => {
       setLoading(false);
     }
   }, [user]);
+
+
+  const exportAllEmployeesXLSX = () => {
+  try {
+    // Prepare data for export with ALL fields
+    const exportData = sortedEmployees.map(employee => {
+      const company = companies.find(c => c.id === employee.company_id);
+      const department = allDepartments.find(d => d.id === employee.department_id);
+      const manager = allEmployees.find(emp => emp.id === employee.manager_id);
+      
+      return {
+        // Basic Information
+        'Employee No': employee.employee_no,
+        'Name': employee.name,
+        'Email': employee.email,
+        'IC/Passport': employee.ic_passport,
+        'Gender': employee.gender,
+        'Date of Birth': employee.dob ? new Date(employee.dob).toLocaleDateString() : '',
+        'Age': employee.age,
+        'Nationality': employee.nationality,
+        'Race': employee.race,
+        'Religion': employee.religion,
+        'Marital Status': employee.marital_status,
+        
+        // Contact Information
+        'Mobile Number': employee.country_code ? `${employee.country_code} ${employee.mobile_number}` : employee.mobile_number,
+        'Address': employee.address,
+        
+        // Employment Details
+        'Company': employee.company_name || company?.name || employee.company_id,
+        'Department': employee.department_name || department?.department_name || employee.department_id,
+        'Position': employee.position_title || employee.position,
+        'Employment Type': employee.employment_type,
+        'Job Level': employee.job_level,
+        'Joined Date': employee.joined_date ? new Date(employee.joined_date).toLocaleDateString() : '',
+        'Confirmation Date': employee.confirmation_date ? new Date(employee.confirmation_date).toLocaleDateString() : '',
+        'Current Position Start Date': employee.current_position_start_date ? new Date(employee.current_position_start_date).toLocaleDateString() : '',
+        'Manager': manager?.name || employee.manager_id,
+        'Office': employee.office,
+        'Time Zone': employee.time_zone,
+        
+        // Status
+        'Status': employee.status.charAt(0).toUpperCase() + employee.status.slice(1),
+        'Activation': employee.activation,
+        'Resigned Date': employee.resigned_date ? new Date(employee.resigned_date).toLocaleDateString() : '',
+        'Resignation Reason': employee.resignation_reason,
+        
+        // Compensation
+        'Salary': employee.salary ? `${employee.currency} ${parseFloat(employee.salary).toLocaleString()}` : '',
+        'Pay Interval': employee.pay_interval,
+        'Payment Method': employee.payment_method,
+        'Payment Company': employee.payment_company,
+        
+        // Bank Details
+        'Bank Name': employee.bank_name,
+        'Bank Currency': employee.bank_currency,
+        'Bank Account Name': employee.bank_account_name,
+        'Bank Account No': employee.bank_account_no,
+        
+        // Government & Statutory
+        'Income Tax No': employee.income_tax_no,
+        'SOCSO Account No': employee.socso_account_no,
+        'EPF Account No': employee.epf_account_no,
+        
+        // Education
+        'Education Level': employee.education_level,
+        'Qualification': employee.qualification,
+        
+        // Documents
+        'Passport Expiry Date': employee.passport_expired_date ? new Date(employee.passport_expired_date).toLocaleDateString() : '',
+        'Visa Expiry Date': employee.visa_expired_date ? new Date(employee.visa_expired_date).toLocaleDateString() : '',
+        
+        // Leave
+        'Leave Balance': employee.leave_balance,
+        
+        // Emergency Contact
+        'Emergency Contact Name': employee.emergency_contact_name,
+        'Emergency Contact Relationship': employee.emergency_contact_relationship,
+        'Emergency Contact Phone': employee.emergency_contact_phone,
+        'Emergency Contact Email': employee.emergency_contact_email,
+        
+        // System
+        'Employee ID': employee.id,
+        'Role': employee.role
+      };
+    });
+
+    // Create workbook and worksheet
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(exportData);
+
+    // Auto-size columns for better readability
+    const max_width = exportData.reduce((w, r) => Math.max(w, ...Object.values(r).map(v => String(v).length)), 10);
+    ws['!cols'] = Object.keys(exportData[0] || {}).map(() => ({ width: Math.min(max_width, 50) }));
+
+    // Add worksheet to workbook
+    XLSX.utils.book_append_sheet(wb, ws, 'Employees');
+
+    // Generate filename with timestamp
+    const timestamp = new Date().toISOString().split('T')[0];
+    const filename = `employees_complete_export_${timestamp}.xlsx`;
+
+    // Export the file
+    XLSX.writeFile(wb, filename);
+    
+    showNotification(`Exported ${exportData.length} employees with complete details`, 'success');
+  } catch (error) {
+    console.error('Export error:', error);
+    showNotification('Failed to export employees', 'error');
+  }
+};
   
   useEffect(() => {
     if (user) {
@@ -1087,6 +1273,9 @@ const handleBulkResetPassword = async () => {
     );
   };
 
+
+
+
   return (
     <div className={`container mx-auto p-6 min-h-full ${theme === 'light' ? 'bg-white text-slate-900' : 'bg-slate-900 text-slate-100'}`}>
       <div className="flex flex-col gap-4 mb-6 md:flex-row md:justify-between md:items-center">
@@ -1186,6 +1375,15 @@ const handleBulkResetPassword = async () => {
                   Add
                 </Link>
               )}
+
+              <button
+  className={`btn ${theme === 'light' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-emerald-500 hover:bg-emerald-600'} text-white border-0`}
+  onClick={exportAllEmployeesXLSX}
+  title="Export all employees (respecting current filters)"
+>
+  Export
+</button>
+
             </>
           )}
         </div>
