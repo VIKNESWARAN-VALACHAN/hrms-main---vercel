@@ -1,0 +1,57 @@
+[
+  {
+    "increment_id": 1,
+    "employee_name": "Stephen Curry",
+    "effective_date": "2025-08-01",
+    "increment_value": 5000,
+    "reason": "Performance",
+    "company_name": "Example Com1",
+    "department_name": "IT",
+    "position": "Programmer",
+    "employment_status": "Active"
+  },
+  {
+    "increment_id": 2,
+    "employee_name": "Cristiano Ronaldo",
+    "effective_date": "2025-07-01",
+    "increment_value": 7000,
+    "reason": "Experience",
+    "company_name": "Example Com1",
+    "department_name": "IT",
+    "position": "Programmer",
+    "employment_status": "Active"
+  },
+  {
+    "increment_id": 3,
+    "employee_name": "David Williams",
+    "effective_date": "2025-06-01",
+    "increment_value": 3000,
+    "reason": "Market Adjustment",
+    "company_name": "Alpha Industries",
+    "department_name": "Training",
+    "position": "HR Assistant",
+    "employment_status": "Active"
+  },
+  {
+    "increment_id": 4,
+    "employee_name": "Olivia Johnson",
+    "effective_date": "2025-05-01",
+    "increment_value": 4000,
+    "reason": "Promotion",
+    "company_name": "Alpha Industries",
+    "department_name": "Engineering",
+    "position": "QA Engineer",
+    "employment_status": "Active"
+  },
+  {
+    "increment_id": 5,
+    "employee_name": "Robert Johnson",
+    "effective_date": "2025-04-01",
+    "increment_value": 6000,
+    "reason": "Performance",
+    "company_name": "Alpha Industries",
+    "department_name": "Human Resources",
+    "position": "HR Manager",
+    "employment_status": "Active"
+  }
+]

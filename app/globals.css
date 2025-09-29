@@ -1,0 +1,10 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: light --default, dark --prefersdark;
+}
+
+
+.breadcrumbs {
+  @apply flex items-center gap-2 overflow-x-hidden;
+}
+
