@@ -3412,73 +3412,77 @@ export default function Sidebar({ onCollapseChange }: SidebarProps) {
             </li>
           )}
 
-          {/* Employee (Admin/Manager) */}
-          {(role === "admin" || role === "manager") && (
-            <li>
-              <button
-                onClick={() => toggleMenu("manage-employee")}
-                aria-expanded={lastOpenedMenu === "manage-employee"}
-                className={`w-full flex items-center py-3 px-4 justify-between rounded-lg transition-all duration-300 ${
-                  pathname.startsWith("/employees") || pathname.startsWith("/employee")
-                    ? "bg-blue-600 text-white font-semibold shadow-md"
-                    : "hover:bg-blue-500"
-                }`}
-              >
-                <div className="flex items-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" className={iconCls} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a3 3 0 11-6 0 3 3 0 016 0zM4 21v-2a4 4 0 014-4h8a4 4 0 014 4v2" />
-                  </svg>
-                  <span>Employee</span>
-                </div>
-                <svg xmlns="http://www.w3.org/2000/svg" className={caretCls(lastOpenedMenu === "manage-employee")} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
+          {/* Employee (Admin/Manager/Employee) */}
+{(role === "admin" || role === "manager" || role === "employee") && (
+  <li>
+    <button
+      onClick={() => toggleMenu("manage-employee")}
+      aria-expanded={lastOpenedMenu === "manage-employee"}
+      className={`w-full flex items-center py-3 px-4 justify-between rounded-lg transition-all duration-300 ${
+        pathname.startsWith("/employees") || pathname.startsWith("/employee")
+          ? "bg-blue-600 text-white font-semibold shadow-md"
+          : "hover:bg-blue-500"
+      }`}
+    >
+      <div className="flex items-center">
+        <svg xmlns="http://www.w3.org/2000/svg" className={iconCls} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a3 3 0 11-6 0 3 3 0 016 0zM4 21v-2a4 4 0 014-4h8a4 4 0 014 4v2" />
+        </svg>
+        <span>
+          {role === "employee" ? "My Profile" : "Employee"}
+        </span>
+      </div>
+      <svg xmlns="http://www.w3.org/2000/svg" className={caretCls(lastOpenedMenu === "manage-employee")} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+    </button>
 
-              <ul className={`menu menu-compact pl-8 ${lastOpenedMenu === "manage-employee" ? "block" : "hidden"}`}>
-                <li>
-                  <Link
-                    href="/employees"
-                    className={`py-2 px-4 rounded-lg transition-all duration-300 ${
-                      pathname === "/employees" ? "bg-blue-500 text-white font-semibold" : "hover:bg-blue-500"
-                    }`}
-                    onClick={handleMobileNavigation}
-                  >
-                    View Employee
-                  </Link>
-                </li>
+    <ul className={`menu menu-compact pl-8 ${lastOpenedMenu === "manage-employee" ? "block" : "hidden"}`}>
+      <li>
+        <Link
+          href="/employees"
+          className={`py-2 px-4 rounded-lg transition-all duration-300 ${
+            pathname === "/employees" ? "bg-blue-500 text-white font-semibold" : "hover:bg-blue-500"
+          }`}
+          onClick={handleMobileNavigation}
+        >
+          {role === "employee" ? "View My Profile" : "View Employee"}
+        </Link>
+      </li>
 
-                {role === "admin" && (
-                  <li>
-                    <Link
-                      href="/employees/add"
-                      className={`py-2 px-4 rounded-lg transition-all duration-300 ${
-                        pathname === "/employees/add" ? "bg-blue-500 text-white font-semibold" : "hover:bg-blue-500"
-                      }`}
-                      onClick={handleMobileNavigation}
-                    >
-                      Add New Employee
-                    </Link>
-                  </li>
-                )}
+      {/* Only show "Add New Employee" for admin */}
+      {role === "admin" && (
+        <li>
+          <Link
+            href="/employees/add"
+            className={`py-2 px-4 rounded-lg transition-all duration-300 ${
+              pathname === "/employees/add" ? "bg-blue-500 text-white font-semibold" : "hover:bg-blue-500"
+            }`}
+            onClick={handleMobileNavigation}
+          >
+            Add New Employee
+          </Link>
+        </li>
+      )}
 
-                {/* Disciplinary types live under Employee, not Master Data */}
-                {role === "admin" && (
-                  <li>
-                    <Link
-                      href="/master-data/disciplinary_types"
-                      className={`py-2 px-4 rounded-lg transition-all duration-300 ${
-                        pathname === "/master-data/disciplinary_types" ? "bg-blue-500 text-white font-semibold" : "hover:bg-blue-500"
-                      }`}
-                      onClick={handleMobileNavigation}
-                    >
-                      Disciplinary Types
-                    </Link>
-                  </li>
-                )}
-              </ul>
-            </li>
-          )}
+      {/* Disciplinary types - only for admin */}
+      {role === "admin" && (
+        <li>
+          <Link
+            href="/master-data/disciplinary_types"
+            className={`py-2 px-4 rounded-lg transition-all duration-300 ${
+              pathname === "/master-data/disciplinary_types" ? "bg-blue-500 text-white font-semibold" : "hover:bg-blue-500"
+            }`}
+            onClick={handleMobileNavigation}
+          >
+            Disciplinary Types
+          </Link>
+        </li>
+      )}
+    </ul>
+  </li>
+)}
+
 
           {/* Scheduler (Admin) */}
 {role === "admin" && (
