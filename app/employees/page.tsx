@@ -87,7 +87,7 @@ export default function ManageEmployees() {
   const { theme } = useTheme();
 
   const [bulkDone, setBulkDone] = useState(0);
-
+  //const [viewingOwnProfile, setViewingOwnProfile] = useState(false); 
   const TOAST_ROOT_ID = 'hrms-toast-root';
   const [resetting, setResetting] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -771,6 +771,8 @@ const handleBulkResetPassword = async () => {
 
   useEffect(() => {
     const userStr = localStorage.getItem('hrms_user');
+
+    
     const isAuthenticated = localStorage.getItem('hrms_authenticated');
 
     if (!userStr || isAuthenticated !== 'true') {
@@ -781,13 +783,27 @@ const handleBulkResetPassword = async () => {
     try {
       const userData = JSON.parse(userStr);
       setUser(userData);
+      
+      console.log('user data' + localStorage.getItem('hrms_user'));
+
+    // ← NEW: Check if regular employee
+    // if (userData.role === 'employee' || userData.role === 'manager') {
+    //   setViewingOwnProfile(true);
+    // }
+
+
     } catch (e) {
       console.error('Error parsing user data');
       router.push('/auth/login');
     }
   }, [router]);
 
-  const filteredEmployees = useMemo(() => {
+  const filteredEmployees1 = useMemo(() => {
+    // // ← NEW: Filter for employees viewing their own profile
+    // if (user?.role === 'employee' && user?.id) {
+    //   return allEmployees.filter(emp => emp.id === user.id);
+    // }
+
     return allEmployees.filter(employee => {
       // const matchesSearch = !searchTerm || (
       //   employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -853,6 +869,71 @@ const handleBulkResetPassword = async () => {
              matchesJobLevel && matchesDocumentFilter();
     });
   }, [allEmployees, searchTerm, filterStatus, filters, departments, companies]);
+
+  const filteredEmployees = useMemo(() => {
+  // ← NEW: Filter for employees - show only their own profile
+  if (user?.role === 'employee' && user?.id) {
+    const userProfile = allEmployees.filter(emp => emp.id === user.id);
+    return userProfile;
+  }
+
+  // For managers and admins, use the normal filtering logic
+  return allEmployees.filter(employee => {
+    const s = searchTerm.toLowerCase();
+    const matchesSearch = !s || (
+      (employee.name || '').toLowerCase().includes(s) ||
+      (employee.email || '').toLowerCase().includes(s) ||
+      (employee.employee_no || '').toLowerCase().includes(s) ||
+      (employee.position || '').toLowerCase().includes(s) ||
+      ((departments.find(d => d.id === employee.department_id)?.department_name) || '').toLowerCase().includes(s) ||
+      ((companies.find(c => c.id === employee.company_id)?.name) || '').toLowerCase().includes(s)
+    );
+
+    const matchesStatus = filterStatus === 'all' || employee.status === filterStatus;
+    const matchesCompany = !filters.company_id || employee.company_id === filters.company_id;
+    const matchesDepartment = !filters.department_id || employee.department_id === filters.department_id;
+    const matchesPosition = !filters.position || employee.position === filters.position;
+    const matchesEmploymentType = !filters.type || employee.employment_type === filters.type;
+    const matchesNationality = !filters.nationality || employee.nationality === filters.nationality;
+    const matchesJobLevel = !filters.jobLevel || employee.job_level === filters.jobLevel;
+    
+    const matchesDocumentFilter = () => {
+      if (!filters.documentExpiry) return true;
+      
+      const today = new Date();
+      const soon = new Date();
+      soon.setDate(today.getDate() + 30);
+      
+      const passportExpiry = (employee.passport_expired_date && employee.passport_expired_date.trim()) 
+        ? new Date(employee.passport_expired_date) : null;
+      const visaExpiry = (employee.visa_expired_date && employee.visa_expired_date.trim()) 
+        ? new Date(employee.visa_expired_date) : null;
+      
+      switch(filters.documentExpiry) {
+        case 'passport_expired':
+          return passportExpiry !== null && passportExpiry < today;
+        case 'visa_expired':
+          return visaExpiry !== null && visaExpiry < today;
+        case 'passport_expiring_soon':
+          return passportExpiry !== null && passportExpiry >= today && passportExpiry <= soon;
+        case 'visa_expiring_soon':
+          return visaExpiry !== null && visaExpiry >= today && visaExpiry <= soon;
+        case 'any_expiring_soon':
+          return (passportExpiry !== null && passportExpiry >= today && passportExpiry <= soon) || 
+                (visaExpiry !== null && visaExpiry >= today && visaExpiry <= soon);
+        case 'any_expired':
+          return (passportExpiry !== null && passportExpiry < today) || 
+                (visaExpiry !== null && visaExpiry < today);
+        default:
+          return true;
+      }
+    };
+    
+    return matchesSearch && matchesStatus && matchesCompany && matchesDepartment && 
+           matchesPosition && matchesEmploymentType && matchesNationality && 
+           matchesJobLevel && matchesDocumentFilter();
+  });
+}, [allEmployees, searchTerm, filterStatus, filters, departments, companies, user?.role, user?.id]);
 
   const filterOptions = useMemo(() => {
     return {
@@ -933,7 +1014,7 @@ const handleBulkResetPassword = async () => {
     );
   };
 
-  const sortedEmployees = useMemo(() => {
+  const sortedEmployees1 = useMemo(() => {
     if (!sortConfig.key) return filteredEmployees;
     
     return [...filteredEmployees].sort((a, b) => {
@@ -953,7 +1034,43 @@ const handleBulkResetPassword = async () => {
         ? (aValue < bValue ? -1 : aValue > bValue ? 1 : 0)
         : (aValue > bValue ? -1 : aValue < bValue ? 1 : 0);
     });
+
+    
   }, [filteredEmployees, sortConfig.key, sortConfig.direction]);
+
+
+  const sortedEmployees = useMemo(() => {
+  if (!sortConfig.key) return filteredEmployees;
+  
+  const sorted = [...filteredEmployees].sort((a, b) => {
+    const aValue = a[sortConfig.key as keyof Employee] || '';
+    const bValue = b[sortConfig.key as keyof Employee] || '';
+    
+    if (aValue === null || aValue === undefined) return 1;
+    if (bValue === null || bValue === undefined) return -1;
+    
+    if (typeof aValue === 'string' && typeof bValue === 'string') {
+      return sortConfig.direction === 'ascending' 
+        ? aValue.localeCompare(bValue)
+        : bValue.localeCompare(aValue);
+    }
+    
+    return sortConfig.direction === 'ascending' 
+      ? (aValue < bValue ? -1 : aValue > bValue ? 1 : 0)
+      : (aValue > bValue ? -1 : aValue < bValue ? 1 : 0);
+  });
+
+  // NEW: Move user's own profile to the top while maintaining relative order of others
+  if (user?.id) {
+    const userIndex = sorted.findIndex(emp => emp.id === user.id);
+    if (userIndex > 0) {
+      const [userProfile] = sorted.splice(userIndex, 1);
+      sorted.unshift(userProfile);
+    }
+  }
+  
+  return sorted;
+}, [filteredEmployees, sortConfig.key, sortConfig.direction, user?.id]);
 
   const getPageNumbers = () => {
     const pageNumbers = [];
@@ -1112,23 +1229,35 @@ const handleBulkResetPassword = async () => {
 
     return (
       <>
-        {isManager && (
-          <div className={`alert mb-4 ${theme === 'light' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-blue-900 border-blue-700 text-blue-200'} border rounded-lg`}>
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="stroke-current shrink-0 w-6 h-6">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-            <span>You are viewing employees as a manager. Only employees assigned under your management are shown here.</span>
-          </div>
-        )}
-        
-        {(isAdmin && (isBulkTransferMode || bulkResetMode)) && (
-          <div className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-800'} p-3 rounded-lg mb-4 flex justify-between items-center`}>
-            <div className="flex items-center gap-2">
-              <span className={`font-medium ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{selectedEmployees.length} employee(s) selected</span>
-            </div>
-          </div>
-        )}
-        
+{/* Consolidated Banner Messages */}
+<div className="space-y-4 mb-4">
+  {/* Bulk Selection Mode Banner */}
+  {(isAdmin && (isBulkTransferMode || bulkResetMode)) && (
+    <div className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-800'} p-4 rounded-lg flex justify-between items-center`}>
+      <div className="flex items-center gap-2">
+        <span className={`font-medium ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+          {selectedEmployees.length} employee(s) selected for {isBulkTransferMode ? 'transfer' : 'password reset'}
+        </span>
+      </div>
+    </div>
+  )}
+  
+  {/* Single consolidated message for all non-admin users */}
+  {(user?.role === 'employee' || user?.role === 'manager') && (
+    <div className={`alert ${theme === 'light' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-blue-900 border-blue-700 text-blue-200'} border rounded-lg`}>
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" className="stroke-current shrink-0 w-6 h-6">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <span>
+        {user?.role === 'manager' 
+          ? "Viewing your team. Your profile is included and displayed in read-only mode."
+          : "Viewing your personal profile in read-only mode."
+        }
+      </span>
+    </div>
+  )}
+</div>
+
         <div className={`overflow-x-auto ${theme === 'light' ? 'bg-white' : 'bg-slate-800'} rounded-lg shadow`}>
           <table className="table w-full">
             <thead>
@@ -1164,108 +1293,135 @@ const handleBulkResetPassword = async () => {
               </tr>
             </thead>
             <tbody>
-              {currentPageEmployees.map((employee, index) => {
-                const isSelectable = employee.status === 'active';
-                
-                return (
-                  <tr 
-                    key={employee.id} 
-                    className={`${theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-700'} ${index !== currentPageEmployees.length - 1 ? `${theme === 'light' ? 'border-b border-slate-200' : 'border-b border-slate-600'}` : ''} ${!isSelectable && isAdmin && (isBulkTransferMode || bulkResetMode) ? 'opacity-60' : ''}`}
-                  >
-                    {isAdmin && (isBulkTransferMode || bulkResetMode) && (
-                      <td>
-                        <input 
-                          type="checkbox" 
-                          className="checkbox" 
-                          checked={selectedEmployees.includes(employee.id)}
-                          onChange={() => isSelectable && handleEmployeeSelection(employee.id)}
-                          disabled={!isSelectable}
-                        />
-                      </td>
-                    )}
-                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{employee.employee_no}</td>
-                    <td className={`font-medium ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{employee.name}</td>
-                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{companies.find(c => c.id === employee.company_id)?.name || employee.company_id || '-'}</td>
-                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{employee.department_name || employee.department_id || '-'}</td>
-                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{employee.position || '-'}</td>
-                    <td>
-                      <div className={`${employee.status === 'active' ? 'text-green-500' : 
-                        employee.status === 'inactive' ? 'text-red-500' : 'text-yellow-500'}`}>
-                        {employee.status === 'active' ? 'Active' : 
-                         employee.status === 'inactive' ? 'Inactive' : 'Resigned'}
-                      </div>
-                    </td>
-                    <td className="text-right">
-                      <div className="flex gap-1 justify-end">
-                        {user?.role === 'admin' && employee?.status.toLowerCase() === 'active' && (
-                          <button
-                            type="button"
-                            title="Reset password"
-                            aria-label="Reset password"
-                            className={`btn btn-sm btn-circle btn-outline transition-colors ${
-                              theme === 'light'
-                                ? 'border-blue-600 text-blue-600 hover:bg-slate-600 hover:text-white hover:border-slate-600'
-                                : 'border-blue-400 text-blue-400 hover:bg-slate-400 hover:text-white hover:border-slate-400'
-                            }`}
-                            onClick={() => {
-                              setResettingEmployee({
-                                id: employee.id,
-                                name: employee.name,
-                                email: employee.email,
-                                position: employee.position,
-                                department_id: employee.department_id,
-                                company_id: employee.company_id,
-                                status: employee.status,
-                                activation: employee.activation,
-                                joined_date: employee.joined_date,
-                                employee_no: employee.employee_no,
-                                employment_type: employee.employment_type,
-                                gender: employee.gender,
-                                role: employee.role,
-                                race: employee.race,
-                                religion: employee.religion,
-                                job_level: employee.job_level,
-                                department_name: employee.department_name,
-                                passport_expired_date: employee.passport_expired_date,
-                                visa_expired_date: employee.visa_expired_date,
-                                nationality: employee.nationality
-                              });
-                              setShowResetConfirm(true);
-                            }}
-                            disabled={resetting && resettingEmployee?.id === employee.id}
-                          >
-                            {resetting && resettingEmployee?.id === employee.id ? (
-                              <span className="loading loading-spinner loading-xs" />
-                            ) : (
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                className="h-4 w-4"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                stroke="currentColor"
-                              >
-                                {/* lock icon */}
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2m10-10V7a4 4 0 00-8 0v4h8z"
-                                />
-                              </svg>
-                            )}
-                          </button>
-                        )}
-                        <Link 
-                          href={`/employees/${employee.id}`} 
-                          className={`btn btn-sm ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0`}
-                        >
-                          View
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+{currentPageEmployees.map((employee, index) => {
+  const isCurrentUser = user?.id === employee.id;
+  const isSelectable = employee.status === 'active';
+  
+  return (
+    <tr 
+      key={employee.id} 
+      className={`
+        ${theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-700'} 
+        ${index !== currentPageEmployees.length - 1 ? `${theme === 'light' ? 'border-b border-slate-200' : 'border-b border-slate-600'}` : ''} 
+        ${!isSelectable && isAdmin && (isBulkTransferMode || bulkResetMode) ? 'opacity-60' : ''}
+        ${isCurrentUser ? (theme === 'light' 
+          ? 'ring-2 ring-blue-500 ring-inset bg-blue-50' 
+          : 'ring-2 ring-blue-400 ring-inset bg-blue-900/30'
+        ) : ''}
+      `}
+    >
+      {isAdmin && (isBulkTransferMode || bulkResetMode) && (
+        <td>
+          <input 
+            type="checkbox" 
+            className="checkbox" 
+            checked={selectedEmployees.includes(employee.id)}
+            onChange={() => isSelectable && handleEmployeeSelection(employee.id)}
+            disabled={!isSelectable}
+          />
+        </td>
+      )}
+      <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'} ${isCurrentUser ? 'font-semibold' : ''}`}>
+        {employee.employee_no}
+      </td>
+      <td className={`font-medium ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'} ${isCurrentUser ? 'font-bold' : ''}`}>
+        {employee.name}
+        {isCurrentUser && (
+          <span className={`ml-2 text-xs px-2 py-1 rounded-full ${
+            theme === 'light' 
+              ? 'bg-blue-100 text-blue-800' 
+              : 'bg-blue-800 text-blue-100'
+          }`}>
+            You
+          </span>
+        )}
+      </td>
+      <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+        {companies.find(c => c.id === employee.company_id)?.name || employee.company_id || '-'}
+      </td>
+      <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+        {employee.department_name || employee.department_id || '-'}
+      </td>
+      <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+        {employee.position || '-'}
+      </td>
+      <td>
+        <div className={`${employee.status === 'active' ? 'text-green-500' : 
+          employee.status === 'inactive' ? 'text-red-500' : 'text-yellow-500'}`}>
+          {employee.status === 'active' ? 'Active' : 
+           employee.status === 'inactive' ? 'Inactive' : 'Resigned'}
+        </div>
+      </td>
+      <td className="text-right">
+        <div className="flex gap-1 justify-end">
+          {user?.role === 'admin' && employee?.status.toLowerCase() === 'active' && (
+            <button
+              type="button"
+              title="Reset password"
+              aria-label="Reset password"
+              className={`btn btn-sm btn-circle btn-outline transition-colors ${
+                theme === 'light'
+                  ? 'border-blue-600 text-blue-600 hover:bg-slate-600 hover:text-white hover:border-slate-600'
+                  : 'border-blue-400 text-blue-400 hover:bg-slate-400 hover:text-white hover:border-slate-400'
+              }`}
+              onClick={() => {
+                setResettingEmployee({
+                  id: employee.id,
+                  name: employee.name,
+                  email: employee.email,
+                  position: employee.position,
+                  department_id: employee.department_id,
+                  company_id: employee.company_id,
+                  status: employee.status,
+                  activation: employee.activation,
+                  joined_date: employee.joined_date,
+                  employee_no: employee.employee_no,
+                  employment_type: employee.employment_type,
+                  gender: employee.gender,
+                  role: employee.role,
+                  race: employee.race,
+                  religion: employee.religion,
+                  job_level: employee.job_level,
+                  department_name: employee.department_name,
+                  passport_expired_date: employee.passport_expired_date,
+                  visa_expired_date: employee.visa_expired_date,
+                  nationality: employee.nationality
+                });
+                setShowResetConfirm(true);
+              }}
+              disabled={resetting && resettingEmployee?.id === employee.id}
+            >
+              {resetting && resettingEmployee?.id === employee.id ? (
+                <span className="loading loading-spinner loading-xs" />
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2m10-10V7a4 4 0 00-8 0v4h8z"
+                  />
+                </svg>
+              )}
+            </button>
+          )}
+          <Link 
+            href={`/employees/${employee.id}`} 
+            className={`btn btn-sm ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0`}
+          >
+            {isCurrentUser ? 'View My Profile' : 'View'}
+          </Link>
+        </div>
+      </td>
+    </tr>
+  );
+})}
             </tbody>
           </table>
         </div>
@@ -1283,7 +1439,8 @@ const handleBulkResetPassword = async () => {
           <svg xmlns="http://www.w3.org/2000/svg" className={`h-8 w-8 inline mr-2 ${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
           </svg>
-          {user?.role === 'manager' ? 'My Team' : 'Manage Employees'}
+          {/* {user?.role === 'manager' ? 'My Team' : 'Manage Employees'} */}
+              {user?.role === 'manager' ? 'My Team' : user?.role === 'employee' ? 'My Profile' : 'Manage Employees'}
         </h1>
         
         <div className="flex gap-2 w-full sm:w-auto justify-start md:justify-end flex-row md:flex-col lg:flex-row">
@@ -1388,8 +1545,9 @@ const handleBulkResetPassword = async () => {
           )}
         </div>
       </div>
-      
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
+      {/* Hide search and filters for employees */}
+      {user?.role !== 'employee' && (
+        <div className="flex flex-col md:flex-row gap-4 mb-6">
         <div className="form-control flex-1">
           <div className="input-group flex space-x-2">
             <input 
@@ -1410,9 +1568,10 @@ const handleBulkResetPassword = async () => {
             </button>
           </div>
         </div>
-      </div>
-      
-      {isFilterOpen && (
+        </div>
+      )}
+      {/* {isFilterOpen && ( */}
+      {isFilterOpen && user?.role !== 'employee' && (
         <div className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-800'} p-4 rounded-lg mb-6`}>
           <div className="flex justify-between items-center mb-4">
             <h3 className={`text-lg font-semibold ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>Advanced Filters</h3>
@@ -1566,7 +1725,7 @@ const handleBulkResetPassword = async () => {
         </div>
       )}
       
-      <div className={`mb-4 text-sm ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>
+      {/* <div className={`mb-4 text-sm ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>
         {sortedEmployees.length !== allEmployees.length && (
           <span>Showing {sortedEmployees.length} of {allEmployees.length} employees </span>
         )}
@@ -1578,6 +1737,26 @@ const handleBulkResetPassword = async () => {
             (filtered)
           </span>
         )}
+      </div> */}
+
+      <div className={`mb-4 text-sm ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>
+        {user?.role === 'employee' ? (
+          <span>Showing your personal profile</span>
+        ) : (
+          <>
+            {sortedEmployees.length !== allEmployees.length && (
+              <span>Showing {sortedEmployees.length} of {allEmployees.length} employees </span>
+            )}
+            {sortedEmployees.length === allEmployees.length && (
+              <span>Showing all {allEmployees.length} employees </span>
+            )}
+            {(searchTerm || Object.values(filters).some(Boolean) || filterStatus !== 'active') && (
+              <span className={`${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`}>
+                (filtered)
+              </span>
+            )}
+          </>
+        )}
       </div>
       
       {renderEmployeeTable()}
@@ -1586,7 +1765,8 @@ const handleBulkResetPassword = async () => {
         Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, sortedEmployees.length)} of {sortedEmployees.length} employees on this page
       </div>
       
-      {Math.ceil(sortedEmployees.length / itemsPerPage) > 1 && (
+      {/* {Math.ceil(sortedEmployees.length / itemsPerPage) > 1 && ( */}
+      {Math.ceil(sortedEmployees.length / itemsPerPage) > 1 && user?.role !== 'employee' && (
         <div className="flex justify-center mt-6">
           <div className="btn-group">
             <button 
