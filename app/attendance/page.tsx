@@ -574,6 +574,33 @@ export default function AttendancePage() {
     }
   };
 
+
+// --- helper to fetch client public IP and POST with header ---
+async function getPublicIpClientSide(): Promise<string | null> {
+  try {
+    const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
+    if (!r.ok) return null;
+    const j = await r.json();
+    return typeof j?.ip === 'string' ? j.ip : null;
+  } catch {
+    return null;
+  }
+}
+
+async function postAttendance(url: string, payload: any) {
+  const publicIp = await getPublicIpClientSide();
+  return fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(publicIp ? { 'x-client-public-ip': publicIp } : {})
+    },
+    body: JSON.stringify(payload)
+  });
+}
+// --- end helper ---
+
+  
   // Update handleAttendanceAction to use the state variable
   const handleAttendanceAction = async () => {
     try {
@@ -587,14 +614,18 @@ export default function AttendancePage() {
         API_ROUTES.checkOut :
         API_ROUTES.checkIn;
 
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        // Include employee_id in request body
-        body: JSON.stringify({ employee_id: employeeId })
-      });
+      // const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      //   method: 'POST',
+      //   headers: {
+      //     'Content-Type': 'application/json'
+      //   },
+      //   // Include employee_id in request body
+      //   body: JSON.stringify({ employee_id: employeeId })
+      // });
+      const response = await postAttendance(
+        `${API_BASE_URL}${endpoint}`,
+        { employee_id: employeeId }
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
