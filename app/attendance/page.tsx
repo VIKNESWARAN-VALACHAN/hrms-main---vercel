@@ -574,20 +574,168 @@ export default function AttendancePage() {
     }
   };
 
-
 // --- helper to fetch client public IP and POST with header ---
-async function getPublicIpClientSide(): Promise<string | null> {
-  try {
-    const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store' });
-    if (!r.ok) return null;
-    const j = await r.json();
-    return typeof j?.ip === 'string' ? j.ip : null;
-  } catch {
-    return null;
+// Robust public IP fetcher for the browser
+// Usage: const ip = await getPublicIpClientSide(); // string | null
+async function getPublicIpClientSide1(opts?: { timeoutMs?: number }): Promise<string | null> {
+  const timeoutMs = opts?.timeoutMs ?? 3000;
+
+  // Providers to try in order (all CORS-friendly for browsers)
+  const providers: Array<{
+    url: string;
+    parse: (r: any) => string | null;
+  }> = [
+    {
+      url: 'https://api.ipify.org?format=json',
+      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
+    },
+    {
+      url: 'https://ifconfig.co/json',
+      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
+    },
+    {
+      url: 'https://ipapi.co/json',
+      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
+    },
+  ];
+
+  const isValidIp = (ip: string) => {
+    // Basic IPv4/IPv6 sanity (not exhaustive, but good enough for logging)
+    const ipv4 =
+      /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
+    const ipv6 =
+      /^(([0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}|::1|::)$/; // simplified
+    return ipv4.test(ip) || ipv6.test(ip);
+  };
+
+  const fetchWithTimeout = async (url: string): Promise<any | null> => {
+    const ctrl = new AbortController();
+    const tm = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
+      if (!res.ok) return null;
+      const ct = res.headers.get('content-type') || '';
+      // Some endpoints can return plain text; handle both JSON and text.
+      if (ct.includes('application/json')) {
+        return await res.json();
+      } else {
+        const txt = (await res.text()).trim();
+        // Normalize to a JSON-like object for parsers that expect { ip: ... }
+        return { ip: txt };
+      }
+    } catch (err: any) {
+       console.warn('ERROR');
+      return null;
+    } finally {
+      clearTimeout(tm);
+    }
+  };
+
+  for (const p of providers) {
+    const payload = await fetchWithTimeout(p.url);
+    const ip = payload ? p.parse(payload) : null;
+    if (ip && isValidIp(ip.trim())) {
+      return ip.trim();
+    } else if (ip) {
+      // Got something but it didn't validate—log once and continue.
+      console.warn('[public-ip] invalid format from provider:', p.url, ip);
+    }
   }
+
+  // All providers failed; log a single warning for diagnostics and return null.
+  console.warn('[public-ip] unable to resolve public IP from all providers');
+  return null;
 }
 
+async function getPublicIpClientSide(opts?: { timeoutMs?: number }): Promise<string | null> {
+  const timeoutMs = opts?.timeoutMs ?? 3000;
+
+  // Use CORS proxies for the providers
+  const providers: Array<{
+    url: string;
+    parse: (r: any) => string | null;
+  }> = [
+    {
+      url: 'https://corsproxy.io/?https://api.ipify.org?format=json',
+      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
+    },
+    {
+      url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent('https://api.ipify.org?format=json'),
+      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
+    },
+    {
+      url: 'https://corsproxy.io/?https://ifconfig.co/json',
+      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
+    },
+  ];
+
+  const isValidIp = (ip: string) => {
+    const ipv4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
+    const ipv6 = /^(([0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}|::1|::)$/;
+    return ipv4.test(ip) || ipv6.test(ip);
+  };
+
+  const fetchWithTimeout = async (url: string): Promise<any | null> => {
+    const ctrl = new AbortController();
+    const tm = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { 
+        signal: ctrl.signal, 
+        cache: 'no-store',
+        headers: {
+          'Accept': 'application/json',
+        }
+      });
+      if (!res.ok) return null;
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('application/json')) {
+        return await res.json();
+      } else {
+        const txt = (await res.text()).trim();
+        try {
+          // Try to parse as JSON if it's JSON
+          return JSON.parse(txt);
+        } catch {
+          // If not JSON, assume it's just the IP
+          return { ip: txt };
+        }
+      }
+    } catch (err: any) {
+      console.warn('ERROR fetching IP from provider:', url, err.message);
+      return null;
+    } finally {
+      clearTimeout(tm);
+    }
+  };
+
+  for (const p of providers) {
+    try {
+      const payload = await fetchWithTimeout(p.url);
+      const ip = payload ? p.parse(payload) : null;
+      if (ip && isValidIp(ip.trim())) {
+        return ip.trim();
+      } else if (ip) {
+        console.warn('[public-ip] invalid format from provider:', p.url, ip);
+      }
+    } catch (err) {
+      console.warn('[public-ip] failed to fetch from provider:', p.url, err);
+    }
+  }
+
+  console.warn('[public-ip] unable to resolve public IP from all providers');
+  return null;
+}
+
+// useEffect(() => {
+//   (async () => {
+//     const ip = await getPublicIpClientSide({ timeoutMs: 3000 });
+//     console.log('[public-ip] fetched:', ip);
+//   })();
+// }, []);
+
+
 async function postAttendance(url: string, payload: any) {
+   console.log('[public-ip] fetched:', 'TEST');
   const publicIp = await getPublicIpClientSide();
   return fetch(url, {
     method: 'POST',
@@ -600,7 +748,7 @@ async function postAttendance(url: string, payload: any) {
 }
 // --- end helper ---
 
-  
+
   // Update handleAttendanceAction to use the state variable
   const handleAttendanceAction = async () => {
     try {
@@ -626,6 +774,7 @@ async function postAttendance(url: string, payload: any) {
         `${API_BASE_URL}${endpoint}`,
         { employee_id: employeeId }
       );
+
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -2231,23 +2380,7 @@ async function handleExportWithLeavesok() {
   };
 
 
-  // Optional: load the employee's companies (adjust URL to yours or replace with setEmployeeCompanyIds([...]))
-useEffect(() => {
-  (async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/employees/me/companies`);
-      if (res.ok) {
-        const data = await res.json(); // [{id, name}, ...]
-        setEmployeeCompanyIds((data || []).map((c: any) => Number(c.id)).filter(Boolean));
-      }
-    } catch {
-      // ignore; will still show global holidays
-    }
-  })();
-}, []);
 
-
-const [employeeCompanyIds, setEmployeeCompanyIds] = useState<number[]>([]);
 const [holidaysByDate, setHolidaysByDate] = useState<Record<string, PublicHoliday[]>>({});
 
 const latestFetchRef = useRef<AbortController | null>(null);
