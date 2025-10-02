@@ -156,7 +156,7 @@ interface EmployeeData {
   showPassword?: boolean;
   //dependents?: Dependent[];
   benefit_group_id?: string | null;
-  office_id?: string | null;
+  office_id?: string | number | null;
 }
 
 interface Education {
@@ -398,8 +398,88 @@ const [policySaving, setPolicySaving] = useState(false);
 
 // NEW: fetch offices for a company
 
-
 const fetchOffices = async (companyId: string | number) => {
+  if (!companyId) {
+    console.log('[fetchOffices] No companyId -> clearing offices');
+    setOffices([]);
+    return;
+  }
+
+  const url = `${API_BASE_URL}/api/attendance/offices`;
+  const token = localStorage.getItem('hrms_token');
+  const companyIdNum = Number(companyId);
+
+  console.log(`[fetchOffices] START companyId=${companyId}`);
+  console.time('[fetchOffices] total');
+
+  try {
+    setOfficesLoading(true);
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    console.log('[fetchOffices] HTTP', res.status, res.statusText);
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.warn('[fetchOffices] Non-OK body:', body.slice(0, 400));
+      throw new Error(`Failed to load offices (${res.status})`);
+    }
+
+    const payload = await res.json();
+
+    // Accept either: [ ... ]  OR  { ok: true, data: [ ... ] }
+    const rawArray =
+      Array.isArray(payload) ? payload :
+      (payload && Array.isArray(payload.data)) ? payload.data :
+      [];
+
+    if (payload && payload.ok === false) {
+      console.warn('[fetchOffices] Server ok=false, payload:', payload);
+    }
+
+    console.log('[fetchOffices] rawArray length:', rawArray.length);
+    if (rawArray.length) console.log('[fetchOffices] sample:', rawArray.slice(0, 3));
+
+    // FIX: Map office_id to id for consistent usage
+    const officesWithId = rawArray.map((office: any) => ({
+      ...office,
+      id: office.office_id || office.id, // Use office_id if available, fallback to id
+    }));
+
+    const distinctCompanyIds = [...new Set(officesWithId.map((d: any) => String(d?.company_id)))];
+    console.log('[fetchOffices] distinct company_ids:', distinctCompanyIds);
+
+    const filtered = officesWithId.filter((o: any) => Number(o?.company_id) === companyIdNum);
+
+    console.log('[fetchOffices] filtered length:', filtered.length);
+    if (filtered.length) {
+      console.table(filtered.map((o: any) => ({ id: o.id, name: o.name, company_id: o.company_id })));
+    } else {
+      console.warn(`[fetchOffices] No matches for companyId=${companyIdNum}. Payload company_ids: ${distinctCompanyIds.join(', ')}`);
+    }
+
+    setOffices(filtered);
+
+    try {
+      const selected = formData?.office_id ?? employee?.office_id ?? null;
+      console.log('[fetchOffices] current selected office_id:', selected);
+      if (selected != null) {
+        // FIX: Use the mapped id field
+        const found = filtered.find((o: any) => String(o.id) === String(selected));
+        console.log('[fetchOffices] selected exists in filtered?', Boolean(found), found || null);
+      }
+    } catch {}
+
+  } catch (err) {
+    console.error('[fetchOffices] ERROR:', err);
+    setOffices([]);
+  } finally {
+    setOfficesLoading(false);
+    console.timeEnd('[fetchOffices] total');
+    console.log('[fetchOffices] END');
+  }
+};
+
+
+const fetchOffices1 = async (companyId: string | number) => {
   if (!companyId) {
     console.log('[fetchOffices] No companyId -> clearing offices');
     setOffices([]);
@@ -520,24 +600,6 @@ const fetchIpOverrides = async () => {
   } catch (e) {
     console.error(e);
     setIpOverrides([]);
-  }
-};
-
-const fetchOfficeRanges = async () => {
-  if (!employee?.office_id) {
-    setOfficeRanges([]);
-    return;
-  }
-  try {
-    const res = await fetch(
-      `${API_BASE_URL}/api/attendance/office-ip-whitelists?office_id=${employee.office_id}`,
-      { headers: { Authorization: `Bearer ${localStorage.getItem('hrms_token')}` } }
-    );
-    const payload = await res.json();
-    setOfficeRanges(payload?.data ?? []);
-  } catch (e) {
-    console.error(e);
-    setOfficeRanges([]);
   }
 };
 
@@ -1203,6 +1265,20 @@ useEffect(() => {
   //     }
   //   }
   // }, []);
+
+
+  useEffect(() => {
+  console.log('=== OFFICE DATA UPDATE ===');
+  console.log('Employee:', {
+    office_id: employee?.office_id,
+    office: employee?.office
+  });
+  console.log('FormData:', {
+    office_id: formData?.office_id,
+    office: formData?.office
+  });
+  console.log('IsEditing:', isEditing);
+}, [employee, formData, isEditing]);
   
 // Check authorization on component mount
 useEffect(() => {
@@ -1313,6 +1389,7 @@ const DebugInfo = () => {
           ...data, 
           age: String(calculateAge(data.dob))
         });
+        //console.log('TEST : ' + data);
       } catch (error) {
         console.error('Error fetching employee:', error);
         setError('Failed to load employee data. Please try again.');
@@ -2359,7 +2436,20 @@ const handleDeleteDependent = (keyToDelete: number | string | undefined) => {
     }
   }, [formData?.department_id, departments]);
 
-  
+  // Add this useEffect to sync office_id when offices are loaded
+useEffect(() => {
+  if (isEditing && employee?.office && !formData?.office_id && offices.length > 0) {
+    const matchedOffice = offices.find(o => o.name === employee.office);
+    if (matchedOffice) {
+      console.log('Auto-matching office:', employee.office, '-> ID:', matchedOffice.id);
+      setFormData(prev => prev ? {
+        ...prev,
+        office_id: String(matchedOffice.id),
+        office: matchedOffice.name
+      } : prev);
+    }
+  }
+}, [offices, isEditing, employee?.office, formData?.office_id]);
 
   useEffect(() => {
   if (!formData?.position_id) return;
@@ -2635,8 +2725,8 @@ const handleSubmit = async (e: React.FormEvent) => {
       position: formData.position,
       position_id: formData.position_id,
       superior: formData.job_level === 'Manager' ? null : formData.superior,
-      office: formData.office,
-      office_id: formData.office_id ?? null,
+      //office: formData.office,
+      //office_id: formData.office_id ?? null,
       nationality: formData.nationality,
       joined_date: formData.joined_date,
       resigned_date: formData.resigned_date ? toDateOnly(formData.resigned_date) : null,//: formData.resigned_date || null,
@@ -2673,7 +2763,9 @@ const handleSubmit = async (e: React.FormEvent) => {
       emergency_contact_relationship: formData.emergency_contact_relationship || null,
       emergency_contact_phone: formData.emergency_contact_phone || null,
       emergency_contact_email: formData.emergency_contact_email || null,
-      password: formData.password || null
+      password: formData.password || null,
+      office_id: formData.office_id ? Number(formData.office_id) : null,
+      office: formData.office || '',
     };
 
     const formDataToSend = new FormData();
@@ -2795,6 +2887,29 @@ const handleSubmit = async (e: React.FormEvent) => {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.error || `Failed to update employee: ${response.statusText}`);
+    }
+
+    
+    // ADD THIS: Update office assignment separately
+    if (formData?.office_id !== employee?.office_id) {
+      try {
+        const officeResponse = await fetch(`${API_BASE_URL}/api/attendance/employees/${employeeId}/office`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('hrms_token')}`
+          },
+          body: JSON.stringify({
+            office_id: formData.office_id ? Number(formData.office_id) : null
+          })
+        });
+        
+        if (!officeResponse.ok) {
+          console.warn('Failed to update office assignment, but employee was updated');
+        }
+      } catch (officeError) {
+        console.warn('Error updating office assignment:', officeError);
+      }
     }
     
     // Fetch the updated employee data instead of just updating the state
@@ -2945,42 +3060,37 @@ const toggleEditMode = () => {
 
   if (next) {
     // ENTER edit mode
-    setFormData(prev => {
-      const seededCompany: string =
-        String(prev?.company_id ?? employee?.company_id ?? '');
-
-      const seededOffice: string | null =
-        (prev?.office_id ?? employee?.office_id ?? '') || null;
-
-      // load offices for the seeded company so the office select is populated
-      if (seededCompany) fetchOffices(seededCompany);
-
-      if (prev) {
-        return {
-          ...prev,
-          company_id: seededCompany,     // string ('' when none)
-          office_id: seededOffice,       // string | null
-          dependents,
-        };
+    const employeeData = employee as EmployeeData & { dependents: Dependent[] };
+    
+    // Find the correct office_id by matching the office name
+    let resolvedOfficeId = employeeData.office_id;
+    
+    if ((!resolvedOfficeId || resolvedOfficeId === 'null') && employeeData.office && offices.length > 0) {
+      const matchedOffice = offices.find(o => o.name === employeeData.office);
+      if (matchedOffice) {
+        resolvedOfficeId = matchedOffice.id; // Use the mapped id field
+        console.log('Matched office by name:', employeeData.office, '-> ID:', resolvedOfficeId);
       }
+    }
 
-      // when there was no prev formData, build from employee
-      return {
-        ...(employee as EmployeeData),
-        company_id: seededCompany,       // coerce to string
-        office_id: seededOffice,         // keep nullable
-        dependents,
-      };
+    setFormData({
+      ...employeeData,
+      office_id: resolvedOfficeId ?? null,
+      office: employeeData.office ?? '',
+      dependents,
     });
+    
+    if (employee?.company_id) {
+      fetchOffices(employee.company_id);
+    }
   } else {
-    // EXIT edit mode -> restore snapshot
-    setFormData(() => ({
-      ...(employee as EmployeeData),
-      company_id: String(employee?.company_id ?? ''),   // ensure string
-      office_id: (employee?.office_id ?? '') || null,   // back to null if empty
+    // EXIT edit mode
+    setFormData(prev => ({
+      ...(employee as EmployeeData & { dependents: Dependent[] }),
       dependents: originalDependents,
     }));
 
+    // Reset other states
     setTrainingRecords([...originalTrainingRecords]);
     setDeletedTrainingRecords([]);
     setDisciplinaryRecords([...originalDisciplinaryRecords]);
@@ -2991,6 +3101,103 @@ const toggleEditMode = () => {
 
   setIsEditing(next);
 };
+
+const toggleEditMode2 = () => {
+  const next = !isEditing;
+
+  console.log('=== DEBUG OFFICE DATA ===');
+  console.log('Employee office_id:', employee?.office_id);
+  console.log('Employee office:', employee?.office);
+  console.log('Current formData office_id:', formData?.office_id);
+  console.log('Current formData office:', formData?.office);
+
+  if (next) {
+    // ENTER edit mode
+    setFormData(prev => {
+      const newFormData = {
+        ...(employee as EmployeeData & { dependents: Dependent[] }),
+        office_id: employee?.office_id ?? prev?.office_id ?? null,
+        office: employee?.office ?? prev?.office ?? '',
+        dependents,
+      };
+      
+      console.log('New formData after edit:', newFormData.office_id, newFormData.office);
+      return newFormData;
+    });
+    // Load offices for the company (this is working correctly)
+   if (employee?.company_id) {
+      fetchOffices(employee.company_id);
+    }
+  } else {
+    // EXIT edit mode - restore original data
+    setFormData(prev => ({
+      ...(employee as EmployeeData & { dependents: Dependent[] }),
+      dependents: originalDependents,
+    }));
+
+    // Reset other states
+    setTrainingRecords([...originalTrainingRecords]);
+    setDeletedTrainingRecords([]);
+    setDisciplinaryRecords([...originalDisciplinaryRecords]);
+    setDeletedDisciplinaryRecords([]);
+    setDependents([...originalDependents]);
+    setDeletedDependents([]);
+  }
+
+  setIsEditing(next);
+};
+
+// const toggleEditMode3 = () => {
+//   const next = !isEditing;
+
+//   if (next) {
+//     // ENTER edit mode
+//     setFormData(prev => {
+//       const seededCompany: string =
+//         String(prev?.company_id ?? employee?.company_id ?? '');
+
+//       const seededOffice: string | null =
+//         (prev?.office_id ?? employee?.office_id ?? '') || null;
+
+//       // load offices for the seeded company so the office select is populated
+//       if (seededCompany) fetchOffices(seededCompany);
+
+//       if (prev) {
+//         return {
+//           ...prev,
+//           company_id: seededCompany,     // string ('' when none)
+//           office_id: seededOffice,       // string | null
+//           dependents,
+//         };
+//       }
+
+//       // when there was no prev formData, build from employee
+//       return {
+//         ...(employee as EmployeeData),
+//         company_id: seededCompany,       // coerce to string
+//         office_id: seededOffice,         // keep nullable
+//         dependents,
+//       };
+//     });
+//   } else {
+//     // EXIT edit mode -> restore snapshot
+//     setFormData(() => ({
+//       ...(employee as EmployeeData),
+//       company_id: String(employee?.company_id ?? ''),   // ensure string
+//       office_id: (employee?.office_id ?? '') || null,   // back to null if empty
+//       dependents: originalDependents,
+//     }));
+
+//     setTrainingRecords([...originalTrainingRecords]);
+//     setDeletedTrainingRecords([]);
+//     setDisciplinaryRecords([...originalDisciplinaryRecords]);
+//     setDeletedDisciplinaryRecords([]);
+//     setDependents([...originalDependents]);
+//     setDeletedDependents([]);
+//   }
+
+//   setIsEditing(next);
+// };
 
 
 const isPersisted = (d: Dependent) => {
@@ -4893,18 +5100,16 @@ const BondingErrorModal = () => {
     <div>
       <select
         name="office_id"
-        // Normalize to string so it matches <option value="...">
-        value={
-          formData?.office_id != null
-            ? String(formData.office_id)
-            : ''
-        }
+        value={formData?.office_id != null ? String(formData.office_id) : ''}
         onChange={(e) => {
-          // If your backend expects numbers, convert here.
-          const val = e.target.value === '' ? null : Number(e.target.value);
-          handleChange({
-            target: { name: 'office_id', value: val }
-          } as any);
+          const val = e.target.value === '' ? null : e.target.value;
+          const selectedOffice = offices.find(o => String(o.id) === e.target.value);
+          
+          setFormData(prev => prev ? { 
+            ...prev, 
+            office_id: val,
+            office: selectedOffice ? selectedOffice.name : ''
+          } : prev);
         }}
         className="select select-bordered w-full"
         disabled={officesLoading}
@@ -4916,34 +5121,24 @@ const BondingErrorModal = () => {
           </option>
         ))}
       </select>
-
       {officesLoading && (
         <div className="text-xs text-gray-500 mt-1">Loading offices…</div>
       )}
-      <div className="text-xs text-gray-500 mt-1">
-        Changing company will refresh this list.
-      </div>
+      {formData?.office && !formData?.office_id && (
+        <div className="text-xs text-yellow-600 mt-1">
+          Note: Office name exists but no ID. Select from dropdown to fix.
+        </div>
+      )}
     </div>
   ) : (
     <div className="p-3 bg-base-200 rounded min-h-[42px]">
-      {(() => {
-        const id =
-          formData?.office_id ??
-          employee?.office_id ??
-          null;
-
-        const name = id
-          ? offices.find(o => String(o.id) === String(id))?.name
-          : null;
-
-        // Fallback to whatever label your API gives for employee's office
-        return name ?? employee?.office ?? 'Unassigned';
-      })()}
+      {employee?.office || 'Unassigned'}
+      {employee?.office && !employee?.office_id && (
+        <span className="text-xs text-yellow-600 ml-2">(No ID relationship)</span>
+      )}
     </div>
   )}
 </div>
-
-
 
 
 
@@ -5138,7 +5333,7 @@ const BondingErrorModal = () => {
                 </div>
 
                 {/* Office field */}
-                <div>
+                {/* <div>
                   <div className="mb-2">Office Location</div>
                   {isEditing ? (
                     <input 
@@ -5152,7 +5347,7 @@ const BondingErrorModal = () => {
                   ) : (
                     <div className="p-3 bg-base-200 rounded min-h-[42px]">{employee.office || 'Not provided'}</div>
                   )}
-                </div>
+                </div> */}
 
                 <div>
                   <div className="mb-2">Education Level <span className="text-error">*</span></div>
