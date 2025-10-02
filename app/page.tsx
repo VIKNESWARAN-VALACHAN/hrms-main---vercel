@@ -9,7 +9,7 @@ import { toZonedTime } from 'date-fns-tz';
 import WorkingTimeCounter from './components/WorkingTimeCounter';
 import { useTheme } from './components/ThemeProvider';
 import { DocumentTextIcon, ExclamationTriangleIcon, CalendarDaysIcon, ClockIcon, ChevronLeftIcon, ChevronRightIcon, XMarkIcon } from '@heroicons/react/24/outline';
-
+import { formatInTimeZone } from 'date-fns-tz'; // add this import
 import { useTodayStatus } from './hooks/useTodayStatus';      
 import { EmployeeClock } from './components/EmployeeClock';  
 import { InformationCircleIcon } from '@heroicons/react/24/outline'; 
@@ -182,8 +182,8 @@ interface AttendanceRecord {
 // Today's attendance interface
 interface TodayAttendance {
   isCheckedIn: boolean;
-  checkInTime: Date | null;
-  checkOutTime: Date | null;
+  checkInTime: Date | string | null; 
+  checkOutTime: Date | string | null;
 }
 
 interface Employee {
@@ -301,6 +301,101 @@ const todayMeta = useTodayStatus(
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
 
+
+// Add this IP fetcher function (same as in first page)
+async function getPublicIpClientSide(opts?: { timeoutMs?: number }): Promise<string | null> {
+  const timeoutMs = opts?.timeoutMs ?? 3000;
+
+  const providers: Array<{
+    url: string;
+    parse: (r: any) => string | null;
+  }> = [
+    {
+      url: 'https://corsproxy.io/?https://api.ipify.org?format=json',
+      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
+    },
+    {
+      url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent('https://api.ipify.org?format=json'),
+      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
+    },
+    {
+      url: 'https://corsproxy.io/?https://ifconfig.co/json',
+      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
+    },
+  ];
+
+  const isValidIp = (ip: string) => {
+    const ipv4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
+    const ipv6 = /^(([0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}|::1|::)$/;
+    return ipv4.test(ip) || ipv6.test(ip);
+  };
+
+  const fetchWithTimeout = async (url: string): Promise<any | null> => {
+    const ctrl = new AbortController();
+    const tm = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { 
+        signal: ctrl.signal, 
+        cache: 'no-store',
+        headers: {
+          'Accept': 'application/json',
+        }
+      });
+      if (!res.ok) return null;
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('application/json')) {
+        return await res.json();
+      } else {
+        const txt = (await res.text()).trim();
+        try {
+          return JSON.parse(txt);
+        } catch {
+          return { ip: txt };
+        }
+      }
+    } catch (err: any) {
+      console.warn('ERROR fetching IP from provider:', url, err.message);
+      return null;
+    } finally {
+      clearTimeout(tm);
+    }
+  };
+
+  for (const p of providers) {
+    try {
+      const payload = await fetchWithTimeout(p.url);
+      const ip = payload ? p.parse(payload) : null;
+      if (ip && isValidIp(ip.trim())) {
+        return ip.trim();
+      } else if (ip) {
+        console.warn('[public-ip] invalid format from provider:', p.url, ip);
+      }
+    } catch (err) {
+      console.warn('[public-ip] failed to fetch from provider:', p.url, err);
+    }
+  }
+
+  console.warn('[public-ip] unable to resolve public IP from all providers');
+  return null;
+}
+
+// Add this API wrapper function for check-in/check-out
+async function postAttendanceWithIp(url: string, payload: any) {
+  const publicIp = await getPublicIpClientSide();
+  console.log('[public-ip] fetched:', publicIp || 'Not available');
+  
+  return fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('hrms_token') || ''}`,
+      ...(publicIp ? { 'x-client-public-ip': publicIp } : {})
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
+
   const openStatusModal = async (
     documentType: 'visa' | 'passport',
     statusType: 'expired' | 'expiring',
@@ -335,35 +430,27 @@ const handleSort = (field: SortField) => {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 5;
 
-// Helper function to get timezone (use employee's timezone or fallback to Singapore)
-const getCurrentTimezone = (): string => {
-  return 'Asia/Singapore';//employee.time_zone;// || 'Asia/Singapore'; // Fallback to Singapore if no timezone set
-};
 
-// Update the toSingaporeTime function to use dynamic timezone
-const toEmployeeTimezone1 = (date: Date | null): Date | null => {
-  if (!date) return null;
+const toEmployeeTimezone = (utcDate: Date | string | null): Date | null => {
+  if (!utcDate) return null;
+  //console.error("TEST "+ utcDate);
+  const date = typeof utcDate === 'string' ? new Date(utcDate) : utcDate;
+  
   try {
-    const timezone = getCurrentTimezone();
-    // Use date-fns-tz properly
-    return toZonedTime(date, timezone);
+    // Create a date in the employee's timezone
+    const employeeTime = new Date(date.toLocaleString('en-US', { 
+      timeZone: employee.time_zone || 'Asia/Kuala_Lumpur' 
+    }));
+    
+    //console.error("TEST 1 "+ employeeTime);
+    return employeeTime;
   } catch (error) {
     console.error("Error converting to employee timezone:", error);
     return date; // fallback to original date
   }
 };
 
-// If you need this function elsewhere, it should handle UTC input correctly
-const toEmployeeTimezone = (utcDate: Date | string): Date => {
-  const date = typeof utcDate === 'string' ? new Date(utcDate) : utcDate;
-  // Singapore is UTC+8
-  const singaporeOffset = 8 * 60 * 60 * 1000; // 8 hours in milliseconds
-  return new Date(date.getTime() + singaporeOffset);
-};
-
 type SortField = 'name' | 'company_name' | 'department' | 'position' | 'expired_date';
-
-// 2) type your state & handlers with SortField
 
 
 const fieldValue = (obj: AffectedEmployee, field: SortField): number | string => {
@@ -737,7 +824,7 @@ const fetchTodayAttendance1 = useCallback(async () => {
   }
 }, [employeeId]);
 
-const fetchTodayAttendance = useCallback(async () => {
+const fetchTodayAttendancework = useCallback(async () => {
   try {
     if (!employeeId) {
       showNotification('Employee ID is not available. Please refresh the page or log in again.', 'error');
@@ -797,101 +884,152 @@ const fetchTodayAttendance = useCallback(async () => {
   }
 }, [employeeId]);
 
-const calculateTimeDifference = (startTime: Date | null, endTime: Date = new Date()) => {
-  if (!startTime) return '00:00:00';
-  
-  // Convert both times to employee timezone for calculation
-  const employeeStartTime = toEmployeeTimezone(startTime);
-  const employeeEndTime = toEmployeeTimezone(endTime);
-  
-  const diffMs = (employeeEndTime as Date).getTime() - (employeeStartTime as Date).getTime();
-  const hours = Math.floor(diffMs / (1000 * 60 * 60)).toString().padStart(2, '0');
-  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60)).toString().padStart(2, '0');
-  const seconds = Math.floor((diffMs % (1000 * 60)) / 1000).toString().padStart(2, '0');
-  
-  return `${hours}:${minutes}:${seconds}`;
+
+function parseApiDateUTC(input: Date | string | null | undefined): Date | null {
+  if (!input) return null;
+  if (input instanceof Date) return isNaN(input.getTime()) ? null : input;
+
+  //console.error("parseApiDateUTC time 1 - "+ input);
+  const s = input.trim();
+  // already has zone info? (Z or +08:00 etc)
+  if (/Z$|[+\-]\d\d:?\d\d$/.test(s)) {
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // treat "YYYY-MM-DD HH:mm:ss" as UTC
+  const isoUtc = s.replace(' ', 'T') + 'Z';
+  const d = new Date(isoUtc);
+
+  //console.error("parseApiDateUTC time 2 - "+ d.getTime());
+  return isNaN(d.getTime()) ? null : d;
+}
+
+const displayTime = (date: Date | string | null): string => {
+ //console.error("employee time - "+ date);
+  const tz = employee?.time_zone || 'Asia/Kuala_Lumpur';
+  const d = parseApiDateUTC(date);
+  //console.error("parseApiDateUTC - "+ d);
+  if (!d) return '--:--';
+  return formatInTimeZone(d, tz, 'hh:mm a');
 };
 
-  const handleAttendanceToggle2 = async () => {
+
+const fetchTodayAttendanceworknow = useCallback(async () => {
   try {
     if (!employeeId) {
       showNotification('Employee ID is not available. Please refresh the page or log in again.', 'error');
       return;
     }
 
-    const endpoint = todayAttendance.isCheckedIn ? API_ROUTES.checkOut : API_ROUTES.checkIn;
+    const url = `${API_BASE_URL}${API_ROUTES.todayAttendance}?employee_id=${employeeId}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Failed to fetch today attendance');
 
-    const res = await fetch(`${API_BASE_URL}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ employee_id: employeeId })
+    const payload = await res.json();
+    console.log('Attendance API response:', payload);
+
+    // Normalize shape
+    const root = Array.isArray(payload) ? payload[0] : payload;
+    const rows: any[] =
+      Array.isArray(root?.attendanceDayRows) ? root.attendanceDayRows :
+      Array.isArray(root?.sessions) ? root.sessions : [];
+
+    // Map rows -> sessions (prefer local ISO if provided)
+    const mappedSessions: AttendanceRecord[] = rows.map((r: any) => {
+      const id = String(r.id ?? r.attendance_day_id ?? Math.random().toString(36).slice(2));
+      const ci = parseApiDateUTC(r.first_check_in_time_local_iso ?? null);
+      const co = parseApiDateUTC(r.last_check_out_time_local_iso ?? null);
+      return { id, checkIn: ci, checkOut: co };
+    }).filter(s => s.checkIn);
+
+    setSessions(mappedSessions);
+
+    // infer check-in status if not provided
+    const inferred = rows.some((r: any) => {
+      const ci = r.first_check_in_time ?? r.clock_in ?? r.first_check_in_time_local_iso;
+      const co = r.last_check_out_time ?? r.clock_out ?? r.last_check_out_time_local_iso;
+      return ci && !co;
     });
+    const isCheckedIn = typeof root?.isCheckedIn === 'boolean' ? root.isCheckedIn : inferred;
 
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      if (res.status === 701 && errData?.message) {
-        showNotification(errData.message, 'info');
-        return;
-      }
-      throw new Error(errData.error || 'Attendance action failed');
-    }
+    const last = mappedSessions.length ? mappedSessions[mappedSessions.length - 1] : null;
 
-    showNotification(
-      `Successfully ${todayAttendance.isCheckedIn ? 'checked out' : 'checked in'}!`,
-      'success'
-    );
-
-    // Refresh sessions and status
-    await fetchTodayAttendance();
+    setTodayAttendance({
+      isCheckedIn,
+      checkInTime: last?.checkIn ?? null,
+      checkOutTime: last?.checkOut ?? null
+    });
   } catch (err) {
-    showNotification(err instanceof Error ? err.message : 'Attendance action failed', 'error');
-    console.error('Error with attendance action:', err);
+    showNotification(err instanceof Error ? err.message : 'Failed to load attendance', 'error');
+    console.error('Error fetching today attendance:', err);
   }
-};
+}, [employeeId]);
 
-const handleAttendanceToggle1 = async () => {
+const fetchTodayAttendance = useCallback(async () => {
   try {
     if (!employeeId) {
       showNotification('Employee ID is not available. Please refresh the page or log in again.', 'error');
       return;
     }
 
-    const endpoint = todayAttendance.isCheckedIn ? API_ROUTES.checkOut : API_ROUTES.checkIn;
+    const url = `${API_BASE_URL}${API_ROUTES.todayAttendance}?employee_id=${employeeId}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Failed to fetch today attendance');
 
-    const res = await fetch(`${API_BASE_URL}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ employee_id: employeeId })
+    const payload = await res.json();
+    console.log('Attendance API response:', payload);
+
+    // Normalize shape
+    const root = Array.isArray(payload) ? payload[0] : payload;
+    const rows: any[] =
+      Array.isArray(root?.attendanceDayRows) ? root.attendanceDayRows :
+      Array.isArray(root?.sessions) ? root.sessions : [];
+
+    // Map rows -> sessions with proper date validation
+    const mappedSessions: AttendanceRecord[] = rows.map((r: any) => {
+      const id = String(r.id ?? r.attendance_day_id ?? Math.random().toString(36).slice(2));
+      
+      // Parse dates with validation
+      const parseDate = (dateStr: any): Date | null => {
+        if (!dateStr) return null;
+        try {
+          const date = new Date(dateStr);
+          return isNaN(date.getTime()) ? null : date;
+        } catch {
+          return null;
+        }
+      };
+
+      const ci = parseDate(r.first_check_in_time_local_iso ?? r.first_check_in_time ?? r.clock_in);
+      const co = parseDate(r.last_check_out_time_local_iso ?? r.last_check_out_time ?? r.clock_out);
+      
+      return { id, checkIn: ci, checkOut: co };
+    }).filter(s => s.checkIn); // Only include sessions with valid check-in
+
+    console.log('Mapped sessions for timer:', mappedSessions);
+    setSessions(mappedSessions);
+
+    // Rest of your existing code...
+    const inferred = rows.some((r: any) => {
+      const ci = r.first_check_in_time ?? r.clock_in ?? r.first_check_in_time_local_iso;
+      const co = r.last_check_out_time ?? r.clock_out ?? r.last_check_out_time_local_iso;
+      return ci && !co;
+    });
+    const isCheckedIn = typeof root?.isCheckedIn === 'boolean' ? root.isCheckedIn : inferred;
+
+    const last = mappedSessions.length ? mappedSessions[mappedSessions.length - 1] : null;
+
+    setTodayAttendance({
+      isCheckedIn,
+      checkInTime: last?.checkIn ?? null,
+      checkOutTime: last?.checkOut ?? null
     });
 
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      if (res.status === 701 && errData?.message) {
-        showNotification(errData.message, 'info');
-        return;
-      }
-      throw new Error(errData.error || 'Attendance action failed');
-    }
-
-    showNotification(
-      `Successfully ${todayAttendance.isCheckedIn ? 'checked out' : 'checked in'}!`,
-      'success'
-    );
-
-    // Force a complete refresh of attendance data
-    await fetchTodayAttendance();
-    
-    // Also force a small delay to ensure server has processed the request
-    setTimeout(() => {
-      fetchTodayAttendance();
-    }, 500);
-
   } catch (err) {
-    showNotification(err instanceof Error ? err.message : 'Attendance action failed', 'error');
-    console.error('Error with attendance action:', err);
+    showNotification(err instanceof Error ? err.message : 'Failed to load attendance', 'error');
+    console.error('Error fetching today attendance:', err);
   }
-};
-
+}, [employeeId]);
 
 const handleAttendanceToggle = async () => {
   try {
@@ -907,15 +1045,10 @@ const handleAttendanceToggle = async () => {
       ? API_ROUTES.checkOut
       : API_ROUTES.checkIn;
 
-    const res = await fetch(`${API_BASE_URL}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        // include auth if your routes are protected by authMiddleware
-        'Authorization': `Bearer ${localStorage.getItem('hrms_token') || ''}`,
-      },
-      body: JSON.stringify({ employee_id: employeeId }),
-    });
+    const res = await postAttendanceWithIp(
+      `${API_BASE_URL}${endpoint}`,
+      { employee_id: employeeId }
+    );
 
     const payload = await res.json().catch(() => null);
 
@@ -1012,19 +1145,6 @@ const handleAttendanceToggle = async () => {
     return new Date(dateString).toLocaleDateString(undefined, options);
   };
 
-const formatTime = (date: Date | null) => {
-  if (!date) return '--:--';
-  const employeeTime = toEmployeeTimezone(date);
-  return format(employeeTime as Date, 'hh:mm a');
-};
-
-  const formatDateTime = (date: Date) => {
-    return `${date.toLocaleDateString()} at ${formatTime(date)}`;
-  };
-
-  const getLatestAttendanceRecord = () => {
-    return attendanceRecords.length > 0 ? attendanceRecords[0] : null;
-  };
 
   useEffect(() => {
     const fetchDocumentStatus = async () => {
@@ -1136,11 +1256,45 @@ const formatTime = (date: Date | null) => {
     });
   };
 
-const displayTime = (date: Date | null): string => {
+
+const displayTimework = (date: Date | string | null): string => {
   if (!date) return '--:--';
-  const employeeTime = toEmployeeTimezone(date);
-  return format(employeeTime as Date, 'hh:mm a');
+  
+  try {
+    // Parse the UTC date from server
+    const utcDate = typeof date === 'string' ? new Date(date) : date;
+    console.error("employee time "+ date)
+    // Get timezone from employee or use fallback
+    const timeZone = employee?.time_zone || 'Asia/Kuala_Lumpur';
+     console.error("timeZone "+ timeZone)
+    // Use toZonedTime for reliable timezone conversion
+    const zonedTime = toZonedTime(utcDate, timeZone);
+     console.error("zonedTime "+ zonedTime)
+    // Format the time
+    return format(zonedTime, 'hh:mm a');
+  } catch (error) {
+    console.error("Error in displayTime:", {
+      error,
+      date,
+      employeeTimezone: employee?.time_zone
+    });
+    
+    // Fallback: Use the reliable toEmployeeTimezone approach
+    try {
+      const employeeTime = toEmployeeTimezone(date);
+      return employeeTime ? format(employeeTime, 'hh:mm a') : '--:--';
+    } catch {
+      // Ultimate fallback
+      try {
+        const fallbackDate = typeof date === 'string' ? new Date(date) : date;
+        return format(fallbackDate, 'hh:mm a');
+      } catch {
+        return '--:--';
+      }
+    }
+  }
 };
+
 
   const canPreviewFile = (contentType: string) => {
     return contentType.startsWith('image/') || contentType === 'application/pdf';
@@ -1300,9 +1454,9 @@ const displayTime = (date: Date | null): string => {
         {/* Header section with date and status badges */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 pb-4 border-b border-slate-200 dark:border-slate-600">
 <div className="mb-3 sm:mb-0">
-  {/* Date display */}
+  {/* Date display  CHECK 1*/}
   <div className={`text-lg font-semibold tracking-wide ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'} mb-1`}>
-    {format(toEmployeeTimezone(new Date()) as Date, 'EEEE, d MMM yyyy')}
+    {format(toEmployeeTimezone(new Date()) as Date, 'EEEE, d MMM yyyy')} 
   </div>
   
   {/* Time display */}
@@ -1440,9 +1594,11 @@ const displayTime = (date: Date | null): string => {
               <div className={`p-4 rounded-lg ${theme === 'light' ? 'bg-blue-50' : 'bg-slate-600'}`}>
                 <div className={`text-sm ${theme === 'light' ? 'text-slate-600' : 'text-slate-300'} mb-1`}>Check In</div>
                 <div className={`text-xl font-bold ${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`}>
-                {displayTime(todayAttendance.checkInTime)} {/* {todayAttendance.checkInTime
+                {/* {todayAttendance.checkInTime
                     ? format(toEmployeeTimezone(todayAttendance.checkInTime) as Date, 'hh:mm a')
-                    : '--:--'}*/}
+                    : '--:--'} */}
+
+                    {displayTime(todayAttendance.checkInTime)} 
                 </div>
               </div>
               <div className={`p-4 rounded-lg ${theme === 'light' ? 'bg-blue-50' : 'bg-slate-600'}`}>
@@ -1456,20 +1612,34 @@ const displayTime = (date: Date | null): string => {
               </div>
             </div>
 
-            {/* Working time counter */}
-            <div className="mb-6">
-              <div className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">Total Working Time Today</div>
-              <WorkingTimeCounter 
-                sessions={sessions.map(s => ({
-                      id: s.id,
-                      checkIn: s.checkIn ? toEmployeeTimezone(new Date(s.checkIn)) : null,
-                      checkOut: s.checkOut ? toEmployeeTimezone(new Date(s.checkOut)) : null
-                    }))}
-                isCheckedIn={todayAttendance.isCheckedIn}
-                className={`font-mono text-2xl font-bold ${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`}
-                displayFormat="digital"
-              /> 
-            </div>
+             {/* Working time counter */}
+              <div className="mb-6">
+                <div className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">
+                  Total Working Time Today
+                </div>
+{/* <WorkingTimeCounter
+  sessions={sessions.map(s => ({
+    id: s.id,
+    checkIn: s.checkIn ?? null,   // ← force undefined → null
+    checkOut: s.checkOut ?? null, // ← force undefined → null
+  }))}
+  isCheckedIn={todayAttendance.isCheckedIn}
+  className="font-mono text-2xl font-bold"
+  displayFormat="digital"
+  timeZone={employee.time_zone || 'Asia/Singapore'}
+/> */}
+
+<WorkingTimeCounter
+  sessions={sessions.map(s => ({
+    id: s.id || `session-${Math.random()}`,
+    checkIn: s.checkIn ? new Date(s.checkIn) : null,
+    checkOut: s.checkOut ? new Date(s.checkOut) : null,
+  }))}
+  isCheckedIn={todayAttendance.isCheckedIn}
+  className="font-mono text-2xl font-bold"
+  displayFormat="digital"
+/>
+              </div>
 
             {/* Check in/out button */}
             <button 
