@@ -1182,19 +1182,117 @@ useEffect(() => {
   fetchBanks();
 }, []);
 
-  // Get user from localStorage
-  useEffect(() => {
-    const userStr = localStorage.getItem('hrms_user');
-    if (userStr) {
-      try {
-        const userData = JSON.parse(userStr);
-        setUser(userData);
-      } catch (error) {
-        console.error('Error parsing user data:', error);
-      }
-    }
-  }, []);
+
+  // State to track authorization
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
   
+  // Get current user (adjust based on your auth system)
+  const [currentUser, setCurrentUser] = useState<{id: string; role: string} | null>(null);
+
+
+  // Get user from localStorage
+  // useEffect(() => {
+  //   const userStr = localStorage.getItem('hrms_user');
+  //   if (userStr) {
+  //     try {
+  //       const userData = JSON.parse(userStr);
+  //       setUser(userData);
+  //     } catch (error) {
+  //       console.error('Error parsing user data:', error);
+  //     }
+  //   }
+  // }, []);
+  
+// Check authorization on component mount
+useEffect(() => {
+  const checkAuthorization = async () => {
+    try {
+      setAuthLoading(true);
+      
+      // Get current user from your authentication system
+      const userStr = localStorage.getItem('hrms_user');
+      if (userStr) {
+        const userData = JSON.parse(userStr);
+        setCurrentUser(userData);
+        setUser(userData);
+        console.log('Current user:', userData);
+        console.log('Target employee ID:', employeeId);
+        
+        // Authorization logic - FIXED
+        if (userData.role === 'admin') {
+          // Admins can view all profiles
+          setIsAuthorized(true);
+          console.log('Authorized: Admin access');
+        // } else if (userData.role === 'manager') {
+        //   // Managers can view their own profile
+        //   if (userData.id === employeeId) {
+        //     setIsAuthorized(true);
+        //     console.log('Authorized: Manager viewing own profile');
+        //   } else {
+        //     // Check if this employee is under their management
+        //     try {
+        //       const isTeamMember = await checkIfTeamMember(employeeId, userData.id);
+        //       setIsAuthorized(isTeamMember);
+        //       console.log('Team member check result:', isTeamMember);
+        //     } catch (error) {
+        //       console.error('Team member check failed:', error);
+        //       setIsAuthorized(false);
+        //     }
+        //   }
+        } else if (userData.role === 'manager') {
+  // TEMPORARY: Allow managers to view all employee profiles
+  // TODO: Implement proper team member validation
+  setIsAuthorized(true);
+  console.log('Authorized: Manager access (temporary)');
+        } else if (userData.role === 'employee') {
+          // Employees can only view their own profile
+          // Make sure IDs are compared as strings
+          const isOwnProfile = String(userData.id) === String(employeeId);
+          setIsAuthorized(isOwnProfile);
+          console.log('Employee own profile check:', isOwnProfile);
+        } else {
+          // Unknown role - not authorized
+          console.log('Unauthorized: Unknown role');
+          setIsAuthorized(false);
+        }
+      } else {
+        // No user logged in
+        console.log('Unauthorized: No user logged in');
+        setIsAuthorized(false);
+      }
+    } catch (error) {
+      console.error('Authorization check failed:', error);
+      setIsAuthorized(false);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  checkAuthorization();
+}, [employeeId]);
+  
+
+// Temporary debug component - remove after fixing
+const DebugInfo = () => {
+  if (!currentUser) return null;
+  
+  return (
+    <div className="fixed top-4 right-4 bg-yellow-100 border border-yellow-400 p-4 rounded-lg z-50 max-w-md">
+      <h3 className="font-bold mb-2">Debug Info:</h3>
+      <p><strong>User ID:</strong> {currentUser.id} ({typeof currentUser.id})</p>
+      <p><strong>Employee ID:</strong> {employeeId} ({typeof employeeId})</p>
+      <p><strong>Role:</strong> {currentUser.role}</p>
+      <p><strong>IDs Match:</strong> {String(currentUser.id) === String(employeeId)}</p>
+      <p><strong>Authorized:</strong> {isAuthorized ? 'Yes' : 'No'}</p>
+      <p>User Role: {user?.role}</p>
+      <p>Employee Status: {employee?.status}</p>
+      <p>Employee ID: {employeeId}</p>
+      <p>Is Editing: {isEditing ? 'Yes' : 'No'}</p>
+    </div>
+  );
+};
+
   // Fetch employee data
   useEffect(() => {
     const fetchEmployeeData = async () => {
@@ -3913,6 +4011,22 @@ const BondingErrorModal = () => {
     return missingFields;
   };
 
+
+    // Show loading state during authorization check
+  if (authLoading) {
+    return (
+      <div className="container mx-auto p-8 flex justify-center">
+        <span className="loading loading-spinner loading-lg"></span>
+      </div>
+    );
+  }
+
+  // Redirect unauthorized users
+  if (!isAuthorized) {
+    router.push('/unauthorized');
+    return null;
+  }
+
   if (loading) {
     return (
       <div className="container mx-auto p-8 flex justify-center">
@@ -3972,15 +4086,16 @@ const BondingErrorModal = () => {
 
 
           {/* Add this button next to the edit button */}
-          {employee?.status.toLowerCase() === 'active' && (
+          {employee?.status.toLowerCase() === 'active' && 
+          (user?.role === 'admin' || user?.role === 'manager') && (
             <button 
               className={`btn  ${isEditing ? 'btn-ghost' : 'btn-info'}`}
               onClick={() => setShowResignModal(true)}
               disabled={isEditing}
             >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 sm:mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h5a2 2 0 012 2v1" />
-            </svg>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 sm:mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h5a2 2 0 012 2v1" />
+              </svg>
               <span className="hidden sm:inline">Resign</span>
             </button>
           )}
@@ -4092,7 +4207,9 @@ const BondingErrorModal = () => {
                         </button>
                     </div>
                   </div>
+                  {/* <DebugInfo /> */}
                 </div>
+
               )}
             </div>
           </div>
