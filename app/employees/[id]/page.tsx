@@ -4294,7 +4294,7 @@ const BondingErrorModal = () => {
 
           {/* Add this button next to the edit button */}
           {employee?.status.toLowerCase() === 'active' && 
-          (user?.role === 'admin' || user?.role === 'manager') && (
+          (user?.role === 'admin') && (
             <button 
               className={`btn  ${isEditing ? 'btn-ghost' : 'btn-info'}`}
               onClick={() => setShowResignModal(true)}
@@ -5948,7 +5948,6 @@ const BondingErrorModal = () => {
                 </div>
                 
 {/* Pay Interval field */}
-{/* Pay Interval field */}
 <div>
   <div className="mb-2">Pay Interval <span className="text-error">*</span></div>
 
@@ -5962,13 +5961,9 @@ const BondingErrorModal = () => {
     >
       <option value="" disabled>Select pay interval</option>
 
-      {/* Temporary options */}
-      <option value="25">25</option>
-      <option value="26">26</option>
-
       {/* Existing config options, skip 25/26 to avoid duplicates */}
       {(payrollConfigs || [])
-        .filter(c => ![25, 26].includes(Number(c?.pay_interval)))
+        
         .map(c => (
           <option key={c.id} value={String(c.pay_interval)}>
             {c.pay_interval}
@@ -6602,120 +6597,128 @@ const BondingErrorModal = () => {
         )}
       </div>
 
-      {/* Add form */}
-      <div className="rounded border p-4 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="label">
-              <span className="label-text">IP Address (IPv4/IPv6)</span>
-            </label>
-            <input
-              type="text"
-              className="input input-bordered w-full"
-              placeholder="e.g. 192.168.1.10"
-              disabled={!canAddIpOverride}
-              value={ipForm.ip_address}
-              onChange={(e) => setIpForm({ ...ipForm, ip_address: e.target.value })}
-            />
-          </div>
-          <div>
-            <label className="label">
-              <span className="label-text">Label (optional)</span>
-            </label>
-            <input
-              type="text"
-              className="input input-bordered w-full"
-              placeholder="Label (optional)"
-              disabled={!canAddIpOverride}
-              value={ipForm.label}
-              onChange={(e) => setIpForm({ ...ipForm, label: e.target.value })}
-            />
-          </div>
-          <div className="flex items-end">
-            <button
-              type="button"
-              className="btn btn-primary w-full"
-              disabled={!canAddIpOverride || ipSaving}
-onClick={async () => {
-  const ip = (ipForm.ip_address || '').trim();
+    {/* Add form */}
+<div className="rounded border p-4 mb-6">
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div>
+      <label className="label">
+        <span className="label-text">IP Address (IPv4/IPv6)</span>
+      </label>
+      <input
+        type="text"
+        className="input input-bordered w-full"
+        placeholder="e.g. 192.168.1.10"
+        disabled={!canAddIpOverride || user?.role !== 'admin'}
+        value={ipForm.ip_address}
+        onChange={(e) => setIpForm({ ...ipForm, ip_address: e.target.value })}
+      />
+    </div>
+    <div>
+      <label className="label">
+        <span className="label-text">Label (optional)</span>
+      </label>
+      <input
+        type="text"
+        className="input input-bordered w-full"
+        placeholder="Label (optional)"
+        disabled={!canAddIpOverride || user?.role !== 'admin'}
+        value={ipForm.label}
+        onChange={(e) => setIpForm({ ...ipForm, label: e.target.value })}
+      />
+    </div>
+    <div className="flex items-end">
+      {user?.role === 'admin' ? (
+        <button
+          type="button"
+          className="btn btn-primary w-full"
+          disabled={!canAddIpOverride || ipSaving}
+          onClick={async () => {
+            const ip = (ipForm.ip_address || '').trim();
 
-  // 1) Basic sanity: must be valid IPv4 or IPv6
-  const v4 = isIPv4(ip);
-  const v6 = isIPv6(ip);
-  if (!v4 && !v6) {
-    showNotification('Please enter a valid IPv4 or IPv6 address.', 'error');
-    return;
-  }
+            // 1) Basic sanity: must be valid IPv4 or IPv6
+            const v4 = isIPv4(ip);
+            const v6 = isIPv6(ip);
+            if (!v4 && !v6) {
+              showNotification('Please enter a valid IPv4 or IPv6 address.', 'error');
+              return;
+            }
 
-  // 2) Enforce membership in ACTIVE Office IP Ranges
-  if (!ipMatchesAnyOfficeRange(ip, officeRanges)) {
-// ✅ fix
-const allowed = (officeRanges ?? [])
-  .filter(r => !!(r.is_active ?? true))
-  .map(r => r.cidr)
-  .join(', ');
+            // 2) Enforce membership in ACTIVE Office IP Ranges
+            if (!ipMatchesAnyOfficeRange(ip, officeRanges)) {
+              const allowed = (officeRanges ?? [])
+                .filter(r => !!(r.is_active ?? true))
+                .map(r => r.cidr)
+                .join(', ');
 
+              showNotification(
+                allowed
+                  ? `IP must be inside an active Office IP Range. Allowed ranges: ${allowed}`
+                  : 'No active Office IP Ranges. Add one before adding fixed IPs.',
+                'error'
+              );
+              return;
+            }
 
-    showNotification(
-      allowed
-        ? `IP must be inside an active Office IP Range. Allowed ranges: ${allowed}`
-        : 'No active Office IP Ranges. Add one before adding fixed IPs.',
-      'error'
-    );
-    return;
-  }
+            // 3) Submit
+            try {
+              setIpSaving(true);
+              const res = await fetch(`${API_BASE_URL}/api/attendance/employee-ip-overrides`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${localStorage.getItem('hrms_token')}`,
+                },
+                body: JSON.stringify({
+                  employee_id: Number(employeeId),
+                  ip_address: ip,
+                  label: (ipForm.label ?? '').trim(),
+                }),
+              });
 
-  // 3) Submit
-  try {
-    setIpSaving(true);
-    const res = await fetch(`${API_BASE_URL}/api/attendance/employee-ip-overrides`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('hrms_token')}`,
-      },
-      body: JSON.stringify({
-        employee_id: Number(employeeId),
-        ip_address: ip,
-        label: (ipForm.label ?? '').trim(),
-      }),
-    });
+              if (!res.ok) throw new Error('Failed to add IP override');
 
-    if (!res.ok) throw new Error('Failed to add IP override');
-
-    setIpForm({ ip_address: '', label: '' });
-    await fetchIpOverrides();
-    showNotification('IP override added', 'success');
-  } catch (e) {
-    console.error(e);
-    showNotification('Unable to add IP override', 'error');
-  } finally {
-    setIpSaving(false);
-  }
-}}
-
-            >
-              {ipSaving ? (
-                <>
-                  <span className="loading loading-spinner loading-sm"></span>
-                  Saving…
-                </>
-              ) : 'Add'}
-            </button>
-          </div>
+              setIpForm({ ip_address: '', label: '' });
+              await fetchIpOverrides();
+              showNotification('IP override added', 'success');
+            } catch (e) {
+              console.error(e);
+              showNotification('Unable to add IP override', 'error');
+            } finally {
+              setIpSaving(false);
+            }
+          }}
+        >
+          {ipSaving ? (
+            <>
+              <span className="loading loading-spinner loading-sm"></span>
+              Saving…
+            </>
+          ) : 'Add'}
+        </button>
+      ) : (
+        <div className="w-full text-center py-2 text-gray-500">
+          Admin only
         </div>
+      )}
+    </div>
+  </div>
 
-        {!hasOffice && (
-          <p className="mt-1 text-sm text-red-600">
-            Employee isn’t assigned to an office. Assign an office to add fixed IPs.
-          </p>
-        )}
-        {hasOffice && !hasActiveRanges && (
-          <p className="mt-1 text-sm text-red-600">
-            No IP ranges for this office. Add at least one Office IP Range first.
-          </p>
-        )}
-      </div>
+  {!hasOffice && (
+    <p className="mt-1 text-sm text-red-600">
+      Employee isn't assigned to an office. Assign an office to add fixed IPs.
+    </p>
+  )}
+  {hasOffice && !hasActiveRanges && (
+    <p className="mt-1 text-sm text-red-600">
+      No IP ranges for this office. Add at least one Office IP Range first.
+    </p>
+  )}
+  {user?.role !== 'admin' && (
+    <p className="mt-1 text-sm text-yellow-600">
+      IP override management is restricted to administrators only.
+    </p>
+  )}
+</div>
 
       {/* List */}
       {ipOverrides.length === 0 ? (
@@ -6745,35 +6748,39 @@ const allowed = (officeRanges ?? [])
                   <td className="font-mono">{o.ip_address}</td>
                   <td>{o.label || '-'}</td>
                   <td>{o.created_at ? new Date(o.created_at).toLocaleString() : '-'}</td>
-                  <td className="text-right">
-                    <button
-                      type="button"
-                      className="btn btn-error btn-sm"
-                      onClick={async () => {
-                        if (confirm(`Remove IP override ${o.ip_address}?`)) {
-                          try {
-                            const res = await fetch(
-                              `${API_BASE_URL}/api/attendance/employee-ip-overrides/${o.id}`,
-                              {
-                                method: 'DELETE',
-                                headers: {
-                                  'Authorization': `Bearer ${localStorage.getItem('hrms_token')}`
-                                }
-                              }
-                            );
-                            if (res.ok) {
-                              await fetchIpOverrides();
-                              showNotification('IP override removed', 'success');
-                            }
-                          } catch {
-                            showNotification('Failed to remove override', 'error');
-                          }
-                        }
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </td>
+<td className="text-right">
+  {user?.role === 'admin' ? (
+    <button
+      type="button"
+      className="btn btn-error btn-sm"
+      onClick={async () => {
+        if (confirm(`Remove IP override ${o.ip_address}?`)) {
+          try {
+            const res = await fetch(
+              `${API_BASE_URL}/api/attendance/employee-ip-overrides/${o.id}`,
+              {
+                method: 'DELETE',
+                headers: {
+                  'Authorization': `Bearer ${localStorage.getItem('hrms_token')}`
+                }
+              }
+            );
+            if (res.ok) {
+              await fetchIpOverrides();
+              showNotification('IP override removed', 'success');
+            }
+          } catch {
+            showNotification('Failed to remove override', 'error');
+          }
+        }
+      }}
+    >
+      Delete
+    </button>
+  ) : (
+    <span className="text-gray-400 text-sm">Admin only</span>
+  )}
+</td>
                 </tr>
               ))}
             </tbody>
