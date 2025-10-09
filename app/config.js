@@ -65,6 +65,14 @@ export const API_ROUTES = {
   models: '/api/inventory/master/models',
 
 
+    // Overtime Routes
+  employeeOvertime: '/api/attendance/overtime/employee',
+  overtimeDetails: '/api/attendance/overtime',
+  submitOvertime: '/api/attendance/overtime/submit',
+  overtimeApproval: '/api/attendance/overtime/approval',
+  approveOvertime: '/api/attendance/overtime/approve',
+  allOvertime: '/api/attendance/overtime',
+  
   payrollConfig: '/api/payroll-config/configs',
   payrollProcess: {
     base: '/api/payroll/process',
