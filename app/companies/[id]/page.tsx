@@ -74,7 +74,7 @@ interface DepartmentForm {
 }
 
 interface Office {
-  id: number;
+  office_id: number;
   company_id: number;
   name: string;
   address_line1?: string | null;
@@ -269,7 +269,7 @@ const openCreateOffice = () => {
 };
 
 const openEditOffice = (o: Office) => {
-  setEditingOfficeId(o.id);
+  setEditingOfficeId(o.office_id );
   setOfficeForm({
     company_id: o.company_id,
     name: o.name,
@@ -292,10 +292,15 @@ const saveOffice = async (e: React.FormEvent) => {
   try {
     setLoading(true);
     const payload = { ...officeForm, is_active: officeForm.is_active ? 1 : 0 };
-    const url = editingOfficeId
+    // const url = editingOfficeId
+    //   ? `${API_BASE_URL}/api/attendance/offices/${editingOfficeId}`
+    //   : `${API_BASE_URL}/api/attendance/offices`;
+    // const method = editingOfficeId ? 'PUT' : 'POST';
+    const isEditingOffice = editingOfficeId !== null && editingOfficeId !== undefined;
+    const url = isEditingOffice
       ? `${API_BASE_URL}/api/attendance/offices/${editingOfficeId}`
-      : `${API_BASE_URL}/api/attendance/offices`;
-    const method = editingOfficeId ? 'PUT' : 'POST';
+        : `${API_BASE_URL}/api/attendance/offices`;
+    const method = isEditingOffice ? 'PUT' : 'POST';
 
     const res = await fetch(url, {
       method,
@@ -317,9 +322,26 @@ const saveOffice = async (e: React.FormEvent) => {
   }
 };
 
+
 const deleteOffice = async (id: number) => {
   try {
     setLoading(true);
+    
+    // First, delete all IP whitelist entries for this office
+    const ipResponse = await fetch(`${API_BASE_URL}/api/attendance/office-ip-whitelists?office_id=${id}`);
+    if (ipResponse.ok) {
+      const ipData = await ipResponse.json();
+      const ipRanges = Array.isArray(ipData?.data) ? ipData.data : ipData;
+      
+      // Delete each IP range
+      for (const ipRange of ipRanges) {
+        await fetch(`${API_BASE_URL}/api/attendance/office-ip-whitelists/${ipRange.id}`, { 
+          method: 'DELETE' 
+        });
+      }
+    }
+    
+    // Then delete the office
     const res = await fetch(`${API_BASE_URL}/api/attendance/offices/${id}`, { method: 'DELETE' });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -1110,7 +1132,7 @@ useEffect(() => {
       </div>
     );
   }
-  
+
   return (
     <div className="container mx-auto p-6">
       {/* Notification Alert */}
@@ -1152,6 +1174,7 @@ useEffect(() => {
           <button 
             className={`btn ${isEditing ? 'btn-ghost' : 'btn-primary'}`}
             onClick={toggleEditMode}
+             type="button"
           >
             {isEditing ? (
               <>
@@ -1916,7 +1939,7 @@ useEffect(() => {
           </thead>
           <tbody>
             {offices.map((o, idx) => (
-              <tr key={o.id}>
+              <tr key={o.office_id }>
                 <td>{idx + 1}</td>
                 <td className="font-medium">{o.name}</td>
                 <td className="text-sm">
@@ -1936,21 +1959,24 @@ useEffect(() => {
                   <button
                     className="btn btn-outline btn-primary btn-sm"
                     onClick={() => openEditOffice(o)}
+                    type="button"
                   >
                     Edit
                   </button>
                   <button
                     className="btn btn-outline btn-primary btn-sm"
-                    onClick={() => openIpModal(o.id)}
+                    onClick={() => openIpModal(o.office_id)}
+                    type="button"
                   >
                     Manage IPs
                   </button>
-<button
-  className="btn btn-outline btn-primary btn-sm"
-  onClick={() => setConfirmOfficeDelete({ open: true, id: o.id, name: o.name })}
->
-  Delete
-</button>
+                  <button
+                    className="btn btn-outline btn-primary btn-sm"
+                    onClick={() => setConfirmOfficeDelete({ open: true, id: o.office_id , name: o.name })}
+                    type="button"
+                  >
+                    Delete
+                  </button>
 
                 </div>
               </td>
@@ -2159,7 +2185,7 @@ useEffect(() => {
         <div className="modal-box max-w-2xl">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-lg">{editingOfficeId ? 'Edit Office' : 'Add Office'}</h3>
-            <button className="btn btn-sm btn-circle" onClick={() => setShowOfficeModal(false)}>✕</button>
+            <button className="btn btn-sm btn-circle" onClick={() => setShowOfficeModal(false)} type="button">✕</button>
           </div>
 
           <form onSubmit={saveOffice} className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2325,7 +2351,7 @@ useEffect(() => {
         <div className="modal-box max-w-3xl">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-lg">Office IP Whitelist</h3>
-            <button className="btn btn-sm btn-circle" onClick={() => setShowIpModal(false)}>✕</button>
+            <button className="btn btn-sm btn-circle" onClick={() => setShowIpModal(false)} type="button">✕</button>
           </div>
 
           {/* Add form */}
@@ -2436,7 +2462,7 @@ useEffect(() => {
         <div className="modal-box max-w-md">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-bold text-lg">Edit IP Whitelist</h3>
-            <button className="btn btn-sm btn-circle" onClick={closeEditIpModal}>✕</button>
+            <button className="btn btn-sm btn-circle" onClick={closeEditIpModal} type="button">✕</button>
           </div>
 
           {/* "Console" header */}
