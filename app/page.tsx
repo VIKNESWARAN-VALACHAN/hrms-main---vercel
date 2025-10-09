@@ -914,57 +914,6 @@ const displayTime = (date: Date | string | null): string => {
 };
 
 
-const fetchTodayAttendanceworknow = useCallback(async () => {
-  try {
-    if (!employeeId) {
-      showNotification('Employee ID is not available. Please refresh the page or log in again.', 'error');
-      return;
-    }
-
-    const url = `${API_BASE_URL}${API_ROUTES.todayAttendance}?employee_id=${employeeId}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Failed to fetch today attendance');
-
-    const payload = await res.json();
-    console.log('Attendance API response:', payload);
-
-    // Normalize shape
-    const root = Array.isArray(payload) ? payload[0] : payload;
-    const rows: any[] =
-      Array.isArray(root?.attendanceDayRows) ? root.attendanceDayRows :
-      Array.isArray(root?.sessions) ? root.sessions : [];
-
-    // Map rows -> sessions (prefer local ISO if provided)
-    const mappedSessions: AttendanceRecord[] = rows.map((r: any) => {
-      const id = String(r.id ?? r.attendance_day_id ?? Math.random().toString(36).slice(2));
-      const ci = parseApiDateUTC(r.first_check_in_time_local_iso ?? null);
-      const co = parseApiDateUTC(r.last_check_out_time_local_iso ?? null);
-      return { id, checkIn: ci, checkOut: co };
-    }).filter(s => s.checkIn);
-
-    setSessions(mappedSessions);
-
-    // infer check-in status if not provided
-    const inferred = rows.some((r: any) => {
-      const ci = r.first_check_in_time ?? r.clock_in ?? r.first_check_in_time_local_iso;
-      const co = r.last_check_out_time ?? r.clock_out ?? r.last_check_out_time_local_iso;
-      return ci && !co;
-    });
-    const isCheckedIn = typeof root?.isCheckedIn === 'boolean' ? root.isCheckedIn : inferred;
-
-    const last = mappedSessions.length ? mappedSessions[mappedSessions.length - 1] : null;
-
-    setTodayAttendance({
-      isCheckedIn,
-      checkInTime: last?.checkIn ?? null,
-      checkOutTime: last?.checkOut ?? null
-    });
-  } catch (err) {
-    showNotification(err instanceof Error ? err.message : 'Failed to load attendance', 'error');
-    console.error('Error fetching today attendance:', err);
-  }
-}, [employeeId]);
-
 const fetchTodayAttendance = useCallback(async () => {
   try {
     if (!employeeId) {
@@ -1255,45 +1204,6 @@ const handleAttendanceToggle = async () => {
       minute: '2-digit'
     });
   };
-
-
-const displayTimework = (date: Date | string | null): string => {
-  if (!date) return '--:--';
-  
-  try {
-    // Parse the UTC date from server
-    const utcDate = typeof date === 'string' ? new Date(date) : date;
-    console.error("employee time "+ date)
-    // Get timezone from employee or use fallback
-    const timeZone = employee?.time_zone || 'Asia/Kuala_Lumpur';
-     console.error("timeZone "+ timeZone)
-    // Use toZonedTime for reliable timezone conversion
-    const zonedTime = toZonedTime(utcDate, timeZone);
-     console.error("zonedTime "+ zonedTime)
-    // Format the time
-    return format(zonedTime, 'hh:mm a');
-  } catch (error) {
-    console.error("Error in displayTime:", {
-      error,
-      date,
-      employeeTimezone: employee?.time_zone
-    });
-    
-    // Fallback: Use the reliable toEmployeeTimezone approach
-    try {
-      const employeeTime = toEmployeeTimezone(date);
-      return employeeTime ? format(employeeTime, 'hh:mm a') : '--:--';
-    } catch {
-      // Ultimate fallback
-      try {
-        const fallbackDate = typeof date === 'string' ? new Date(date) : date;
-        return format(fallbackDate, 'hh:mm a');
-      } catch {
-        return '--:--';
-      }
-    }
-  }
-};
 
 
   const canPreviewFile = (contentType: string) => {
