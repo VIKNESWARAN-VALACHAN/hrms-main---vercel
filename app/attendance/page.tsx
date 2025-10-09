@@ -16,10 +16,10 @@ import { useTheme } from '../components/ThemeProvider';
 import ConfirmationModal from '../components/Modal';
 //import { downloadAttendanceReport } from '../utils/exportAttendanceReport';
 import { downloadAttendanceReport, type LeaveRow } from '../utils/exportAttendanceReport';
-
+import { parse, isValid } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 
-const SG_TZ = 'Asia/Singapore';
+const SG_TZ = 'Asia/Kuala_Lumpur';
 
 // Always produce a YYYY-MM-DD key in Singapore time
 const ymdSG = (d: Date | string) => {
@@ -27,14 +27,14 @@ const ymdSG = (d: Date | string) => {
   return formatInTimeZone(dateObj, SG_TZ, 'yyyy-MM-dd');
 };
 
+function makeDateAt(ymd: string, hm?: string): Date | undefined {
+  if (!hm) return undefined;
+  const d = parse(hm, 'HH:mm', new Date(`${ymd}T00:00:00`));
+  return isValid(d) ? d : undefined;
+}
+
 // Singapore timezone
-const timeZone = 'Asia/Singapore';
-
-// Function to convert date to Singapore timezone
-const toSingaporeTime = (date: Date): Date => {
-  return toZonedTime(date, timeZone);
-};
-
+const timeZone = 'Asia/Kuala_Lumpur';
 
 
 type EventType = 'holiday' | 'event';
@@ -64,6 +64,97 @@ enum AppealStatus {
   REJECTED = 'REJECTED'
 }
 
+// Add to your existing interfaces
+enum OvertimeStatus {
+  PENDING = 'pending',
+  PENDING_SUPERVISOR = 'pending_supervisor',
+  PENDING_MANAGER = 'pending_manager', 
+  PENDING_ADMIN = 'pending_admin',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  CANCELLED = 'cancelled'
+}
+enum OvertimeType {
+  WEEKDAY = 'weekday',
+  WEEKEND = 'weekend',
+  HOLIDAY = 'holiday',
+  PUBLIC_HOLIDAY = 'public_holiday'
+}
+
+
+
+interface OvertimeRequest {
+  ot_request_id: number;
+  employee_id: number;
+  attendance_day_id: number;
+  ot_date: string;
+  total_worked_minutes: number;
+  regular_minutes: number;
+  ot_minutes: number;
+  ot_type: OvertimeType;
+  calculated_ot_hours: string;
+  calculated_amount: string;
+  status: OvertimeStatus;
+  first_approver_id: number | null;
+  first_approval_date: string | null;
+  first_approval_comment: string | null;
+  second_approver_id: number | null;
+  second_approval_date: string | null;
+  second_approval_comment: string | null;
+  third_approver_id: number | null;
+  third_approval_date: string | null;
+  third_approval_comment: string | null;
+  rejection_reason: string | null;
+  rejected_by: number | null;
+  rejected_at: string | null;
+  submitted_at: string | null;
+  created_at: string;
+  updated_at: string;
+  attendance_date: string;
+  first_approver_name: string | null;
+  second_approver_name: string | null;
+  third_approver_name: string | null;
+  breakdown: OvertimeBreakdownItem[];
+  // Additional fields for display
+  employee_name?: string;
+  department_name?: string;
+  company_name?: string;
+  current_approver?: string;
+    _justUpdated?: boolean; 
+    approval_history?: ApprovalHistoryItem[];
+      // NEW: Add these missing properties
+  employee_no?: string;
+  current_approval_level?: string;
+  user_contribution?: string;
+  user_action?: string;
+  requester_name?: string;
+  requester_employee_no?: string;
+}
+
+interface ApprovalHistoryItem {
+  level: string;
+  approver: string;
+  date: string | null;
+  status: 'approved' | 'rejected' | 'pending';
+  comment?: string;
+}
+interface OvertimeBreakdownItem {
+  breakdown_id: number;
+  rate_type: string;
+  rate_multiplier: string;
+  minutes: number;
+  hours: string;
+  amount: string;
+  time_period: string;
+}
+
+interface OvertimeFormData {
+  date: string;
+  start_time: string;
+  end_time: string;
+  reason: string;
+  type: OvertimeType;
+}
 
 interface AttendanceRecord {
   date: Date;
@@ -154,6 +245,7 @@ interface AmendAttendanceData {
   employee_id: number;
   amend_date?: string;
   amend_by?: string;
+  employee_timezone?: string | null;
 }
 
 // Add Appeal interface
@@ -211,20 +303,54 @@ interface DepartmentStatsData {
 }
 
 // Add this interface for appeal request form data
-interface AppealRequestData {
+interface AppealRequestData1 {
   employeeId: number | null;
   attendanceDayId: number | null;
   date: string;
   originalCheckIn: string | null;
   originalCheckOut: string | null;
+  originalCheckInFormatted: string | null;
+  originalCheckOutFormatted: string | null;
   requestedCheckIn: string;
   requestedCheckOut: string;
   reason: string;
   status: string;
 }
 
+// Update your AppealRequestData interface
+interface AppealRequestData {
+  employeeId: number | null;
+  attendanceDayId: number | null;
+  date: string;
+  originalCheckIn: Date | null;
+  originalCheckOut: Date | null;
+  originalCheckInFormatted?: string | null; // Make optional or remove if not needed
+  originalCheckOutFormatted?: string | null; // Make optional or remove if not needed
+  requestedCheckIn: string;
+  requestedCheckOut: string;
+  reason: string;
+  status: string;
+}
+
+type Employee = { time_zone: string };
+
+
 export default function AttendancePage() { 
 
+
+// Add these states to your existing useState declarations
+const [overtimeRequests, setOvertimeRequests] = useState<OvertimeRequest[]>([]);
+const [selectedOvertime, setSelectedOvertime] = useState<OvertimeRequest | null>(null);
+const [overtimeBreakdown, setOvertimeBreakdown] = useState<OvertimeBreakdownItem[] | null>(null);
+
+const [isOvertimeApplyModalOpen, setIsOvertimeApplyModalOpen] = useState(false);
+const [selectedOvertimeForApply, setSelectedOvertimeForApply] = useState<OvertimeRequest | null>(null);
+const [isApplyingOvertime, setIsApplyingOvertime] = useState(false);
+
+const DEBUG = true;
+const log = (...a: any[]) => DEBUG && console.log('[attHist]', ...a);
+
+ const [employee, setEmployee] = useState<Employee | null>(null);
   // Theme hook for light/dark mode support
   const { theme } = useTheme();
   
@@ -276,10 +402,17 @@ export default function AttendancePage() {
   const [selectedDay, setSelectedDay] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
 
   // Add tab state - initialize from URL parameter if available
+  // const [activeTab, setActiveTab] = useState(() => {
+  //   const tabParam = searchParams.get('tab');
+  //   return tabParam === 'attendance' ? 'attendance' : tabParam === 'appeal' ? 'appeal' : tabParam === 'amend' ? 'amend' : 'overview';
+  // });
   const [activeTab, setActiveTab] = useState(() => {
-    const tabParam = searchParams.get('tab');
-    return tabParam === 'attendance' ? 'attendance' : tabParam === 'appeal' ? 'appeal' : tabParam === 'amend' ? 'amend' : 'overview';
-  });
+  const tabParam = searchParams.get('tab');
+  return tabParam === 'attendance' ? 'attendance' : 
+         tabParam === 'appeal' ? 'appeal' : 
+         tabParam === 'amend' ? 'amend' : 
+         tabParam === 'overtime' ? 'overtime' : 'overview';
+        });
 
   // Add state for amendment modal
   const [isAmendModalOpen, setIsAmendModalOpen] = useState(false);
@@ -407,6 +540,29 @@ export default function AttendancePage() {
   const [activeQuickDate, setActiveQuickDate] = useState<string | null>(null);
   const router = useRouter();
   
+// Add these states for overtime approval workflow
+const [pendingApprovals, setPendingApprovals] = useState<OvertimeRequest[]>([]);
+const [approvalHistory, setApprovalHistory] = useState<OvertimeRequest[]>([]);
+//const [overtimeView, setOvertimeView] = useState<'myRecords' | 'pendingApprovals' | 'approvalHistory'>('myRecords');
+const [isProcessingApproval, setIsProcessingApproval] = useState(false);
+const [approvalComment, setApprovalComment] = useState('');
+const [selectedOvertimeForApproval, setSelectedOvertimeForApproval] = useState<OvertimeRequest | null>(null);
+
+
+// Add to your existing overtime states
+const [overtimeView, setOvertimeView] = useState<'myRecords' | 'pendingApprovals' | 'approvalHistory'>('myRecords');
+const [approvalHistoryType, setApprovalHistoryType] = useState<'all' | 'approved' | 'rejected'>('all');
+const [isLoadingOvertime, setIsLoadingOvertime] = useState(false);
+const [overtimePagination, setOvertimePagination] = useState({
+  page: 1,
+  totalPages: 1,
+  totalItems: 0
+});
+// Add these states for overtime pagination
+const [overtimePage, setOvertimePage] = useState(1);
+const [overtimeFilter, setOvertimeFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+const [overtimeRecordsPerPage] = useState(10);
+
   // Add state for filter toggle (responsive filters)
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   // Initialize employeeId from localStorage on component mount
@@ -481,92 +637,78 @@ export default function AttendancePage() {
     };
   }, [timerInterval]);
 
-  // Update fetchTodayAttendance to use the state variable
-  const fetchTodayAttendance = async () => {
+
+  useEffect(() => {
+  if (!employeeId) return;
+  (async () => {
     try {
-      // Check if we have the employee ID before making the request
+      const res = await fetch(`${API_BASE_URL}${API_ROUTES.employees}/${employeeId}`);
+      if (!res.ok) throw new Error('Failed to fetch employee');
+      const data = await res.json();
+      setEmployee({ time_zone: data.time_zone || timeZone });
+    } catch (e) {
+      console.error('Error fetching employee for timezone:', e);
+      setEmployee({ time_zone: timeZone }); // fallback
+    }
+  })();
+  }, [employeeId]);
+
+  const fetchTodayAttendanceWORK = async () => {
+    try {
       if (!employeeId) {
         setError('Employee ID is not available. Please refresh the page or log in again.');
         return;
       }
 
-      // Use the employee ID from state
-      const url = `${API_BASE_URL}${API_ROUTES.todayAttendance}?employee_id=${employeeId}`;
+      const res = await fetch(`${API_BASE_URL}${API_ROUTES.todayAttendance}?employee_id=${employeeId}`);
+      if (!res.ok) throw new Error('Failed to fetch today attendance');
 
-      const response = await fetch(url);
+      const payload = await res.json();
 
-      if (!response.ok) throw new Error('Failed to fetch today attendance');
+      // Normalize shape (array | object)
+      const root = Array.isArray(payload) ? payload[0] : payload;
+      const rows: any[] = Array.isArray(root?.attendanceDayRows) ? root.attendanceDayRows : [];
 
-      const data = await response.json();
-      if (!Array.isArray(data)) {
-        console.error("Unexpected response format:", data);
-        setError("Unexpected response format from server");
-        return;
-      }
+      // Convert rows into sessions using UTC parsing
+      const mapped = rows.map((r: any) => {
+        const id = String(r.id ?? r.attendance_day_id ?? Math.random().toString(36).slice(2));
 
-      if (data[0].length === 0) {
-        // No attendance records today
-        setSessions([]);
-        setTodayAttendance({
-          isCheckedIn: false,
-          checkInTime: null,
-          checkOutTime: null
-        });
-        return;
-      }
+        // Use the local ISO fields from backend
+        const ci = parseApiDateUTC(
+          r.first_check_in_time_local_iso ?? 
+          r.first_check_in_time ?? 
+          r.clock_in ?? 
+          null
+        );
 
-      // Safely determine if checked in based on either data format
-      const isCheckedIn = data.some((session: any) => {
-        // New format (using attendance_days)
-        if (session.hasOwnProperty('isCheckedIn')) {
-          return session.isCheckedIn;
-        }
-        // Old format (using attendance table)
-        return session.hasOwnProperty('clock_out') && !session.clock_out;
+        const co = parseApiDateUTC(
+          r.last_check_out_time_local_iso ?? 
+          r.last_check_out_time ?? 
+          r.clock_out ?? 
+          null
+        );
+
+        return { id, checkIn: ci, checkOut: co };
+      }).filter(s => s.checkIn); // keep only sessions with a check-in
+
+      setSessions(mapped);
+
+      // Determine checked-in status
+      const inferred = rows.some((r: any) => {
+        const ci = r.first_check_in_time_local_iso ?? r.first_check_in_time ?? r.clock_in;
+        const co = r.last_check_out_time_local_iso ?? r.last_check_out_time ?? r.clock_out;
+        return ci && !co;
       });
+      
+      const isCheckedIn = typeof root?.isCheckedIn === 'boolean' ? root.isCheckedIn : inferred;
 
-      const attendanceDayRows = data[0].attendanceDayRows;
-
-
-      // Map API data to our interface format, handling both data structures
-      const formattedSessions = attendanceDayRows.map((session: any) => {
-        // Handle ID safely
-        const sessionId = session.id || session.attendance_day_id || Math.random().toString(36).substr(2, 9);
-
-        // Handle check-in time
-        let checkInTime = null;
-        if (session.first_check_in_time) {
-          checkInTime = new Date(session.first_check_in_time);  // New format
-        } else if (session.clock_in) {
-          checkInTime = new Date(session.clock_in);  // Old format
-        }
-
-        // Handle check-out time
-        let checkOutTime = null;
-        if (session.last_check_out_time) {
-          checkOutTime = new Date(session.last_check_out_time);  // New format
-        } else if (session.clock_out) {
-          checkOutTime = new Date(session.clock_out);  // Old format
-        }
-
-        return {
-          id: sessionId.toString(),
-          checkIn: checkInTime ,
-          checkOut: checkOutTime
-        };
-      });
-
-      setSessions(formattedSessions.filter((session: AttendanceRecord) => session.checkIn !== null) as AttendanceSession[]);
-
-      setSessions(formattedSessions.filter((session: AttendanceRecord) => session.checkIn !== null) as AttendanceSession[]);
-
-      // Find the most recent check-in and check-out times
-      const lastSession = formattedSessions.find((session: AttendanceRecord) => session.checkIn !== null) || null;
+      // Latest session to show in the header card
+      const last = mapped.length ? mapped[mapped.length - 1] : null;
 
       setTodayAttendance({
         isCheckedIn,
-        checkInTime: lastSession ? lastSession.checkIn : null,
-        checkOutTime: lastSession?.checkOut || null
+        checkInTime: last?.checkIn ?? null,
+        checkOutTime: last?.checkOut ?? null
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load attendance');
@@ -574,180 +716,285 @@ export default function AttendancePage() {
     }
   };
 
-// --- helper to fetch client public IP and POST with header ---
-// Robust public IP fetcher for the browser
-// Usage: const ip = await getPublicIpClientSide(); // string | null
-async function getPublicIpClientSide1(opts?: { timeoutMs?: number }): Promise<string | null> {
-  const timeoutMs = opts?.timeoutMs ?? 3000;
-
-  // Providers to try in order (all CORS-friendly for browsers)
-  const providers: Array<{
-    url: string;
-    parse: (r: any) => string | null;
-  }> = [
-    {
-      url: 'https://api.ipify.org?format=json',
-      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
-    },
-    {
-      url: 'https://ifconfig.co/json',
-      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
-    },
-    {
-      url: 'https://ipapi.co/json',
-      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
-    },
-  ];
-
-  const isValidIp = (ip: string) => {
-    // Basic IPv4/IPv6 sanity (not exhaustive, but good enough for logging)
-    const ipv4 =
-      /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
-    const ipv6 =
-      /^(([0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}|::1|::)$/; // simplified
-    return ipv4.test(ip) || ipv6.test(ip);
-  };
-
-  const fetchWithTimeout = async (url: string): Promise<any | null> => {
-    const ctrl = new AbortController();
-    const tm = setTimeout(() => ctrl.abort(), timeoutMs);
+  
+  const fetchTodayAttendance = async () => {
     try {
-      const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
-      if (!res.ok) return null;
-      const ct = res.headers.get('content-type') || '';
-      // Some endpoints can return plain text; handle both JSON and text.
-      if (ct.includes('application/json')) {
-        return await res.json();
-      } else {
-        const txt = (await res.text()).trim();
-        // Normalize to a JSON-like object for parsers that expect { ip: ... }
-        return { ip: txt };
+      // 1) Guard
+      if (!employeeId) {
+        const msg = 'Employee ID is not available. Please refresh the page or log in again.';
+        log('no employeeId');
+        setError(msg);
+        return;
       }
-    } catch (err: any) {
-       console.warn('ERROR');
-      return null;
-    } finally {
-      clearTimeout(tm);
-    }
-  };
 
-  for (const p of providers) {
-    const payload = await fetchWithTimeout(p.url);
-    const ip = payload ? p.parse(payload) : null;
-    if (ip && isValidIp(ip.trim())) {
-      return ip.trim();
-    } else if (ip) {
-      // Got something but it didn't validate—log once and continue.
-      console.warn('[public-ip] invalid format from provider:', p.url, ip);
-    }
-  }
+      // 2) Request
+      const url = `${API_BASE_URL}${API_ROUTES.todayAttendance}?employee_id=${employeeId}`;
+      log('GET', url);
+      const res = await fetch(url);
+      log('status', res.status, res.ok ? 'OK' : 'NOT OK');
+      if (!res.ok) throw new Error('Failed to fetch today attendance');
 
-  // All providers failed; log a single warning for diagnostics and return null.
-  console.warn('[public-ip] unable to resolve public IP from all providers');
-  return null;
-}
+      // 3) Parse + shape
+      const payload = await res.json();
+      const root = Array.isArray(payload) ? payload[0] : payload;
+      const rowsFromDay = Array.isArray(root?.attendanceDayRows) ? root.attendanceDayRows : null;
+      const rowsFromSessions = Array.isArray(root?.sessions) ? root.sessions : null;
+      const rows: any[] = rowsFromDay ?? rowsFromSessions ?? [];
 
-async function getPublicIpClientSide(opts?: { timeoutMs?: number }): Promise<string | null> {
-  const timeoutMs = opts?.timeoutMs ?? 3000;
+      log('payload type:', Array.isArray(payload) ? 'array' : typeof payload);
+      log('rows source:', rowsFromDay ? 'attendanceDayRows' : rowsFromSessions ? 'sessions' : 'none');
+      log('rows count:', rows.length);
+      if (rows.length) log('first row keys:', Object.keys(rows[0]));
 
-  // Use CORS proxies for the providers
-  const providers: Array<{
-    url: string;
-    parse: (r: any) => string | null;
-  }> = [
-    {
-      url: 'https://corsproxy.io/?https://api.ipify.org?format=json',
-      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
-    },
-    {
-      url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent('https://api.ipify.org?format=json'),
-      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
-    },
-    {
-      url: 'https://corsproxy.io/?https://ifconfig.co/json',
-      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
-    },
-  ];
+      // 4) Map rows -> sessions
+      const mapped = rows
+        .map((r: any) => {
+          const id = String(r.id ?? r.attendance_day_id ?? Math.random().toString(36).slice(2));
+          const ci = parseApiDateUTC(
+            r.first_check_in_time_local_iso ?? r.first_check_in_time ?? r.clock_in ?? null
+          );
+          const co = parseApiDateUTC(
+            r.last_check_out_time_local_iso ?? r.last_check_out_time ?? r.clock_out ?? null
+          );
+          return { id, checkIn: ci, checkOut: co };
+        })
+        .filter(s => s.checkIn);
 
-  const isValidIp = (ip: string) => {
-    const ipv4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
-    const ipv6 = /^(([0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}|::1|::)$/;
-    return ipv4.test(ip) || ipv6.test(ip);
-  };
+      setSessions(mapped);
+      log('mapped sessions:', mapped.length);
+      if (mapped.length) {
+        console.table(
+          mapped.slice(0, 5).map(s => ({
+            id: s.id,
+            checkIn: s.checkIn ? s.checkIn.toISOString() : '',
+            checkOut: s.checkOut ? s.checkOut.toISOString() : '',
+          }))
+        );
+      }
 
-  const fetchWithTimeout = async (url: string): Promise<any | null> => {
-    const ctrl = new AbortController();
-    const tm = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { 
-        signal: ctrl.signal, 
-        cache: 'no-store',
-        headers: {
-          'Accept': 'application/json',
-        }
+      // 5) Determine check-in status
+      const inferred = rows.some((r: any) => {
+        const ci = r.first_check_in_time_local_iso ?? r.first_check_in_time ?? r.clock_in;
+        const co = r.last_check_out_time_local_iso ?? r.last_check_out_time ?? r.clock_out;
+        return ci && !co;
       });
-      if (!res.ok) return null;
-      const ct = res.headers.get('content-type') || '';
-      if (ct.includes('application/json')) {
-        return await res.json();
-      } else {
-        const txt = (await res.text()).trim();
-        try {
-          // Try to parse as JSON if it's JSON
-          return JSON.parse(txt);
-        } catch {
-          // If not JSON, assume it's just the IP
-          return { ip: txt };
-        }
-      }
+      const isCheckedIn = typeof root?.isCheckedIn === 'boolean' ? root.isCheckedIn : inferred;
+
+      const last = mapped.length ? mapped[mapped.length - 1] : null;
+      setTodayAttendance({
+        isCheckedIn,
+        checkInTime: last?.checkIn ?? null,
+        checkOutTime: last?.checkOut ?? null,
+      });
+
+      log('isCheckedIn:', isCheckedIn, 'last ci/co:', {
+        ci: last?.checkIn?.toISOString() ?? '',
+        co: last?.checkOut?.toISOString() ?? '',
+      });
     } catch (err: any) {
-      console.warn('ERROR fetching IP from provider:', url, err.message);
-      return null;
-    } finally {
-      clearTimeout(tm);
+      log('caught error:', err?.message || err);
+      setError(err instanceof Error ? err.message : 'Failed to load attendance');
+      console.error('Error fetching today attendance:', err);
     }
   };
 
-  for (const p of providers) {
-    try {
-      const payload = await fetchWithTimeout(p.url);
-      const ip = payload ? p.parse(payload) : null;
-      if (ip && isValidIp(ip.trim())) {
-        return ip.trim();
-      } else if (ip) {
-        console.warn('[public-ip] invalid format from provider:', p.url, ip);
-      }
-    } catch (err) {
-      console.warn('[public-ip] failed to fetch from provider:', p.url, err);
+  // Robust UTC date parser for API responses
+  function parseApiDateUTC(input: Date | string | null | undefined): Date | null {
+    if (!input) return null;
+    if (input instanceof Date) return isNaN(input.getTime()) ? null : input;
+
+    const s = String(input).trim();
+    
+    // Already has timezone info? (Z or +HH:MM / -HH:MM)
+    if (/Z$|[+\-]\d\d:?\d\d$/.test(s)) {
+      const d = new Date(s);
+      return isNaN(d.getTime()) ? null : d;
     }
+    
+    // Treat naive "YYYY-MM-DD HH:mm:ss" as UTC
+    const isoUtc = s.replace(' ', 'T') + 'Z';
+    const d = new Date(isoUtc);
+    return isNaN(d.getTime()) ? null : d;
   }
 
-  console.warn('[public-ip] unable to resolve public IP from all providers');
-  return null;
-}
+  // Consistent time display function - uses employee's timezone
+  const displayTime = (date: Date | string | null): string => {
+    if (!date) return '--:--';
+   
+    const d = parseApiDateUTC(date);
+     console.warn("OK : " + d);
+    if (!d) return '--:--';
+    
+    // Get employee timezone or fallback to Singapore
+    const employeeTimezone = employee?.time_zone || timeZone;
+   
+    // Format in the employee's timezone
+    return formatInTimeZone(d, employeeTimezone, 'hh:mm a');
+  };
 
-// useEffect(() => {
-//   (async () => {
-//     const ip = await getPublicIpClientSide({ timeoutMs: 3000 });
-//     console.log('[public-ip] fetched:', ip);
-//   })();
-// }, []);
+const displayTimeTZ = (date: Date | string | null, timezone?: string | null): string => {
+  if (!date) return '--:--';
+  
+  try {
+    const d = parseApiDateUTC(date);
+    if (!d) return '--:--';
+    
+    // Use provided timezone or fallback to employee timezone or Singapore
+    const targetTimezone = timezone || employee?.time_zone || timeZone;
+    
+    // Ensure targetTimezone is always a valid string
+    const validTimezone = targetTimezone || timeZone;
+    
+    // Format in the specified timezone
+    return formatInTimeZone(d, validTimezone, 'hh:mm a');
+  } catch (error) {
+    console.error('Error formatting time with timezone:', error);
+    return '--:--';
+  }
+};
+
+// Add these helper functions to show raw UTC times
+const displayRawTime = (datetime: Date | string | null) => {
+  if (!datetime) return '--:--';
+  
+  try {
+    // If it's a Date object, convert to ISO string first
+    const dateString = typeof datetime === 'string' ? datetime : datetime.toISOString();
+    
+    // Extract just the time part from "YYYY-MM-DD HH:MM:SS" or ISO string
+    if (dateString.includes('T')) {
+      // ISO format: "2025-10-02T08:00:00.000Z"
+      return dateString.split('T')[1]?.substring(0, 5) || '--:--';
+    } else {
+      // Database format: "2025-10-02 08:00:00"
+      return dateString.split(' ')[1]?.substring(0, 5) || '--:--';
+    }
+  } catch (error) {
+    console.error('Error extracting raw time:', error);
+    return '--:--';
+  }
+};
+
+const displayRawDateOnly = (datetimeString: string) => {
+  if (!datetimeString) return '';
+  // Extract just the date part from "YYYY-MM-DD HH:MM:SS"
+  return datetimeString.split(' ')[0] || '';
+};
+
+  // Date display function
+  const displayDateTime = (date: Date | string | null): string => {
+    if (!date) return '--';
+    
+    const d = parseApiDateUTC(date);
+    if (!d) return '--';
+    
+    const employeeTimezone = employee?.time_zone || timeZone;
+    return formatInTimeZone(d, employeeTimezone, 'dd/MM/yyyy hh:mm a');
+  };
 
 
-async function postAttendance(url: string, payload: any) {
-   console.log('[public-ip] fetched:', 'TEST');
-  const publicIp = await getPublicIpClientSide();
-  return fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(publicIp ? { 'x-client-public-ip': publicIp } : {})
-    },
-    body: JSON.stringify(payload)
-  });
-}
-// --- end helper ---
+  async function getPublicIpClientSide(opts?: { timeoutMs?: number }): Promise<string | null> {
+    const timeoutMs = opts?.timeoutMs ?? 3000;
 
+    // Use CORS proxies for the providers
+    const providers: Array<{
+      url: string;
+      parse: (r: any) => string | null;
+    }> = [
+      {
+        url: 'https://corsproxy.io/?https://api.ipify.org?format=json',
+        parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
+      },
+      {
+        url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent('https://api.ipify.org?format=json'),
+        parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
+      },
+      {
+        url: 'https://corsproxy.io/?https://ifconfig.co/json',
+        parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
+      },
+    ];
+
+    const isValidIp = (ip: string) => {
+      const ipv4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
+      const ipv6 = /^(([0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}|::1|::)$/;
+      return ipv4.test(ip) || ipv6.test(ip);
+    };
+
+    const fetchWithTimeout = async (url: string): Promise<any | null> => {
+      const ctrl = new AbortController();
+      const tm = setTimeout(() => ctrl.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, { 
+          signal: ctrl.signal, 
+          cache: 'no-store',
+          headers: {
+            'Accept': 'application/json',
+          }
+        });
+        if (!res.ok) return null;
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          return await res.json();
+        } else {
+          const txt = (await res.text()).trim();
+          try {
+            // Try to parse as JSON if it's JSON
+            return JSON.parse(txt);
+          } catch {
+            // If not JSON, assume it's just the IP
+            return { ip: txt };
+          }
+        }
+      } catch (err: any) {
+        console.warn('ERROR fetching IP from provider:', url, err.message);
+        return null;
+      } finally {
+        clearTimeout(tm);
+      }
+    };
+
+    for (const p of providers) {
+      try {
+        const payload = await fetchWithTimeout(p.url);
+        const ip = payload ? p.parse(payload) : null;
+        if (ip && isValidIp(ip.trim())) {
+          return ip.trim();
+        } else if (ip) {
+          console.warn('[public-ip] invalid format from provider:', p.url, ip);
+        }
+      } catch (err) {
+        console.warn('[public-ip] failed to fetch from provider:', p.url, err);
+      }
+    }
+
+    console.warn('[public-ip] unable to resolve public IP from all providers');
+    return null;
+  }
+
+
+  async function postAttendance(url: string, payload: any) {
+    console.log('[public-ip] fetched:', 'TEST');
+    const publicIp = await getPublicIpClientSide();
+    return fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(publicIp ? { 'x-client-public-ip': publicIp } : {})
+      },
+      body: JSON.stringify(payload)
+    });
+  }
+
+  const displayDateOnly = (date: Date | string | null): string => {
+    if (!date) return '--';
+    
+    const d = parseApiDateUTC(date);
+    if (!d) return '--';
+    
+    const employeeTimezone = employee?.time_zone || timeZone;
+    return formatInTimeZone(d, employeeTimezone, 'dd/MM/yyyy');
+  };
 
   // Update handleAttendanceAction to use the state variable
   const handleAttendanceAction = async () => {
@@ -830,12 +1077,10 @@ async function postAttendance(url: string, payload: any) {
   };
 
   // Update the fetchAttendanceFilterData function to include company filter
-  const fetchAttendanceFilterData = async (currentTab = activeTab, filters: Record<string, string> | any) => {
+  const fetchAttendanceFilterData1 = async (currentTab = activeTab, filters: Record<string, string> | any) => {
     if (role !== 'admin') {
       return;
     }
-
-
     try {
 
       // Build query parameters similar to employee page
@@ -901,6 +1146,103 @@ async function postAttendance(url: string, payload: any) {
       console.error('Error fetching attendance filter data:', err);
     }
   };
+
+  const fetchAttendanceFilterData = async (currentTab = activeTab, filters: Record<string, string> | any) => {
+  if (role !== 'admin') {
+    return;
+  }
+
+  try {
+    // Build query parameters similar to employee page
+    let queryParams = new URLSearchParams();
+
+    // Add search field for employee name if at least 2 characters
+    if (searchTerm && searchTerm.length >= 2) {
+      queryParams.append('employee_name', searchTerm);
+    }
+
+    // Add company filter - ensure we're using the ID
+    if (filters.company && filters.company !== '') {
+      queryParams.append('company_id', filters.company);
+    }
+
+    // Add status filter if provided
+    if (filters.status && filters.status !== '') {
+      queryParams.append('status', filters.status);
+    }
+
+    // Only add date filters - as requested
+    if (filters.fromDate && filters.toDate) {
+      queryParams.append('start_date', filters.fromDate);
+      queryParams.append('end_date', filters.toDate);
+    }
+
+    if(filters.department && filters.department !== ''){
+      queryParams.append('department_id', filters.department);
+    }
+
+    // Build URL with query parameters
+    const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    const url = `${API_BASE_URL}${API_ROUTES.attendanceData}${queryString}`;
+
+   
+    const response = await fetch(url);
+
+    console.log("URL - " +url );
+    const data = await response.json();
+
+    console.log('Raw API response:', data);
+
+    let amendedData = data.map((item: any) => {
+      // Always prefer the ISO times if available
+      const checkInTime = item.first_check_in_time_local_iso || item.check_in_time;
+      const checkOutTime = item.last_check_out_time_local_iso || item.check_out_time;
+      
+      console.log('Processing item:', {
+        employee: item.employee_name,
+        timezone: item.employee_timezone,
+        rawCheckIn: item.check_in_time,
+        isoCheckIn: item.first_check_in_time_local_iso,
+        rawCheckOut: item.check_out_time,
+        isoCheckOut: item.last_check_out_time_local_iso,
+        finalCheckIn: displayTimeTZ(checkInTime,item.employee_timezone),
+        finalCheckOut: displayTimeTZ(checkOutTime,item.employee_timezone),
+      });
+
+      return {
+        id: item.employee_no,
+        employee_name: item.employee_name,
+        company_name: item.company_name,
+        department_name: item.department,
+        date: item.attendance_date,
+        checkIn: checkInTime,
+        checkOut: checkOutTime,
+        status: item.status.toLowerCase(),
+        attendance_day_id: item.attendance_day_id,
+        employee_id: item.employee_id,
+        amend_date: item.amend_date,
+        amend_by: item.amend_by,
+        employee_timezone: item.employee_timezone || timeZone, // Add this line
+        // Keep raw data for debugging
+        _raw: {
+          check_in_time: item.check_in_time,
+          check_out_time: item.check_out_time,
+          first_check_in_time_local_iso: item.first_check_in_time_local_iso,
+          last_check_out_time_local_iso: item.last_check_out_time_local_iso,
+          employee_timezone: item.employee_timezone
+        }
+      };
+    });
+
+    if(currentTab === 'amend'){
+      amendedData = amendedData.filter((item: any) => item.status.toLowerCase() === 'absent' || item.status.toLowerCase() === 'offday');
+    }
+
+    setAmendAttendanceData(amendedData);
+  } catch (err) {
+    console.error('Error fetching attendance filter data:', err);
+  }
+};
 
   // Update the resetAttendanceFilters function to also reset company filter
   const resetAttendanceFilters = () => {
@@ -1065,7 +1407,7 @@ async function postAttendance(url: string, payload: any) {
   };
 
   // Update fetchAttendanceHistory to use the state variable
-  const fetchAttendanceHistory = async (start?: Date, end?: Date) => {
+  const fetchAttendanceHistoryWORK = async (start?: Date, end?: Date) => {
     try {
       // Check if we have the employee ID before making the request
       if (!employeeId) {
@@ -1076,18 +1418,27 @@ async function postAttendance(url: string, payload: any) {
       // Use the employee ID from state
       let url = `${API_BASE_URL}${API_ROUTES.attendanceHistory}?employee_id=${employeeId}`;
 
-      if (start && end) {
-        const startDate = format(toSingaporeTime(start!), 'yyyy-MM-dd');
-        const endDate = format(toSingaporeTime(end!), 'yyyy-MM-dd');
-        url += `&start_date=${startDate}&end_date=${endDate}`;
-      }
+      // if (start && end) {
+      //   const startDate = format(toSingaporeTime(start!), 'yyyy-MM-dd');
+      //   const endDate = format(toSingaporeTime(end!), 'yyyy-MM-dd');
+      //   url += `&start_date=${startDate}&end_date=${endDate}`;
+      // }
+          if (start && end) {
+      const employeeTimezone = employee?.time_zone || timeZone;
+      const startDate = formatInTimeZone(start, employeeTimezone, 'yyyy-MM-dd');
+      const endDate = formatInTimeZone(end, employeeTimezone, 'yyyy-MM-dd');
+      url += `&start_date=${startDate}&end_date=${endDate}`;
+    }
 
+    console.log("URL : "+ url);
       const response = await fetch(url);
 
 
       if (!response.ok) throw new Error('Failed to fetch attendance history');
 
       const data = await response.json();
+
+      console.log("TEST : "+ data);
       if (!Array.isArray(data)) {
         console.error("Unexpected response format:", data);
         setError("Unexpected response format from server");
@@ -1136,8 +1487,10 @@ async function postAttendance(url: string, payload: any) {
         // Old format (using attendance table)
         else {
           const checkInDate = record.clock_in ? parseISO(record.clock_in) : new Date();
-          const singaporeCheckInDate = toSingaporeTime(checkInDate) as Date;
-          date = parseISO(format(singaporeCheckInDate, 'yyyy-MM-dd'));
+          const employeeTimezone = employee?.time_zone || timeZone;
+          const zonedCheckInDate = toZonedTime(checkInDate, employeeTimezone);
+          date = parseISO(formatInTimeZone(zonedCheckInDate, employeeTimezone, 'yyyy-MM-dd'));
+          
           checkIn = record.clock_in ? parseISO(record.clock_in) : undefined;
           checkOut = record.clock_out ? parseISO(record.clock_out) : undefined;
           status = determineStatus(
@@ -1146,17 +1499,17 @@ async function postAttendance(url: string, payload: any) {
           );
         }
 
-        return {
-          date,
-          checkIn,
-          checkOut,
-          status,
-          attendanceDayId: record.attendance_day_id,
-          first_checkIn: format(toSingaporeTime(new Date(record.first_check_in_day)), 'HH:mm a'),
-          last_checkOut: format(toSingaporeTime(new Date(record.last_check_out_day)), 'HH:mm a'),
-          appealStatus: record.appeal_status || ''
-        };
-      });
+      return {
+        date,
+        checkIn,
+        checkOut,
+        status,
+        attendanceDayId: record.attendance_day_id,
+        first_checkIn: record.first_check_in_day ? displayTime(record.first_check_in_day) : '',
+        last_checkOut: record.last_check_out_day ? displayTime(record.last_check_out_day) : '',
+        appealStatus: record.appeal_status || ''
+      };
+    });
 
       setAttendanceRecords(formattedRecords);
     } catch (err) {
@@ -1165,17 +1518,150 @@ async function postAttendance(url: string, payload: any) {
     }
   };
 
+const fetchAttendanceHistory = async (start?: Date, end?: Date) => {
+  try {
+    // 1) Guard
+    if (!employeeId) {
+      const msg = 'Employee ID is not available. Please refresh the page or log in again.';
+      log('no employeeId');
+      setError(msg);
+      return;
+    }
+
+    // 2) Build URL + date range (in employee TZ)
+    const tz = employee?.time_zone || timeZone || 'Asia/Singapore';
+    let url = `${API_BASE_URL}${API_ROUTES.attendanceHistory}?employee_id=${employeeId}`;
+
+    if (start && end) {
+      try {
+        const startDate = formatInTimeZone(start, tz, 'yyyy-MM-dd');
+        const endDate = formatInTimeZone(end, tz, 'yyyy-MM-dd');
+        url += `&start_date=${startDate}&end_date=${endDate}`;
+        log('range', { tz, start: startDate, end: endDate });
+      } catch (e) {
+        log('range format failed; continuing without range', e);
+      }
+    } else {
+      log('no range provided');
+    }
+
+    log('GET', url);
+
+    // 3) Request
+    const res = await fetch(url);
+    log('status', res.status, res.ok ? 'OK' : 'NOT OK');
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      log('error body (first 300):', body.slice(0, 300));
+      throw new Error(`Failed to fetch attendance history (${res.status})`);
+    }
+
+    // 4) Parse + shape check
+    const data = await res.json();
+    if (!Array.isArray(data)) {
+      log('unexpected payload (not array):', data);
+      setError('Unexpected response format from server');
+      return;
+    }
+
+    log('rows:', data.length);
+    if (data.length) log('first row keys:', Object.keys(data[0]));
+
+    // 5) Map records (keep logic same, just tidy)
+    // const formatted: AttendanceRecord[] = data.map((rec: any) => {
+    //   let date: Date;
+    //   let checkIn: Date | undefined;
+    //   let checkOut: Date | undefined;
+
+    //   if (rec.attendance_date || rec.first_check_in_time) {
+    //     // new format
+    //     date = new Date(rec.attendance_date || rec.first_check_in_time);
+    //     checkIn = rec.first_check_in_time ? new Date(rec.first_check_in_time) : undefined;
+    //     checkOut = rec.last_check_out_time ? new Date(rec.last_check_out_time) : undefined;
+    //   } else {
+    //     // old format
+    //     const ci = rec.clock_in ? new Date(rec.clock_in) : undefined;
+    //     const dayStr = ci ? formatInTimeZone(ci, tz, 'yyyy-MM-dd') : undefined;
+    //     date = dayStr ? new Date(dayStr) : new Date();
+    //     checkIn = ci;
+    //     checkOut = rec.clock_out ? new Date(rec.clock_out) : undefined;
+    //   }
+
+    //   const status =
+    //     rec.status_name?.toLowerCase?.() ??
+    //     ({ 1: 'present', 2: 'absent', 3: 'late', 4: 'partial', 5: 'offday' } as any)[rec.status_id] ??
+    //     (typeof determineStatus === 'function'
+    //       ? determineStatus(rec.first_check_in_time ?? rec.clock_in, rec.last_check_out_time ?? rec.clock_out)
+    //       : 'partial');
+
+    //   return {
+    //     date,
+    //     checkIn,
+    //     checkOut,
+    //     status,
+    //     // (optional extras you already use)
+    //     // @ts-ignore
+    //     attendanceDayId: rec.attendance_day_id,
+    //     // @ts-ignore
+    //     first_checkIn: rec.first_check_in_day ? displayTime(rec.first_check_in_day) : '',
+    //     // @ts-ignore
+    //     last_checkOut: rec.last_check_out_day ? displayTime(rec.last_check_out_day) : '',
+    //     // @ts-ignore
+    //     appealStatus: rec.appeal_status || ''
+    //   };
+    // });
+
+    // In fetchAttendanceHistory, replace the mapping section with:
+const formatted: AttendanceRecord[] = data.map((rec: any) => {
+  // Use local ISO times which are already timezone-correct
+  const date = new Date(rec.attendance_date || rec.first_check_in_time_local_iso);
+  const checkIn = rec.first_check_in_time_local_iso ? new Date(rec.first_check_in_time_local_iso) : undefined;
+  const checkOut = rec.last_check_out_time_local_iso ? new Date(rec.last_check_out_time_local_iso) : undefined;
+
+  const status = rec.status_name?.toLowerCase() || 'partial';
+
+  return {
+    date,
+    checkIn,
+    checkOut,
+    status,
+    attendanceDayId: rec.attendance_day_id,
+    appealStatus: rec.appeal_status || ''
+  };
+});
+
+    // 6) Quick peek (first 5 only)
+    log('sample:');
+    console.table(
+      formatted.slice(0, 5).map(r => ({
+        date: r.date?.toISOString()?.slice(0, 10),
+        checkIn: r.checkIn ? r.checkIn.toISOString() : '',
+        checkOut: r.checkOut ? r.checkOut.toISOString() : '',
+        status: r.status
+      }))
+    );
+
+    setAttendanceRecords(formatted);
+    log('done; set records:', formatted.length);
+  } catch (err: any) {
+    log('caught error:', err?.message || err);
+    setError(err instanceof Error ? err.message : 'Failed to load attendance history');
+  }
+};
+
   // Helper to determine status based on check-in and check-out times
   const determineStatus = (checkInTime: string, checkOutTime: string | null): 'present' | 'absent' | 'late' | 'partial' => {
     if (!checkInTime) return 'absent';
 
     const checkIn = parseISO(checkInTime);
-    const singaporeCheckIn = toSingaporeTime(checkIn) as Date;
+    const employeeTimezone = employee?.time_zone || timeZone;
+    const zonedCheckIn = toZonedTime(checkIn, employeeTimezone);
     const workStartHour = 9; // Assuming work starts at 9 AM
 
     // Consider late if checked in after 9:15 AM
-    const hours = parseInt(format(singaporeCheckIn, 'H'));
-    const minutes = parseInt(format(singaporeCheckIn, 'mm'));
+    const hours = parseInt(format(zonedCheckIn, 'H'));
+    const minutes = parseInt(format(zonedCheckIn, 'mm'));
     const isLate = hours > workStartHour || (hours === workStartHour && minutes > 15);
 
     if (!checkOutTime) return 'partial';
@@ -1184,30 +1670,59 @@ async function postAttendance(url: string, payload: any) {
   };
 
   // Update initial data fetching to wait for employeeId
-  useEffect(() => {
-    // Only fetch data if employeeId is available
-    if (employeeId) {
-      fetchTodayAttendance();
-      fetchAttendanceHistory();
-      fetchAppealData(filters);
-      if (role === 'admin' || role === 'manager') {
-        fetchAttendanceStats();
-        if (role === 'admin') {
-          fetchCompanies(); // Fetch companies for dropdown
-          fetchAttendanceStatuses(); // Fetch attendance statuses
-          applyAttendanceFilters(filters); // Load initial attendance data
-          // Load appeal data
-        }
+  // useEffect(() => {
+  //   // Only fetch data if employeeId is available
+  //   if (employeeId) {
+  //     fetchTodayAttendance();
+  //     fetchAttendanceHistory();
+  //     fetchAppealData(filters);
+  //     if (role === 'admin' || role === 'manager') {
+  //       fetchAttendanceStats();
+  //       if (role === 'admin') {
+  //         fetchCompanies(); // Fetch companies for dropdown
+  //         //fetchAttendanceStatuses(); // Fetch attendance statuses
+  //         applyAttendanceFilters(filters); // Load initial attendance data
+  //         // Load appeal data
+  //       }
+  //     }
+  //   }
+  // }, [employeeId]); // Depend on employeeId to re-fetch when it's set
+
+// Add to your useEffect to fetch overtime data
+// In the useEffect
+
+
+useEffect(() => {
+  if (employeeId && activeTab === 'overtime') {
+    fetchOvertimeData(1);
+  }
+}, [employeeId, activeTab, overtimeView, approvalHistoryType]);
+
+
+useEffect(() => {
+  if (employeeId) {
+    fetchTodayAttendance();
+    fetchAttendanceHistory();
+    fetchAppealData(filters);
+    fetchEmployeeOvertime();
+    fetchOvertimeData(); 
+    
+    // Load approval data if user is an approver - UPDATED
+    if (role === 'admin' || role === 'manager' || role === 'supervisor') {
+      loadPendingApprovals();
+      loadApprovalHistory();
+    }
+    
+    // UPDATED: Include supervisors in analytics access
+    if (role === 'admin' || role === 'manager' || role === 'supervisor') {
+      fetchAttendanceStats();
+      if (role === 'admin') {
+        fetchCompanies();
+        applyAttendanceFilters(filters);
       }
     }
-  }, [employeeId]); // Depend on employeeId to re-fetch when it's set
-
-  // Format time to human readable format using date-fns
-  const formatTime = (date: Date | null) => {
-    if (!date) return '--:--';
-    const singaporeTime = toSingaporeTime(date);
-    return format(singaporeTime as Date, 'hh:mm a');
-  };
+  }
+}, [employeeId]);
 
   // Helper function for status badge
   const getStatusBadgeClass = (status: string) => {
@@ -1245,9 +1760,6 @@ async function postAttendance(url: string, payload: any) {
       isBadge: true
     };
   };
-
-
-  
 
   // Pagination logic
   const getDataForCurrentView = () => {
@@ -1403,39 +1915,6 @@ useEffect(() => {
   };
   fetchDepartments();
 }, [selectedCompany]);
-
-  // Add fetchAttendanceStatuses function
-  const fetchAttendanceStatuses = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/attendance/statuses`);
-
-      if (!response.ok) {
-        // If endpoint doesn't exist yet, use default statuses
-        console.warn("Could not fetch attendance statuses, using defaults");
-        setAttendanceStatuses([
-          { id: "1", display_name: "Present" },
-          { id: "2", display_name: "Absent" },
-          { id: "3", display_name: "Late" },
-          { id: "4", display_name: "Partial" },
-          { id: "5", display_name: "Offday" }
-        ]);
-        return;
-      }
-
-      const data = await response.json();
-      setAttendanceStatuses(data);
-    } catch (error) {
-      console.error('Error fetching attendance statuses:', error);
-      // Fallback to defaults if API fails
-      setAttendanceStatuses([
-        { id: "1", display_name: "Present" },
-        { id: "2", display_name: "Absent" },
-        { id: "3", display_name: "Late" },
-        { id: "4", display_name: "Partial" },
-        { id: "5", display_name: "Offday" }
-      ]);
-    }
-  };
 
   // Add this function to fetch department attendance data by company
   const fetchDepartmentAttendance = async (companyId = 0, page = 1,startDate = '',endDate = '') => {
@@ -1674,15 +2153,16 @@ useEffect(() => {
     setIsAppealModalOpen(true);
   };
 
-  // Function to check if an appeal exists for a record
   const hasAppealForRecord = (record: AttendanceRecord): AppealData | null => {
-    const recordDate = format(toSingaporeTime(record.date) as Date, 'yyyy-MM-dd');
-
-    return appealData.find(appeal =>
-      format(toSingaporeTime(new Date(appeal.attendance_date)) as Date, 'yyyy-MM-dd') === recordDate
-      && appeal.attendance_day_id === record.attendanceDayId
-    ) || null;
-  };
+  const employeeTimezone = employee?.time_zone || timeZone;
+  const recordDate = formatInTimeZone(record.date, employeeTimezone, 'yyyy-MM-dd');
+  
+  return appealData.find(appeal => {
+    const appealDate = new Date(appeal.attendance_date);
+    const appealDateFormatted = formatInTimeZone(appealDate, employeeTimezone, 'yyyy-MM-dd');
+    return appealDateFormatted === recordDate && appeal.attendance_day_id === record.attendanceDayId;
+  }) || null;
+};
 
   // Function to open employee appeal view modal
   const openEmployeeAppealViewModal = (appeal: AppealData) => {
@@ -1695,16 +2175,15 @@ useEffect(() => {
     });
 
     // Reset edit mode and populate edit data
-    setIsEditingAppeal(false);
     setEditedAppealData({
-      requestedCheckIn: appeal.requested_check_in ? format(toSingaporeTime(new Date(appeal.requested_check_in)), 'HH:mm') : '',
-      requestedCheckOut: appeal.requested_check_out ? format(toSingaporeTime(new Date(appeal.requested_check_out)), 'HH:mm') : '',
+      requestedCheckIn: appeal.requested_check_in ? displayTime(appeal.requested_check_in).split(' ')[0] + ' ' + displayTime(appeal.requested_check_in).split(' ')[1] : '',
+      requestedCheckOut: appeal.requested_check_out ? displayTime(appeal.requested_check_out).split(' ')[0] + ' ' + displayTime(appeal.requested_check_out).split(' ')[1] : '',
       reason: appeal.reason || ''
     });
   };
 
   // Function to handle edit mode toggle
-  const toggleEditMode = () => {
+  const toggleEditMode1 = () => {
     if (selectedEmployeeAppeal) {
       if (!isEditingAppeal) {
         // Entering edit mode - ensure data is populated
@@ -1719,6 +2198,68 @@ useEffect(() => {
       setIsEditingAppeal(!isEditingAppeal);
     }
   };
+
+// Function to handle edit mode toggle
+// Function to handle edit mode toggle
+const toggleEditModework = () => {
+  if (selectedEmployeeAppeal) {
+    if (!isEditingAppeal) {
+      console.log('DEBUG - toggleEditMode - Entering edit mode:');
+      console.log('Raw requested_check_in:', selectedEmployeeAppeal.requested_check_in);
+      console.log('Raw requested_check_out:', selectedEmployeeAppeal.requested_check_out);
+      
+      const employeeTimezone = employee?.time_zone || timeZone;
+      
+      // Convert UTC times to employee timezone for editing
+      let requestedCheckIn = '';
+      let requestedCheckOut = '';
+
+      if (selectedEmployeeAppeal.requested_check_in) {
+        const utcDate = new Date(selectedEmployeeAppeal.requested_check_in);
+        console.log('UTC date for check-in:', utcDate.toISOString());
+        
+        // Convert UTC to employee timezone and extract HH:mm
+        requestedCheckIn = formatInTimeZone(utcDate, employeeTimezone, 'HH:mm');
+        console.log('Converted to employee timezone:', requestedCheckIn);
+      }
+
+      if (selectedEmployeeAppeal.requested_check_out) {
+        const utcDate = new Date(selectedEmployeeAppeal.requested_check_out);
+        console.log('UTC date for check-out:', utcDate.toISOString());
+        
+        // Convert UTC to employee timezone and extract HH:mm
+        requestedCheckOut = formatInTimeZone(utcDate, employeeTimezone, 'HH:mm');
+        console.log('Converted to employee timezone:', requestedCheckOut);
+      }
+
+      console.log('Final values for inputs:', { requestedCheckIn, requestedCheckOut });
+
+      setEditedAppealData({
+        requestedCheckIn,
+        requestedCheckOut,
+        reason: selectedEmployeeAppeal.reason || ''
+      });
+    }
+    setIsEditingAppeal(!isEditingAppeal);
+  }
+};
+
+// Function to handle edit mode toggle
+const toggleEditMode = () => {
+  if (selectedEmployeeAppeal) {
+    if (!isEditingAppeal) {
+      // Entering edit mode - use raw times for requested times
+      setEditedAppealData({
+        requestedCheckIn: selectedEmployeeAppeal.requested_check_in ?
+          format(new Date(selectedEmployeeAppeal.requested_check_in), 'HH:mm') : '', // displayRawTime(selectedEmployeeAppeal.requested_check_in) : '', // Use raw time
+        requestedCheckOut: selectedEmployeeAppeal.requested_check_out ?
+          format(new Date(selectedEmployeeAppeal.requested_check_out), 'HH:mm') : '', //displayRawTime(selectedEmployeeAppeal.requested_check_out) : '', // Use raw time
+        reason: selectedEmployeeAppeal.reason || ''
+      });
+    }
+    setIsEditingAppeal(!isEditingAppeal);
+  }
+};
 
   // Function to handle edit field changes
   const handleEditChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -1739,7 +2280,9 @@ useEffect(() => {
         new Date(`${format(appealDate, 'yyyy-MM-dd')}T${editedAppealData.requestedCheckIn}`) : undefined;
       const requestedCheckOut = editedAppealData.requestedCheckOut ?
         new Date(`${format(appealDate, 'yyyy-MM-dd')}T${editedAppealData.requestedCheckOut}`) : undefined;
-
+        const ymd = selectedEmployeeAppeal.attendance_date;
+        const requestedCheckOutDate = makeDateAt(ymd, editedAppealData.requestedCheckOut);
+        const requestedCheckInDate  = makeDateAt(ymd, editedAppealData.requestedCheckIn);
       const payload = {
         appeal_id: selectedEmployeeAppeal.id,
         request_check_in: requestedCheckIn,
@@ -1759,15 +2302,26 @@ useEffect(() => {
         throw new Error('Failed to update appeal');
       }
 
+      //console.error("TET : "+ requestedCheckOut);
       // Update the local state with edited values
+      // if (selectedEmployeeAppeal) {
+      //   setSelectedEmployeeAppeal({
+      //     ...selectedEmployeeAppeal,
+      //     requested_check_in: requestedCheckInDate, //requestedCheckIn as Date | undefined,
+      //     requested_check_out: requestedCheckOutDate,
+      //     reason:editedAppealData.reason
+      //   });
+      // }
+      // // Update the local state with edited values
       if (selectedEmployeeAppeal) {
         setSelectedEmployeeAppeal({
           ...selectedEmployeeAppeal,
-          requested_check_in: requestedCheckIn as Date | undefined,
+          requested_check_in: requestedCheckIn  as Date , //requestedCheckIn as Date | undefined,
           requested_check_out: requestedCheckOut as Date | undefined,
           reason: editedAppealData.reason
         });
       }
+
 
       // Exit edit mode
       setIsEditingAppeal(false);
@@ -1784,6 +2338,72 @@ useEffect(() => {
       showNotification('Failed to update appeal', 'error');
     }
   };
+
+  // Function to save appeal changes
+// Function to save appeal changes
+const saveAppealChangescurrent = async () => {
+  if (!selectedEmployeeAppeal) return;
+
+  try {
+    const employeeTimezone = employee?.time_zone || timeZone;
+    const appealDate = new Date(selectedEmployeeAppeal.attendance_date);
+    
+    // Convert the edited times to proper Date objects in the employee's timezone
+    const requestedCheckIn = editedAppealData.requestedCheckIn ?
+      toZonedTime(new Date(`${format(appealDate, 'yyyy-MM-dd')}T${editedAppealData.requestedCheckIn}`), employeeTimezone) : 
+      undefined;
+    
+    const requestedCheckOut = editedAppealData.requestedCheckOut ?
+      toZonedTime(new Date(`${format(appealDate, 'yyyy-MM-dd')}T${editedAppealData.requestedCheckOut}`), employeeTimezone) : 
+      undefined;
+
+      
+
+    const payload = {
+      appeal_id: selectedEmployeeAppeal.id,
+      request_check_in: requestedCheckIn,
+      request_check_out: requestedCheckOut,
+      appeal_reason: editedAppealData.reason
+    };
+
+    const response = await fetch(`${API_BASE_URL}/api/attendance/appeal/edit`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to update appeal');
+    }
+
+    // Update the local state with edited values
+    if (selectedEmployeeAppeal) {
+      setSelectedEmployeeAppeal({
+        ...selectedEmployeeAppeal,
+        requested_check_in: requestedCheckIn,
+        requested_check_out: requestedCheckOut,
+        reason: editedAppealData.reason
+      });
+    }
+
+    // Exit edit mode
+    setIsEditingAppeal(false);
+
+    // Show success notification
+    showNotification('Appeal updated successfully', 'success');
+
+    // Refresh appeal data
+    await fetchAppealData(filters);
+    await fetchAttendanceHistory();
+
+  } catch (error) {
+    console.error('Error updating appeal:', error);
+    showNotification('Failed to update appeal', 'error');
+  }
+};
+  
 
   // Function to cancel an appeal
   const cancelAppeal = async () => {
@@ -1822,41 +2442,84 @@ useEffect(() => {
   };
 
   // Add function to open appeal request modal
-  const openAppealRequestModal = (record: AttendanceRecord) => {
-    const date = format(toSingaporeTime(record.date) as Date, 'yyyy-MM-dd');
+  // const openAppealRequestModal1 = (record: AttendanceRecord) => {
+  
 
-    // Format check-in/out times for form
-    const originalCheckIn = record.checkIn
-      ? format(toSingaporeTime(record.checkIn) as Date, 'HH:mm')
-      : null;
+  //     const employeeTimezone = employee?.time_zone || timeZone;
+  // const date = formatInTimeZone(record.date, employeeTimezone, 'yyyy-MM-dd');
 
-    const originalCheckOut = record.checkOut
-      ? format(toSingaporeTime(record.checkOut) as Date, 'HH:mm')
-      : null;
+  // // Format check-in/out times for form
+  // const originalCheckIn = record.checkIn
+  //   ? formatInTimeZone(record.checkIn, employeeTimezone, 'HH:mm')
+  //   : null;
 
-    // Initialize form with current values
-    setAppealRequestData({
-      employeeId: employeeId,
-      attendanceDayId: record.attendanceDayId,
-      date: date,
-      originalCheckIn: originalCheckIn,
-      originalCheckOut: originalCheckOut,
-      requestedCheckIn: originalCheckIn || '',
-      requestedCheckOut: originalCheckOut || '',
-      reason: '',
-      status: record.status
-    });
+  // const originalCheckOut = record.checkOut
+  //   ? formatInTimeZone(record.checkOut, employeeTimezone, 'HH:mm')
+  //   : null;
 
-    // Reset errors
-    setAppealRequestErrors({
-      requestedCheckIn: '',
-      requestedCheckOut: '',
-      reason: ''
-    });
+  //   // Initialize form with current values
+  //   setAppealRequestData({
+  //     employeeId: employeeId,
+  //     attendanceDayId: record.attendanceDayId,
+  //     date: date,
+  //     originalCheckIn: originalCheckIn,
+  //     originalCheckOut: originalCheckOut,
+  //     requestedCheckIn: originalCheckIn || '',
+  //     requestedCheckOut: originalCheckOut || '',
+  //     reason: '',
+  //     status: record.status
+  //   });
 
-    setIsAppealRequestModalOpen(true);
-  };
+  //   // Reset errors
+  //   setAppealRequestErrors({
+  //     requestedCheckIn: '',
+  //     requestedCheckOut: '',
+  //     reason: ''
+  //   });
 
+  //   setIsAppealRequestModalOpen(true);
+  // };
+
+const openAppealRequestModal = (record: AttendanceRecord) => {
+  const employeeTimezone = employee?.time_zone || timeZone;
+  const date = formatInTimeZone(record.date, employeeTimezone, 'yyyy-MM-dd');
+
+  // Store the original Date objects for display
+  const originalCheckIn = record.checkIn || null;
+  const originalCheckOut = record.checkOut || null;
+
+  // Format times for the time inputs (HH:mm)
+  const requestedCheckIn = record.checkIn
+    ? formatInTimeZone(record.checkIn, employeeTimezone, 'HH:mm')
+    : '';
+
+  const requestedCheckOut = record.checkOut
+    ? formatInTimeZone(record.checkOut, employeeTimezone, 'HH:mm')
+    : '';
+
+  // Initialize form with current values
+  setAppealRequestData({
+    employeeId: employeeId,
+    attendanceDayId: record.attendanceDayId,
+    date: date,
+    originalCheckIn: originalCheckIn, // Date object for display
+    originalCheckOut: originalCheckOut, // Date object for display
+    requestedCheckIn: requestedCheckIn, // Formatted string for input
+    requestedCheckOut: requestedCheckOut, // Formatted string for input
+    reason: '',
+    status: record.status
+    // Remove originalCheckInFormatted and originalCheckOutFormatted if not needed
+  });
+
+  // Reset errors
+  setAppealRequestErrors({
+    requestedCheckIn: '',
+    requestedCheckOut: '',
+    reason: ''
+  });
+
+  setIsAppealRequestModalOpen(true);
+};
   // Add function to handle form input changes
   const handleAppealInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -1918,7 +2581,7 @@ useEffect(() => {
   };
 
   // Add function to submit appeal request
-  const submitAppealRequest = async () => {
+  const submitAppealRequest1 = async () => {
     // Validate form
     if (!validateAppealForm()) {
       if (appealRequestErrors) {
@@ -1932,16 +2595,16 @@ useEffect(() => {
 
 
       const statusId = AttendanceStatus[appealRequestData.status as keyof typeof AttendanceStatus];
-      // Prepare data for API
+      // Replace the toSingaporeTime calls in the payload:
       const payload = {
         employee_id: appealRequestData.employeeId,
         attendance_day_id: appealRequestData.attendanceDayId,
         appeal_reason: appealRequestData.reason,
         status: statusId,
-        request_check_in: toSingaporeTime(new Date(`${appealRequestData.date}T${appealRequestData.requestedCheckIn}`)),
-        request_check_out: toSingaporeTime(new Date(`${appealRequestData.date}T${appealRequestData.requestedCheckOut}`)),
-        original_check_in: toSingaporeTime(new Date(`${appealRequestData.date}T${appealRequestData.originalCheckIn}`)),
-        original_check_out: toSingaporeTime(new Date(`${appealRequestData.date}T${appealRequestData.originalCheckOut}`))
+        request_check_in: appealRequestData.requestedCheckIn ? new Date(`${appealRequestData.date}T${appealRequestData.requestedCheckIn}`) : null,
+        request_check_out: appealRequestData.requestedCheckOut ? new Date(`${appealRequestData.date}T${appealRequestData.requestedCheckOut}`) : null,
+        original_check_in: appealRequestData.originalCheckIn ? new Date(`${appealRequestData.date}T${appealRequestData.originalCheckIn}`) : null,
+        original_check_out: appealRequestData.originalCheckOut ? new Date(`${appealRequestData.date}T${appealRequestData.originalCheckOut}`) : null
       };
 
 
@@ -1956,6 +2619,94 @@ useEffect(() => {
 
       if (!response.ok) {
         throw new Error('Failed to submit appeal request');
+      }
+
+      // Close modal and show success notification
+      setIsAppealRequestModalOpen(false);
+      showNotification('Appeal request submitted successfully!', 'success');
+      
+      // Refresh attendance records to show updated appeal status
+      await fetchAttendanceHistory();
+
+    } catch (error) {
+      console.error('Error submitting appeal request:', error);
+      showNotification('Failed to submit appeal request. Please try again.', 'error');
+    } finally {
+      setIsAppealSubmitting(false);
+    }
+  };
+
+  // Add function to submit appeal request
+  const submitAppealRequest = async () => {
+    // Validate form
+    if (!validateAppealForm()) {
+      if (appealRequestErrors) {
+        showNotification(appealRequestErrors.requestedCheckIn || appealRequestErrors.requestedCheckOut || appealRequestErrors.reason, 'error');
+      }
+      return;
+    }
+
+    try {
+      setIsAppealSubmitting(true);
+
+      const statusId = AttendanceStatus[appealRequestData.status as keyof typeof AttendanceStatus];
+      const employeeTimezone = employee?.time_zone || timeZone;
+      
+      // Convert time strings to UTC datetime strings (like check-in does)
+      let requestedCheckInUTC = null;
+      let requestedCheckOutUTC = null;
+
+      if (appealRequestData.requestedCheckIn) {
+        // Create datetime in employee's timezone, then convert to UTC
+        const localDateTime = toZonedTime(
+          new Date(`${appealRequestData.date}T${appealRequestData.requestedCheckIn}`), 
+          employeeTimezone
+        );
+        requestedCheckInUTC = format(localDateTime, "yyyy-MM-dd'T'HH:mm:ss"); // UTC format
+      }
+      
+      if (appealRequestData.requestedCheckOut) {
+        const localDateTime = toZonedTime(
+          new Date(`${appealRequestData.date}T${appealRequestData.requestedCheckOut}`), 
+          employeeTimezone
+        );
+        requestedCheckOutUTC = format(localDateTime, "yyyy-MM-dd'T'HH:mm:ss"); // UTC format
+      }
+
+      // Convert original times to UTC format
+      const originalCheckInUTC = appealRequestData.originalCheckIn 
+        ? format(new Date(appealRequestData.originalCheckIn), "yyyy-MM-dd'T'HH:mm:ss") 
+        : null;
+      
+      const originalCheckOutUTC = appealRequestData.originalCheckOut 
+        ? format(new Date(appealRequestData.originalCheckOut), "yyyy-MM-dd'T'HH:mm:ss") 
+        : null;
+
+      const payload = {
+        employee_id: appealRequestData.employeeId,
+        attendance_day_id: appealRequestData.attendanceDayId,
+        appeal_reason: appealRequestData.reason,
+        status: statusId,
+        request_check_in: requestedCheckInUTC, // UTC datetime
+        request_check_out: requestedCheckOutUTC, // UTC datetime
+        original_check_in: originalCheckInUTC, // UTC datetime
+        original_check_out: originalCheckOutUTC // UTC datetime
+      };
+
+      console.log('Submitting appeal with UTC payload:', payload);
+
+      // Make API call
+      const response = await fetch(`${API_BASE_URL}/api/attendance/appeal`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to submit appeal request');
       }
 
       // Close modal and show success notification
@@ -2099,18 +2850,26 @@ useEffect(() => {
   // Calculate pagination for attendance records
   const indexOfLastRecord = attendanceRecordsPage * recordsPerPage;
   const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
-  const currentAttendanceRecords = attendanceRecords.filter(record => {
-    // Filter out today's records which are shown separately
-    const singaporeToday = toSingaporeTime(new Date()) as Date;
-    const singaporeRecordDate = toSingaporeTime(record.date) as Date;
-    return format(singaporeRecordDate, 'yyyy-MM-dd') !== format(singaporeToday, 'yyyy-MM-dd');
-  }).slice(indexOfFirstRecord, indexOfLastRecord);
 
-  const totalRecords = attendanceRecords.filter(record => {
-    const singaporeToday = toSingaporeTime(new Date()) as Date;
-    const singaporeRecordDate = toSingaporeTime(record.date) as Date;
-    return format(singaporeRecordDate, 'yyyy-MM-dd') !== format(singaporeToday, 'yyyy-MM-dd');
-  }).length;
+
+const currentAttendanceRecords = attendanceRecords.filter(record => {
+  const employeeTimezone = employee?.time_zone || timeZone;
+  const today = new Date();
+  const recordDate = formatInTimeZone(record.date, employeeTimezone, 'yyyy-MM-dd');
+  const todayFormatted = formatInTimeZone(today, employeeTimezone, 'yyyy-MM-dd');
+  
+  return recordDate !== todayFormatted;
+}).slice(indexOfFirstRecord, indexOfLastRecord);
+  
+  
+
+const totalRecords = attendanceRecords.filter(record => {
+  const employeeTimezone = employee?.time_zone || timeZone;
+  const today = new Date();
+  const recordDate = formatInTimeZone(record.date, employeeTimezone, 'yyyy-MM-dd');
+  const todayFormatted = formatInTimeZone(today, employeeTimezone, 'yyyy-MM-dd');
+  return recordDate !== todayFormatted;
+}).length;
   const totalRecordPages = Math.ceil(totalRecords / recordsPerPage);
 
   // Function to handle attendance records page navigation
@@ -2211,52 +2970,6 @@ async function handleExportWithLeaves() {
     showNotification('Failed to fetch leave data. Exported attendance only.', 'error');
   } finally {
     setIsExporting(false);
-  }
-}
-
-async function handleExportWithLeavesok() {
-  const API = `${API_BASE_URL}/api/v1`; 
-  const range = (() => {
-    if (filters?.startDate && filters?.endDate) {
-      return { startDate: fmtLocal(filters.startDate), endDate: fmtLocal(filters.endDate) };
-    }
-    const dates = (amendAttendanceData ?? []).map((r:any)=>r.date).filter(Boolean).sort();
-    if (dates.length) return { startDate: dates[0], endDate: dates[dates.length - 1] };
-    const n = new Date(), y=n.getFullYear(), m=n.getMonth();
-    const last = new Date(y, m+1, 0).getDate();
-    return { startDate: `${y}-${String(m+1).padStart(2,'0')}-01`, endDate: `${y}-${String(m+1).padStart(2,'0')}-${last}` };
-  })();
-
-  const empIds = Array.from(new Set((amendAttendanceData||[]).map((r:any)=>r.employee_id).filter((x:any)=>Number.isFinite(x))));
-  const qs = new URLSearchParams();
-  append(qs, 'startDate', range.startDate);
-  append(qs, 'endDate',   range.endDate);
-  if (empIds.length) append(qs, 'employeeIds', empIds.join(','));
-  append(qs, 'departmentId', filters?.departmentId);
-  append(qs, 'companyId',    filters?.companyId);
-  append(qs, 'status',       filters?.status);
-
-  const url = `${API}/leaves/history/range?${qs.toString()}`;
-
-  try {
-    const res = await fetch(url, {
-      method: 'GET',
-      //credentials: 'include', // if cookie auth; otherwise remove and send Authorization header
-      // headers: { Authorization: `Bearer ${token}` },
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('hrms_token')}`
-        }
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const leaves = await res.json();
-    downloadAttendanceReport(amendAttendanceData, {
-      includeLeaves: true,
-      leaves,
-      fileName: `Attendance_with_Leaves_${range.startDate}_${range.endDate}.xlsx`,
-    });
-  } catch (e) {
-    console.error('Fetch error', e);
-    downloadAttendanceReport(amendAttendanceData); // fallback
   }
 }
 
@@ -2455,6 +3168,428 @@ const getHolidaysForDate = (d: Date) => {
   return holidaysByDate[k] || [];
 };
 
+
+//*********Over time */
+
+// Update fetchEmployeeOvertime function
+// AFTER
+const fetchEmployeeOvertime = async () => {
+  try {
+    if (!employeeId) return;
+
+    // Admin sees all requests; others see their own
+    const url = (role === 'admin')
+      ? `${API_BASE_URL}/api/attendance/overtime`       // backend: getAllOvertimeRequests
+      : `${API_BASE_URL}${API_ROUTES.employeeOvertime}/${employeeId}`;
+
+    const response = await fetch(url);
+    if (response.ok) {
+      const data = await response.json();
+      // Both endpoints return { data: [...] }
+      setOvertimeRequests(data.data || []);
+    } else {
+      console.error('Failed to fetch overtime data');
+    }
+  } catch (err) {
+    console.error('Error fetching overtime data:', err);
+  }
+};
+
+
+
+// Add this function to handle overtime application
+const applyForOvertime = async (overtimeRequest: OvertimeRequest) => {
+  try {
+    setIsApplyingOvertime(true);
+    
+    const response = await fetch(`${API_BASE_URL}${API_ROUTES.submitOvertime}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        ot_request_id: overtimeRequest.ot_request_id,
+        employee_id: employeeId
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to apply for overtime');
+    }
+
+    const data = await response.json();
+    
+    // Update the local state to reflect the application
+    setOvertimeRequests(prev => 
+      prev.map(req => 
+        req.ot_request_id === overtimeRequest.ot_request_id 
+          ? { 
+              ...req, 
+              status: OvertimeStatus.PENDING,
+              _justUpdated: true,
+              // Update with actual approver data from response if available
+              ...data.updated_request
+            } 
+          : req
+      )
+    );
+
+    showNotification('Overtime application submitted successfully!', 'success');
+    setIsOvertimeApplyModalOpen(false);
+    
+    // Remove highlight after delay
+    setTimeout(() => {
+      setOvertimeRequests(prev => 
+        prev.map(req => 
+          req.ot_request_id === overtimeRequest.ot_request_id 
+            ? { ...req, _justUpdated: false } 
+            : req
+        )
+      );
+    }, 3000);
+
+  } catch (error) {
+    console.error('Error applying for overtime:', error);
+    showNotification('Failed to apply for overtime', 'error');
+  } finally {
+    setIsApplyingOvertime(false);
+  }
+};
+
+// Add function to check if overtime can be applied
+// AFTER
+const canApplyForOvertime = (request: OvertimeRequest): boolean => {
+  // Show "Apply" only if nothing has been submitted yet (null/undefined/blank)
+  // Hide as soon as it enters ANY pending/approved/rejected/cancelled state
+  const appliedOrFinal = new Set<OvertimeStatus>([
+    OvertimeStatus.PENDING,
+    OvertimeStatus.PENDING_SUPERVISOR,
+    OvertimeStatus.PENDING_MANAGER,
+    OvertimeStatus.PENDING_ADMIN,
+    OvertimeStatus.APPROVED,
+    OvertimeStatus.REJECTED,
+    OvertimeStatus.CANCELLED,
+  ]);
+  // If backend sometimes sends empty string or null before applying, allow apply
+  return !request.status || !appliedOrFinal.has(request.status);
+};
+
+// Enhanced function to fetch overtime data based on current view
+// Enhanced function to fetch overtime data based on current view
+const fetchOvertimeData = async (page = 1, forceRefresh = false) => {
+  if (!employeeId) return;
+
+  setIsLoadingOvertime(true);
+  try {
+    let url = '';
+    let data = [];
+
+    switch (overtimeView) {
+      case 'myRecords':
+        // Fetch employee's own overtime records
+        url = `${API_BASE_URL}${API_ROUTES.employeeOvertime}/${employeeId}?page=${page}`;
+        const response = await fetch(url);
+        if (response.ok) {
+          const result = await response.json();
+          data = result.data || [];
+          setOvertimePagination({
+            page: result.pagination?.current_page || 1,
+            totalPages: result.pagination?.total_pages || 1,
+            totalItems: result.pagination?.total || 0
+          });
+        }
+        setOvertimeRequests(data);
+        break;
+
+      case 'pendingApprovals':
+        // Fetch pending approvals for current approver
+        url = `${API_BASE_URL}/api/attendance/overtime/approval/${employeeId}?type=pending&page=${page}`;
+        const pendingResponse = await fetch(url);
+        if (pendingResponse.ok) {
+          const pendingResult = await pendingResponse.json();
+          data = pendingResult.data || [];
+          setOvertimePagination({
+            page: pendingResult.pagination?.current_page || 1,
+            totalPages: pendingResult.pagination?.total_pages || 1,
+            totalItems: pendingResult.pagination?.total || 0
+          });
+        }
+        setPendingApprovals(data);
+        break;
+
+      case 'approvalHistory':
+        // Fetch approval history for current approver
+        url = `${API_BASE_URL}/api/attendance/overtime/approval/${employeeId}?type=history&page=${page}&action_type=${approvalHistoryType}`;
+        const historyResponse = await fetch(url);
+        if (historyResponse.ok) {
+          const historyResult = await historyResponse.json();
+          data = historyResult.data || [];
+          setOvertimePagination({
+            page: historyResult.pagination?.current_page || 1,
+            totalPages: historyResult.pagination?.total_pages || 1,
+            totalItems: historyResult.pagination?.total || 0
+          });
+        }
+        setApprovalHistory(data);
+        break;
+    }
+
+  } catch (error) {
+    console.error('Error fetching overtime data:', error);
+    showNotification('Failed to load overtime data', 'error');
+  } finally {
+    setIsLoadingOvertime(false);
+  }
+};
+
+// Function to handle view changes
+const handleOvertimeViewChange = (view: 'myRecords' | 'pendingApprovals' | 'approvalHistory') => {
+  setOvertimeView(view);
+  setOvertimePagination(prev => ({ ...prev, page: 1 })); // Reset to first page
+  fetchOvertimeData(1, true);
+};
+
+// Function to handle approval history filter changes
+const handleApprovalHistoryFilter = (type: 'all' | 'approved' | 'rejected') => {
+  setApprovalHistoryType(type);
+  setOvertimePagination(prev => ({ ...prev, page: 1 }));
+  fetchOvertimeData(1, true);
+};
+
+const getOvertimeForApproval = async (employeeId: string, status?: string) => {
+  const response = await fetch(`${API_BASE_URL}/api/attendance/approval/pending/${employeeId}${status ? `?status=${status}` : ''}`);
+  if (!response.ok) throw new Error('Failed to fetch OT for approval');
+  return response.json();
+};
+
+const getOvertimeApprovalHistory = async (employeeId: string) => {
+  const response = await fetch(`${API_BASE_URL}/api/attendance/approval/history/${employeeId}`);
+  if (!response.ok) throw new Error('Failed to fetch OT approval history');
+  return response.json();
+};
+
+// Get combined overtime data for display
+const getCombinedOvertimeData = () => {
+  let allData: OvertimeRequest[] = [];
+  
+  // Add employee's own overtime records
+  allData = [...overtimeRequests];
+  
+  // Add pending approvals (for approvers)
+  if (role === 'admin' || role === 'manager' || role === 'supervisor') {
+    allData = [...allData, ...pendingApprovals];
+  }
+  
+  // Remove duplicates based on ot_request_id
+  const uniqueData = allData.reduce((acc: OvertimeRequest[], current) => {
+    const exists = acc.find(item => item.ot_request_id === current.ot_request_id);
+    if (!exists) {
+      acc.push(current);
+    }
+    return acc;
+  }, []);
+  
+  // Apply filters
+  let filteredData = uniqueData;
+  
+  switch (overtimeFilter) {
+    case 'pending':
+      filteredData = uniqueData.filter(item => 
+        item.status === OvertimeStatus.PENDING ||
+        item.status === OvertimeStatus.PENDING_SUPERVISOR ||
+        item.status === OvertimeStatus.PENDING_MANAGER ||
+        item.status === OvertimeStatus.PENDING_ADMIN
+      );
+      break;
+    case 'approved':
+      filteredData = uniqueData.filter(item => item.status === OvertimeStatus.APPROVED);
+      break;
+    case 'rejected':
+      filteredData = uniqueData.filter(item => item.status === OvertimeStatus.REJECTED);
+      break;
+    case 'all':
+    default:
+      filteredData = uniqueData;
+  }
+  
+  // Sort by date (newest first)
+  filteredData.sort((a, b) => new Date(b.ot_date).getTime() - new Date(a.ot_date).getTime());
+  
+  return filteredData;
+};
+
+const combinedOvertimeData = getCombinedOvertimeData();
+
+const [selectedOvertimeDetails, setSelectedOvertimeDetails] = useState<OvertimeRequest | null>(null);
+
+
+const processOvertimeApproval = async (approvalData: {
+  ot_request_id: number;
+  employee_id: string;
+  action: 'approve' | 'reject';
+  comment?: string;
+}) => {
+  const response = await fetch(`${API_BASE_URL}/api/attendance/approval/process`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(approvalData)
+  });
+  if (!response.ok) throw new Error('Failed to process OT approval');
+  return response.json();
+};
+
+
+
+
+// Remove submitOvertimeRequest function since it seems overtime is auto-calculated
+// If you need manual overtime submission, we'll need to adjust based on your requirements
+
+// Add function to calculate display values
+const calculateDisplayTimes = (totalMinutes: number) => {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return { hours, minutes };
+};
+
+// Add function to get status display
+// Update getOvertimeStatusDisplay function to handle new statuses
+const getOvertimeStatusDisplay = (status: OvertimeStatus) => {
+  const statusMap = {
+    [OvertimeStatus.PENDING]: { label: 'Pending', class: 'badge-warning' },
+    [OvertimeStatus.PENDING_SUPERVISOR]: { label: 'Pending Supervisor', class: 'badge-warning' },
+    [OvertimeStatus.PENDING_MANAGER]: { label: 'Pending Manager', class: 'badge-warning' },
+    [OvertimeStatus.PENDING_ADMIN]: { label: 'Pending Admin', class: 'badge-warning' },
+    [OvertimeStatus.APPROVED]: { label: 'Approved', class: 'badge-success' },
+    [OvertimeStatus.REJECTED]: { label: 'Rejected', class: 'badge-error' },
+    [OvertimeStatus.CANCELLED]: { label: 'Cancelled', class: 'badge-neutral' }
+  };
+  return statusMap[status] || { label: status, class: 'badge-neutral' };
+};
+
+// Add function to get overtime type display
+const getOvertimeTypeDisplay = (type: OvertimeType) => {
+  const typeMap = {
+    [OvertimeType.WEEKDAY]: { label: 'Weekday', class: 'badge-info' },
+    [OvertimeType.WEEKEND]: { label: 'Weekend', class: 'badge-warning' },
+    [OvertimeType.HOLIDAY]: { label: 'Holiday', class: 'badge-error' },
+    [OvertimeType.PUBLIC_HOLIDAY]: { label: 'Public Holiday', class: 'badge-secondary' }
+  };
+  return typeMap[type] || { label: type, class: 'badge-neutral' };
+};
+
+// Load pending approvals for current user
+const loadPendingApprovals = async () => {
+  if (!employeeId) return;
+  
+  try {
+    const data = await getOvertimeForApproval(employeeId.toString());
+    setPendingApprovals(data.data || []);
+  } catch (error) {
+    console.error('Failed to load pending approvals:', error);
+    showNotification('Failed to load pending approvals', 'error');
+  }
+};
+
+// Load approval history
+const loadApprovalHistory = async () => {
+  if (!employeeId) return;
+  
+  try {
+    const data = await getOvertimeApprovalHistory(employeeId.toString());
+    setApprovalHistory(data.data || []);
+  } catch (error) {
+    console.error('Failed to load approval history:', error);
+    showNotification('Failed to load approval history', 'error');
+  }
+};
+
+const fetchOvertimeDetails = async (overtimeId: number) => {
+  try {
+    console.log('🔍 Fetching overtime details for ID:', overtimeId);
+    
+    const response = await fetch(`${API_BASE_URL}${API_ROUTES.overtimeDetails}/${overtimeId}`);
+    
+    console.log('📡 Response status:', response.status);
+    console.log('📡 Response ok:', response.ok);
+    
+    if (response.ok) {
+      const data = await response.json();
+      console.log('📦 Raw API response:', data);
+      
+      // FIX: data.data is already the object, not an array
+      const overtimeDetails = data.data; // Remove the [0]
+      console.log('📦 Overtime details:', overtimeDetails);
+      
+      if (overtimeDetails) {
+        console.log('💾 Setting overtimeDetails:', overtimeDetails);
+        setSelectedOvertimeDetails(overtimeDetails);
+        setOvertimeBreakdown(overtimeDetails?.breakdown || []);
+        console.log('✅ State updated successfully');
+      } else {
+        console.error('❌ No overtime details found in response');
+        showNotification('No overtime details found', 'error');
+      }
+    } else {
+      console.error('❌ API response not OK:', response.status, response.statusText);
+      const errorText = await response.text();
+      console.error('❌ Error response:', errorText);
+      showNotification('Failed to load overtime details', 'error');
+    }
+  } catch (err) {
+    console.error('💥 Error fetching overtime details:', err);
+    showNotification('Failed to load overtime details', 'error');
+  }
+};
+
+
+// Handle approval action
+const handleOvertimeApproval = async (action: 'approve' | 'reject') => {
+  if (!selectedOvertimeForApproval || !employeeId) return;
+  
+  setIsProcessingApproval(true);
+  try {
+    await processOvertimeApproval({
+      ot_request_id: selectedOvertimeForApproval.ot_request_id,
+      employee_id: employeeId.toString(),
+      action,
+      comment: approvalComment
+    });
+    
+    showNotification(`Overtime ${action === 'approve' ? 'approved' : 'rejected'} successfully`, 'success');
+    setSelectedOvertimeForApproval(null);
+    setApprovalComment('');
+    
+    // Refresh data
+    await loadPendingApprovals();
+    await fetchEmployeeOvertime();
+    
+  } catch (error) {
+    console.error(`Failed to ${action} overtime:`, error);
+    showNotification(`Failed to ${action} overtime`, 'error');
+  } finally {
+    setIsProcessingApproval(false);
+  }
+};
+
+
+// Add to your useEffect to fetch overtime data
+useEffect(() => {
+  if (employeeId) {
+    fetchTodayAttendance();
+    fetchAttendanceHistory();
+    fetchAppealData(filters);
+    fetchEmployeeOvertime(); // Add this line
+    
+    if (role === 'admin' || role === 'manager') {
+      fetchAttendanceStats();
+      if (role === 'admin') {
+        fetchCompanies();
+        applyAttendanceFilters(filters);
+      }
+    }
+  }
+}, [employeeId]);
   
   return (
     <div className={`container mx-auto p-6 max-w-7xl ${theme === 'light' ? 'bg-white' : 'bg-slate-900'}`}>
@@ -2495,6 +3630,21 @@ const getHolidaysForDate = (d: Date) => {
             }`}
         >
           Overview
+        </button>
+
+        {/* Add Overtime Tab for all employees */}
+        <button
+          onClick={() => handleActiveTabChange('overtime')}
+          className={`py-3 px-4 sm:px-6 font-medium text-xs sm:text-sm whitespace-nowrap ${activeTab === 'overtime'
+              ? theme === 'light' 
+                ? 'border-b-2 border-blue-500 text-blue-600'
+                : 'border-b-2 border-blue-400 text-blue-400'
+              : theme === 'light'
+                ? 'text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                : 'text-slate-400 hover:text-slate-300 hover:border-slate-500'
+            }`}
+        >
+          Overtime
         </button>
         {role === 'admin' && (
           <>
@@ -2571,11 +3721,17 @@ const getHolidaysForDate = (d: Date) => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="flex flex-col">
                     <span className={`text-sm ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Check In Time</span>
-                    <span className={`text-xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`}>{formatTime(todayAttendance.checkInTime)}</span>
+                    <span className={`text-xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`}>
+                      {/* {formatTime(todayAttendance.checkInTime)} */}
+                      {displayTime(todayAttendance.checkInTime)}
+                    </span>
                   </div>
                   <div className="flex flex-col">                  
                     <span className={`text-sm ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Check Out Time</span>     
-                    <span className={`text-xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`}>{formatTime(todayAttendance.checkOutTime)}</span>               
+                    <span className={`text-xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`}>
+                      {displayTime(todayAttendance.checkOutTime)}
+                      {/* {formatTime(todayAttendance.checkOutTime)} */}
+                    </span>               
                   </div>             
                   <div className="flex flex-col">            
                     <span className={`text-sm ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Working Hours</span>                
@@ -2712,20 +3868,18 @@ const getHolidaysForDate = (d: Date) => {
                           const isToday = format(currentDate, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd');
                           const isSelected = format(calendarDate, 'yyyy-MM-dd') === format(currentDate, 'yyyy-MM-dd');
                           
-                          // Find attendance record for this date
-                          // const formattedDate = format(currentDate, 'yyyy-MM-dd');
-                          // const record = attendanceRecords.find(r => {
-                          //   const recordDate = toSingaporeTime(r.date) as Date;
-                          //   return format(recordDate, 'yyyy-MM-dd') === formattedDate;
-                          // });
-
-                          const formattedDate = format(toSingaporeTime(currentDate) as Date, 'yyyy-MM-dd');
+                      
+                          // In calendar date comparisons, use:
+                          const employeeTimezone = employee?.time_zone || timeZone;
+                          //console.warn("Check 1 : "+ employeeTimezone);
+                          const formattedDate = formatInTimeZone(currentDate, employeeTimezone, 'yyyy-MM-dd');
                           const record = attendanceRecords.find(r => {
-                            const recordDate = toSingaporeTime(r.date) as Date;
-                            return format(recordDate, 'yyyy-MM-dd') === formattedDate;
+                            const recordDateZoned = toZonedTime(r.date, employeeTimezone);
+                            //console.warn("Check 2 : "+ formatInTimeZone(recordDateZoned, employeeTimezone, 'yyyy-MM-dd'));
+                            return formatInTimeZone(recordDateZoned, employeeTimezone, 'yyyy-MM-dd') === formattedDate;
                           });
 
-
+                          
                           // Holidays for this date (already filtered to this employee via fetch)
                           //const holidays = getHolidaysForDate(currentDate);
                           //const isHoliday = isCurrentMonth && holidays.length > 0;
@@ -2760,12 +3914,6 @@ const getHolidaysForDate = (d: Date) => {
                                 break;
                             }
                           }
-
-                          // Add a subtle ring for public holiday (so it doesn't fight status colors)
-                          // const holidayRingClass = isHoliday
-                          //   ? (theme === 'light' ? 'ring-1 ring-pink-300' : 'ring-1 ring-pink-600/60')
-                          //   : '';
-                          // NEW: Subtle markers so they don't fight status colors
                           const holidayRingClass = hasHoliday
                             ? (theme === 'light' ? 'ring-1 ring-pink-300' : 'ring-1 ring-pink-600/60')
                             : '';
@@ -2793,17 +3941,7 @@ const getHolidaysForDate = (d: Date) => {
                                   ).join(', ')
                                 : undefined
                               }
-
-                              //title={isHoliday ? holidays.map(h => h.title).join(', ') : undefined}
                             >
-                              {/* PH badge */}
-                              {/* {isHoliday && (
-                                <div className={`absolute top-1 right-1 text-[10px] px-1 py-0.5 rounded
-                                  ${theme === 'light' ? 'bg-pink-100 text-pink-700 border border-pink-300' : 'bg-pink-800 text-pink-100 border border-pink-600'}`}>
-                                  PH
-                                </div>
-                              )} */}
-
                               {/* NEW: PH/EV badges */}
                               {(hasHoliday || hasEvent) && (
                                 <div className="absolute top-1 right-1 flex flex-col items-end gap-1">
@@ -2846,15 +3984,6 @@ const getHolidaysForDate = (d: Date) => {
                                     `}></div>
                                   </div>
                                 )}
-
-                                {/* Tiny holiday label at bottom */}
-                                {/* {isHoliday && (
-                                  <div className="absolute bottom-1 left-1 right-1">
-                                    <div className={`text-[10px] truncate ${theme === 'light' ? 'text-pink-700' : 'text-pink-200'}`}>
-                                      {holidays[0]?.title}{holidays.length > 1 ? ` +${holidays.length - 1}` : ''}
-                                    </div>
-                                  </div>
-                                )} */}
                                 {/* NEW: Tiny label at bottom (uses first item type for color) */}
                                 {(hasHoliday || hasEvent) && (
                                   <div className="absolute bottom-1 left-1 right-1">
@@ -2888,105 +4017,72 @@ const getHolidaysForDate = (d: Date) => {
                     <h3 className={`text-md font-semibold mb-2 ${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`}>
                       {format(calendarDate, 'EEEE, MMMM d, yyyy')}
                     </h3>
-
-                    {/* NEW: public holiday list for selected date */}
-                    {/* {(() => {
-                      const dayHolidays = getHolidaysForDate(calendarDate);
-                      if (dayHolidays.length) {
-                        return (
-                          <div className="mb-3">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-                                ${theme === 'light' ? 'bg-pink-100 text-pink-700 border border-pink-300' : 'bg-pink-800 text-pink-100 border border-pink-600'}`}>
-                                Public Holiday
-                              </span>
-                              <span className={`text-xs ${theme === 'light' ? 'text-gray-600' : 'text-slate-300'}`}>
-                                {dayHolidays.length} {dayHolidays.length === 1 ? 'item' : 'items'}
-                              </span>
-                            </div>
-                            <ul className="list-disc pl-5 text-sm">
-                              {dayHolidays.map(h => (
-                                <li key={h.id} className={`${theme === 'light' ? 'text-gray-800' : 'text-slate-100'}`}>
-                                  <span className="font-medium">{h.title}</span>
-                                  {h.description ? <span className={`ml-1 ${theme === 'light' ? 'text-gray-600' : 'text-slate-300'}`}>— {h.description}</span> : null}
-                                  {!h.is_global && h.company_names ? (
-                                    <span className={`ml-2 text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-300'}`}>({h.company_names})</span>
-                                  ) : null}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()} */}
-
                     {/* UPDATED: day items (Public Holidays + Events) */}
-{(() => {
-  const items = getHolidaysForDate(calendarDate);
-  if (!items.length) return null;
-
-  const ph = items.filter(h => (h.event_type || 'holiday') === 'holiday');
-  const ev = items.filter(h => (h.event_type || 'holiday') === 'event');
-
-  return (
-    <div className="mb-3 space-y-3">
-      {ph.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-              ${theme === 'light' ? 'bg-pink-100 text-pink-700 border border-pink-300' : 'bg-pink-800 text-pink-100 border border-pink-600'}`}>
-              Public Holiday
-            </span>
-            <span className={`text-xs ${theme === 'light' ? 'text-gray-600' : 'text-slate-300'}`}>
-              {ph.length} {ph.length === 1 ? 'item' : 'items'}
-            </span>
-          </div>
-          <ul className="list-disc pl-5 text-sm">
-            {ph.map(h => (
-              <li key={`ph-${h.id}`} className={`${theme === 'light' ? 'text-gray-800' : 'text-slate-100'}`}>
-                <span className="font-medium">{h.title}</span>
-                {h.description ? <span className={`ml-1 ${theme === 'light' ? 'text-gray-600' : 'text-slate-300'}`}>— {h.description}</span> : null}
-                {!h.is_global && h.company_names ? (
-                  <span className={`ml-2 text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-300'}`}>({h.company_names})</span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {ev.length > 0 && (
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
-              ${theme === 'light' ? 'bg-violet-100 text-violet-700 border border-violet-300' : 'bg-violet-800 text-violet-100 border border-violet-600'}`}>
-              Event
-            </span>
-            <span className={`text-xs ${theme === 'light' ? 'text-gray-600' : 'text-slate-300'}`}>
-              {ev.length} {ev.length === 1 ? 'item' : 'items'}
-            </span>
-          </div>
-          <ul className="list-disc pl-5 text-sm">
-            {ev.map(h => (
-              <li key={`ev-${h.id}`} className={`${theme === 'light' ? 'text-gray-800' : 'text-slate-100'}`}>
-                <span className="font-medium">{h.title}</span>
-                {h.description ? <span className={`ml-1 ${theme === 'light' ? 'text-gray-600' : 'text-slate-300'}`}>— {h.description}</span> : null}
-                {!h.is_global && h.company_names ? (
-                  <span className={`ml-2 text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-300'}`}>({h.company_names})</span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-})()}
-
-                    
                     {(() => {
-                      const formattedSelectedDate = ymdSG(calendarDate);
+                      const items = getHolidaysForDate(calendarDate);
+                      if (!items.length) return null;
+
+                      const ph = items.filter(h => (h.event_type || 'holiday') === 'holiday');
+                      const ev = items.filter(h => (h.event_type || 'holiday') === 'event');
+
+                      return (
+                        <div className="mb-3 space-y-3">
+                          {ph.length > 0 && (
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                                  ${theme === 'light' ? 'bg-pink-100 text-pink-700 border border-pink-300' : 'bg-pink-800 text-pink-100 border border-pink-600'}`}>
+                                  Public Holiday
+                                </span>
+                                <span className={`text-xs ${theme === 'light' ? 'text-gray-600' : 'text-slate-300'}`}>
+                                  {ph.length} {ph.length === 1 ? 'item' : 'items'}
+                                </span>
+                              </div>
+                              <ul className="list-disc pl-5 text-sm">
+                                {ph.map(h => (
+                                  <li key={`ph-${h.id}`} className={`${theme === 'light' ? 'text-gray-800' : 'text-slate-100'}`}>
+                                    <span className="font-medium">{h.title}</span>
+                                    {h.description ? <span className={`ml-1 ${theme === 'light' ? 'text-gray-600' : 'text-slate-300'}`}>— {h.description}</span> : null}
+                                    {!h.is_global && h.company_names ? (
+                                      <span className={`ml-2 text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-300'}`}>({h.company_names})</span>
+                                    ) : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {ev.length > 0 && (
+                            <div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+                                  ${theme === 'light' ? 'bg-violet-100 text-violet-700 border border-violet-300' : 'bg-violet-800 text-violet-100 border border-violet-600'}`}>
+                                  Event
+                                </span>
+                                <span className={`text-xs ${theme === 'light' ? 'text-gray-600' : 'text-slate-300'}`}>
+                                  {ev.length} {ev.length === 1 ? 'item' : 'items'}
+                                </span>
+                              </div>
+                              <ul className="list-disc pl-5 text-sm">
+                                {ev.map(h => (
+                                  <li key={`ev-${h.id}`} className={`${theme === 'light' ? 'text-gray-800' : 'text-slate-100'}`}>
+                                    <span className="font-medium">{h.title}</span>
+                                    {h.description ? <span className={`ml-1 ${theme === 'light' ? 'text-gray-600' : 'text-slate-300'}`}>— {h.description}</span> : null}
+                                    {!h.is_global && h.company_names ? (
+                                      <span className={`ml-2 text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-300'}`}>({h.company_names})</span>
+                                    ) : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}                 
+                    {/* {(() => {
+                      const employeeTimezone = employee?.time_zone || timeZone;
+                      const formattedSelectedDate = formatInTimeZone(calendarDate, employeeTimezone, 'yyyy-MM-dd');
+                      //const formattedSelectedDate = ymdSG(calendarDate);
                       const selectedRecord = attendanceRecords.find(r => ymdSG(r.date) === formattedSelectedDate);
                       
                       if (selectedRecord) {
@@ -3046,7 +4142,71 @@ const getHolidaysForDate = (d: Date) => {
                           </div>
                         );
                       }
-                    })()}
+                    })()} */}
+
+                    {(() => {
+  const employeeTimezone = employee?.time_zone || timeZone;
+  const formattedSelectedDate = formatInTimeZone(calendarDate, employeeTimezone, 'yyyy-MM-dd');
+  const selectedRecord = attendanceRecords.find(r => ymdSG(r.date) === formattedSelectedDate);
+  //console.log("Check 4 : "+ selectedRecord);
+  if (selectedRecord) {
+    return (
+      <div className="grid grid-cols-2 gap-4 text-sm">
+        <div>
+          <span className={`${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Check-in:</span>
+          <span className={`ml-2 font-medium ${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`}>
+            {selectedRecord.checkIn 
+              ? displayTime(selectedRecord.checkIn)  // Use displayTime instead of first_checkIn
+              : '--:--'}
+          </span>
+        </div>
+        <div>
+          <span className={`${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Check-out:</span>
+          <span className={`ml-2 font-medium ${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`}>
+            {selectedRecord.checkOut 
+              ? displayTime(selectedRecord.checkOut)  // Use displayTime instead of last_checkOut
+              : '--:--'}
+          </span>
+        </div>
+        <div>
+          <span className={`${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Status:</span>
+          <span className={`ml-2 badge ${getStatusBadgeClass(selectedRecord.status)}`}>
+            {selectedRecord.status}
+          </span>
+        </div>
+        <div>
+          <span className={`${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Action:</span>
+          <span className="ml-2">
+            {hasAppealForRecord(selectedRecord) ? (
+              <button
+                className="btn btn-xs btn-outline"
+                onClick={() => openEmployeeAppealViewModal(hasAppealForRecord(selectedRecord) as AppealData)}
+              >
+                View Appeal
+              </button>
+            ) : (
+              <button
+                className="btn btn-xs btn-outline"
+                onClick={() => openAppealRequestModal(selectedRecord)}
+              >
+                Submit Appeal
+              </button>
+            )}
+          </span>
+        </div>
+      </div>
+    );
+  } else {
+    return (
+      <div className={`flex flex-col items-center py-2 ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>No attendance record found for this date</span>
+      </div>
+    );
+  }
+})()}
                   </div>
                 </div>
               </div>
@@ -3084,40 +4244,44 @@ const getHolidaysForDate = (d: Date) => {
                                 <>
                                   <div className={`font-medium ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>Today</div>
                                   <div className={`text-xs opacity-70 ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>
-                                    {format(toSingaporeTime(new Date()) as Date, 'EEEE')}
+                                   {(() => {
+                                      const employeeTimezone = employee?.time_zone || timeZone;
+                                      const today = new Date();
+                                      return formatInTimeZone(today, employeeTimezone, 'EEEE');
+                                    })()}
                                   </div>
                                 </>
                               )}
                             </td>
                             <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
-                              {session.checkIn
+                              {/* {session.checkIn
                                 ? format(toSingaporeTime(session.checkIn) as Date, 'hh:mm a')
-                                : '--'}
+                                : '--'} */}
+                                {session.checkIn ? displayTime(session.checkIn) : '--'}
                             </td>
                             <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
-                              {session.checkOut
+                              {/* {session.checkOut
                                 ? format(toSingaporeTime(session.checkOut) as Date, 'hh:mm a')
-                                : '--'}
+                                : '--'} */}
+                                {session.checkOut ? displayTime(session.checkOut) : '--'}
                             </td>
                             <td className={`font-medium ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
-                              {(() => {
-                                // Skip calculation if checkIn is null
-                                if (!session.checkIn) return '--';
+                               {(() => {
+                              if (!session.checkIn) return '--';
 
-                                const singaporeCheckIn = toSingaporeTime(session.checkIn) as Date;
+                              const employeeTimezone = employee?.time_zone || timeZone;
+                              const checkInZoned = toZonedTime(session.checkIn, employeeTimezone);
+                              const endTime = session.checkOut
+                                ? toZonedTime(session.checkOut, employeeTimezone)
+                                : todayAttendance.isCheckedIn && idx === sessions.length - 1
+                                  ? toZonedTime(currentTime, employeeTimezone)
+                                  : checkInZoned;
 
-                                const endTime = session.checkOut
-                                  ? toSingaporeTime(session.checkOut) as Date
-                                  : todayAttendance.isCheckedIn && idx === sessions.length - 1
-                                    ? toSingaporeTime(currentTime) as Date
-                                    : singaporeCheckIn;
+                              const diffHrs = differenceInHours(endTime, checkInZoned);
+                              const diffMins = differenceInMinutes(endTime, checkInZoned) % 60;
 
-                                // Calculate hours and minutes using date-fns
-                                const diffHrs = differenceInHours(endTime, singaporeCheckIn);
-                                const diffMins = differenceInMinutes(endTime, singaporeCheckIn) % 60;
-
-                                return `${diffHrs}h ${diffMins}m`;
-                              })()}
+                              return `${diffHrs}h ${diffMins}m`;
+                            })()}
                             </td>
                             <td>
                               <span className={`badge ${!session.checkOut && idx === sessions.length - 1 && todayAttendance.isCheckedIn ? 'badge-success animate-pulse' : 'badge-info'}`}>
@@ -3143,35 +4307,42 @@ const getHolidaysForDate = (d: Date) => {
                           // Calculate working hours if both check-in and check-out exist
                           let workingHours = '';
                           if (record.checkIn && record.checkOut) {
-                            const singaporeCheckIn = toSingaporeTime(record.checkIn) as Date;
-                            const singaporeCheckOut = toSingaporeTime(record.checkOut) as Date;
+                           const employeeTimezone = employee?.time_zone || timeZone;
+                          const checkInZoned = toZonedTime(record.checkIn, employeeTimezone);
+                          const checkOutZoned = toZonedTime(record.checkOut, employeeTimezone);
 
                             // Calculate hours and minutes using date-fns
-                            const diffHrs = differenceInHours(singaporeCheckOut, singaporeCheckIn);
-                            const diffMins = differenceInMinutes(singaporeCheckOut, singaporeCheckIn) % 60;
+                            const diffHrs = differenceInHours(checkOutZoned, checkInZoned);
+                            const diffMins = differenceInMinutes(checkOutZoned, checkInZoned) % 60;
 
                             workingHours = `${diffHrs}h ${diffMins}m`;
                           }
 
-                          const singaporeRecordDate = toSingaporeTime(record.date) as Date;
+                          //const singaporeRecordDate = toSingaporeTime(record.date) as Date;
+
+                          const employeeTimezone = employee?.time_zone || timeZone;
+                          const recordDateZoned = toZonedTime(record.date, employeeTimezone);
+
 
                           return (
                             <tr key={index} className={`${theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-700'} ${index !== currentAttendanceRecords.length - 1 ? `${theme === 'light' ? 'border-b border-slate-200' : 'border-b border-slate-600'}` : ''}`}>
                               <td>
-                                <div className={`font-medium ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{format(singaporeRecordDate, 'dd/MM/yyyy')}</div>
+                                <div className={`font-medium ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{formatInTimeZone(recordDateZoned, employeeTimezone, 'dd/MM/yyyy')}</div>
                                 <div className={`text-xs opacity-70 ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>
-                                  {format(singaporeRecordDate, 'EEEE')}
+                                  {formatInTimeZone(recordDateZoned, employeeTimezone, 'EEEE')}{/* {format(singaporeRecordDate, 'EEEE')} */}
                                 </div>
                               </td>
                               <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
-                                {record.checkIn
+                                {/* {record.checkIn
                                   ? format(toSingaporeTime(record.checkIn) as Date, 'hh:mm a')
-                                  : '--'}
+                                  : '--'} */}
+                                  {record.checkIn ? displayTime(record.checkIn) : '--'}
                               </td>
                               <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
-                                {record.checkOut
+                                {/* {record.checkOut
                                   ? format(toSingaporeTime(record.checkOut) as Date, 'hh:mm a')
-                                  : '--'}
+                                  : '--'} */}
+                                  {record.checkOut ? displayTime(record.checkOut) : '--'}
                               </td>
                               <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{workingHours || '--'}</td>
                               <td>
@@ -3202,24 +4373,6 @@ const getHolidaysForDate = (d: Date) => {
                                   );
                                 })()}
                               </td>
-                              {/* <td>
-                                {hasAppealForRecord(record) ? (
-                                  <button
-                                    className="btn btn-xs btn-outline btn-primary"
-                                    onClick={() => openEmployeeAppealViewModal(hasAppealForRecord(record) as AppealData)}
-                                    title="View appeal details"
-                                  >
-                                    View
-                                  </button>
-                                ) : (
-                                  <button
-                                    className="btn btn-xs btn-outline btn-primary"
-                                    onClick={() => openAppealRequestModal(record)}
-                                  >
-                                    Appeal
-                                  </button>
-                                )}
-                              </td> */}
                             </tr>
                           );
                         })}
@@ -3905,70 +5058,38 @@ const getHolidaysForDate = (d: Date) => {
                   onChange={(e) => setFilters({ ...filters, toDate: e.target.value })}
                 />
               </div>
-
-              {/* <div className="form-control flex items-end">
-                <div className="grid grid-cols-2 gap-2">
+              <div className="form-control">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <button
-                    className={`btn ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0`}
+                    type="button"
+                    className={`btn w-full ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0`}
                     onClick={() => applyAttendanceFilters(filters)}
                   >
                     Apply Filter
                   </button>
+
                   <button
-                    className={`btn btn-outline ${theme === 'light' ? 'border-slate-600 text-slate-600 hover:bg-slate-600' : 'border-slate-400 text-slate-400 hover:bg-slate-400'} hover:text-white`}
+                    type="button"
+                    className={`btn w-full btn-outline ${
+                      theme === 'light'
+                        ? 'border-slate-600 text-slate-600 hover:bg-slate-600'
+                        : 'border-slate-400 text-slate-400 hover:bg-slate-400'
+                    } hover:text-white`}
                     onClick={resetAttendanceFilters}
                   >
                     Reset
                   </button>
 
-                  <button
-  className={`btn ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0`}
-  onClick={() => downloadAttendanceReport(amendAttendanceData)}
->
-  Export Excel
-</button>
+              <button
+                type="button"
+                className={`btn w-full ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0 ${isExporting ? 'loading' : ''}`}
+                onClick={handleExportWithLeaves}
+                disabled={isExporting}
+              >
+                {isExporting ? 'Exporting...' : 'Export Excel with Leaves'}
+              </button>
                 </div>
-              </div> */}
-              <div className="form-control">
-  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-    <button
-      type="button"
-      className={`btn w-full ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0`}
-      onClick={() => applyAttendanceFilters(filters)}
-    >
-      Apply Filter
-    </button>
-
-    <button
-      type="button"
-      className={`btn w-full btn-outline ${
-        theme === 'light'
-          ? 'border-slate-600 text-slate-600 hover:bg-slate-600'
-          : 'border-slate-400 text-slate-400 hover:bg-slate-400'
-      } hover:text-white`}
-      onClick={resetAttendanceFilters}
-    >
-      Reset
-    </button>
-
-    {/* <button
-      type="button"
-      className={`btn w-full ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0`}
-      onClick={() => downloadAttendanceReport(amendAttendanceData)}
-    >
-      Export Excel
-    </button> */}
-
-<button
-  type="button"
-  className={`btn w-full ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0 ${isExporting ? 'loading' : ''}`}
-  onClick={handleExportWithLeaves}
-  disabled={isExporting}
->
-  {isExporting ? 'Exporting...' : 'Export Excel with Leaves'}
-</button>
-  </div>
-</div>
+              </div>
 
             </div>
           </div>
@@ -4006,15 +5127,25 @@ const getHolidaysForDate = (d: Date) => {
                     {/*Department */}
                     <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{item.department_name}</td>
                     {/*Date */}
-                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{item.date ? new Date(item.date).toLocaleDateString() : ''}</td>
+                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+                      {displayDateOnly(item.date)}{/* {item.date ? new Date(item.date).toLocaleDateString() : ''} */}
+                    </td>
                     {/*Check In */}
-                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{item.checkIn && item.checkIn !== '--' ?
+                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+                      {/* {item.checkIn && item.checkIn !== '--' ?
                       new Date(item.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) :
-                      item.checkIn}</td>
+                      item.checkIn} */}
+                        {item.checkIn && item.checkIn !== '--' ? displayTimeTZ(item.checkIn, item.employee_timezone) : item.checkIn}
+                      {/* {item.checkIn && item.checkIn !== '--' ? displayTime(item.checkIn) : item.checkIn} */}
+                    </td>
                     {/*Check Out */}
-                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{item.checkOut && item.checkOut !== '--' ?
+                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+                      {/* {item.checkOut && item.checkOut !== '--' ?
                       new Date(item.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) :
-                      item.checkOut}</td>
+                      item.checkOut} */}
+                        {item.checkOut && item.checkOut !== '--' ? displayTimeTZ(item.checkOut, item.employee_timezone) : item.checkOut}
+                      {/* {item.checkOut && item.checkOut !== '--' ? displayTime(item.checkOut) : item.checkOut} */}
+                    </td>
                     {/*Status */}
                     <td>
                       <span className={`badge ${item.status === 'present' ? 'badge-success' :
@@ -4296,7 +5427,9 @@ const getHolidaysForDate = (d: Date) => {
                     {/*Department */}
                     <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{item.department_name}</td>
                     {/*Date */}
-                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{item.date ? new Date(item.date).toLocaleDateString() : ''}</td>
+                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+                      {displayDateOnly(item.date)}{/* {item.date ? new Date(item.date).toLocaleDateString() : ''} */}
+                    </td>
                     {/*Status */}
                     <td>
                       <span className={`badge ${item.status === 'present' ? 'badge-success' :
@@ -4311,7 +5444,9 @@ const getHolidaysForDate = (d: Date) => {
                     {/*Amended By */}
                     <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{item.amend_by}</td>
                     {/*Amended Date */}
-                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{item.amend_date ? format(toSingaporeTime(new Date(item.amend_date)), 'MM/dd/yyyy HH:mm') : ''}</td>
+                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+                      {item.amend_date ? displayDateTime(item.amend_date) : ''}
+                    </td>
                     {/*Actions */}
                     <td>
                       {(item.status.toLowerCase() === 'offday' ||
@@ -4805,6 +5940,443 @@ const getHolidaysForDate = (d: Date) => {
         </div>
       )}
 
+{activeTab === 'overtime' && (
+  <div className={`p-6 rounded-lg shadow-md ${theme === 'light' ? 'bg-white' : 'bg-slate-800'}`}>
+    {/* Header with View Toggles */}
+    <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6">
+      <h2 className={`text-2xl font-bold ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+        Overtime Management
+      </h2>
+      
+      {/* View Toggle Buttons */}
+      <div className="flex flex-wrap gap-2 mt-4 lg:mt-0">
+        <div className="tabs tabs-boxed bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
+          <button
+            className={`tab ${overtimeView === 'myRecords' ? 'tab-active bg-white dark:bg-slate-600 shadow-sm' : ''}`}
+            onClick={() => setOvertimeView('myRecords')}
+          >
+            My Overtime Records
+          </button>
+          
+          {/* Show approval tabs only for approvers */}
+          {(role === 'admin' || role === 'manager' || role === 'supervisor') && (
+            <>
+              <button
+                className={`tab ${overtimeView === 'pendingApprovals' ? 'tab-active bg-white dark:bg-slate-600 shadow-sm' : ''}`}
+                onClick={() => setOvertimeView('pendingApprovals')}
+              >
+                Pending Approvals
+                {pendingApprovals.length > 0 && (
+                  <span className="badge badge-primary badge-sm ml-2">
+                    {pendingApprovals.length}
+                  </span>
+                )}
+              </button>
+              
+              <button
+                className={`tab ${overtimeView === 'approvalHistory' ? 'tab-active bg-white dark:bg-slate-600 shadow-sm' : ''}`}
+                onClick={() => setOvertimeView('approvalHistory')}
+              >
+                Approval History
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+
+    {/* Approval History Filters */}
+    {overtimeView === 'approvalHistory' && (
+      <div className="mb-6 p-4 rounded-lg bg-slate-50 dark:bg-slate-700">
+        <div className="flex flex-wrap items-center gap-4">
+          <span className={`font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+            Filter by action:
+          </span>
+          <div className="join">
+            <button
+              className={`join-item btn btn-sm ${approvalHistoryType === 'all' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setApprovalHistoryType('all')}
+            >
+              All Actions
+            </button>
+            <button
+              className={`join-item btn btn-sm ${approvalHistoryType === 'approved' ? 'btn-success' : 'btn-ghost'}`}
+              onClick={() => setApprovalHistoryType('approved')}
+            >
+              Approved
+            </button>
+            <button
+              className={`join-item btn btn-sm ${approvalHistoryType === 'rejected' ? 'btn-error' : 'btn-ghost'}`}
+              onClick={() => setApprovalHistoryType('rejected')}
+            >
+              Rejected
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Loading State */}
+    {isLoadingOvertime && (
+      <div className="flex justify-center items-center py-10">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700"></div>
+      </div>
+    )}
+
+    {/* Overtime Content Based on View */}
+    {!isLoadingOvertime && (
+      <div className="space-y-6">
+        {/* My Overtime Records View */}
+        {overtimeView === 'myRecords' && (
+          <div>
+            {overtimeRequests.length === 0 ? (
+              <div className={`text-center py-8 ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+                <CiFaceFrown className="mx-auto h-12 w-12 mb-4" />
+                <p>No overtime records found.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-lg shadow">
+                <table className="table w-full">
+                  <thead>
+                    <tr className={theme === 'light' ? 'bg-slate-100' : 'bg-slate-700'}>
+                      <th>Date</th>
+                      <th>Total Hours</th>
+                      <th>OT Hours</th>
+                      <th>Type</th>
+                      <th>Status</th>
+                      <th>Amount</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {overtimeRequests.map((record) => {
+                      const statusDisplay = getOvertimeStatusDisplay(record.status);
+                      const typeDisplay = getOvertimeTypeDisplay(record.ot_type);
+                      
+                      return (
+                        <tr 
+                          key={record.ot_request_id}
+                          className={`${theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-700'} ${
+                            record._justUpdated ? (theme === 'light' ? 'bg-green-100' : 'bg-green-900') + ' animate-pulse' : ''
+                          }`}
+                        >
+                          <td>{displayDateOnly(record.ot_date)}</td>
+                          <td>{(record.total_worked_minutes / 60).toFixed(1)}h</td>
+                          <td>{(record.ot_minutes / 60).toFixed(1)}h</td>
+                          <td>
+                            <span className={`badge ${typeDisplay.class}`}>
+                              {typeDisplay.label}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`badge ${statusDisplay.class}`}>
+                              {statusDisplay.label}
+                            </span>
+                          </td>
+                          <td>${record.calculated_amount || '0.00'}</td>
+                          <td>
+                            <div className="flex gap-2">
+                              <button
+                                className="btn btn-xs btn-info"
+                                onClick={() => fetchOvertimeDetails(record.ot_request_id)}
+                              >
+                                Details
+                              </button>
+                              {canApplyForOvertime(record) && (
+                                <button
+                                  className="btn btn-xs btn-success"
+                                  onClick={() => {
+                                    setSelectedOvertimeForApply(record);
+                                    setIsOvertimeApplyModalOpen(true);
+                                  }}
+                                >
+                                  Apply
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Pending Approvals View */}
+        {overtimeView === 'pendingApprovals' && (
+          <div>
+            {pendingApprovals.length === 0 ? (
+              <div className={`text-center py-8 ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+                <CiFaceFrown className="mx-auto h-12 w-12 mb-4" />
+                <p>No pending approvals found.</p>
+                <p className="text-sm mt-2">You're all caught up!</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className={`p-4 rounded-lg ${theme === 'light' ? 'bg-blue-50 border border-blue-200' : 'bg-blue-900 border border-blue-700'}`}>
+                  <div className="flex items-center">
+                    <svg className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <span className={`font-medium ${theme === 'light' ? 'text-blue-800' : 'text-blue-200'}`}>
+                      You have {pendingApprovals.length} overtime request(s) waiting for your approval
+                    </span>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-lg shadow">
+                  <table className="table w-full">
+                    <thead>
+                      <tr className={theme === 'light' ? 'bg-slate-100' : 'bg-slate-700'}>
+                        <th>Employee</th>
+                        <th>Department</th>
+                        <th>Date</th>
+                        <th>OT Hours</th>
+                        <th>Type</th>
+                        <th>Current Level</th>
+                        <th>Amount</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingApprovals.map((record) => {
+                        const typeDisplay = getOvertimeTypeDisplay(record.ot_type);
+                        
+                        return (
+                          <tr 
+                            key={record.ot_request_id}
+                            className={theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-700'}
+                          >
+                            <td>
+                              <div>
+                                <div className="font-bold">{record.employee_name || 'Unknown'}</div>
+                                <div className="text-sm opacity-70">{record.employee_no || record.employee_id}</div>
+                              </div>
+                            </td>
+                            <td>{record.department_name || 'N/A'}</td>
+                            <td>{displayDateOnly(record.ot_date)}</td>
+                            <td>{(record.ot_minutes / 60).toFixed(1)}h</td>
+                            <td>
+                              <span className={`badge ${typeDisplay.class}`}>
+                                {typeDisplay.label}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="badge badge-info">
+                                {record.current_approval_level || record.current_approver || 'Pending'}
+                              </span>
+                            </td>
+                            <td>${record.calculated_amount || '0.00'}</td>
+                            <td>
+                              <div className="flex gap-2">
+                                <button
+                                  className="btn btn-xs btn-success"
+                                  onClick={() => {
+                                    setSelectedOvertimeForApproval(record);
+                                    setApprovalComment('');
+                                    // You can open an approval modal here or use existing confirmation modal
+                                    setConfirmAction('approve');
+                                    setShowConfirmModal(true);
+                                  }}
+                                  disabled={isProcessingApproval}
+                                >
+                                  {isProcessingApproval ? (
+                                    <span className="loading loading-spinner loading-xs"></span>
+                                  ) : (
+                                    'Approve'
+                                  )}
+                                </button>
+                                <button
+                                  className="btn btn-xs btn-error"
+                                  onClick={() => {
+                                    setSelectedOvertimeForApproval(record);
+                                    setApprovalComment('');
+                                    // You can open a rejection modal here or use existing confirmation modal
+                                    setConfirmAction('reject');
+                                    setShowConfirmModal(true);
+                                  }}
+                                  disabled={isProcessingApproval}
+                                >
+                                  {isProcessingApproval ? (
+                                    <span className="loading loading-spinner loading-xs"></span>
+                                  ) : (
+                                    'Reject'
+                                  )}
+                                </button>
+                                <button
+                                  className="btn btn-xs btn-info"
+                                  onClick={() => fetchOvertimeDetails(record.ot_request_id)}
+                                >
+                                  Details
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Approval History View */}
+        {overtimeView === 'approvalHistory' && (
+          <div>
+            {approvalHistory.length === 0 ? (
+              <div className={`text-center py-8 ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+                <CiFaceFrown className="mx-auto h-12 w-12 mb-4" />
+                <p>No approval history found.</p>
+                <p className="text-sm mt-2">
+                  {approvalHistoryType !== 'all' 
+                    ? `No ${approvalHistoryType} records found.` 
+                    : 'You have not processed any overtime requests yet.'
+                  }
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className={`p-4 rounded-lg ${theme === 'light' ? 'bg-green-50 border border-green-200' : 'bg-green-900 border border-green-700'}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <svg className="w-5 h-5 mr-2 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                      <span className={`font-medium ${theme === 'light' ? 'text-green-800' : 'text-green-200'}`}>
+                        Showing {approvalHistory.length} historical approval(s)
+                      </span>
+                    </div>
+                    <div className="text-sm opacity-70">
+                      Filter: <span className="font-medium capitalize">{approvalHistoryType}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-lg shadow">
+                  <table className="table w-full">
+                    <thead>
+                      <tr className={theme === 'light' ? 'bg-slate-100' : 'bg-slate-700'}>
+                        <th>Employee</th>
+                        <th>Date</th>
+                        <th>OT Hours</th>
+                        <th>Type</th>
+                        <th>Your Action</th>
+                        <th>Final Status</th>
+                        <th>Amount</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {approvalHistory.map((record) => {
+                        const typeDisplay = getOvertimeTypeDisplay(record.ot_type);
+                        const finalStatusDisplay = getOvertimeStatusDisplay(record.status);
+                        const userAction = record.user_contribution || record.user_action || 'Unknown';
+                        
+                        return (
+                          <tr 
+                            key={record.ot_request_id}
+                            className={theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-700'}
+                          >
+                            <td>
+                              <div>
+                                <div className="font-bold">{record.employee_name || 'Unknown'}</div>
+                                <div className="text-sm opacity-70">{record.employee_no || record.employee_id}</div>
+                              </div>
+                            </td>
+                            <td>{displayDateOnly(record.ot_date)}</td>
+                            <td>{(record.ot_minutes / 60).toFixed(1)}h</td>
+                            <td>
+                              <span className={`badge ${typeDisplay.class}`}>
+                                {typeDisplay.label}
+                              </span>
+                            </td>
+                            <td>
+                              <span className={`badge ${
+                                userAction?.includes('Approved') ? 'badge-success' : 
+                                userAction?.includes('Rejected') ? 'badge-error' : 
+                                'badge-info'
+                              }`}>
+                                {userAction}
+                              </span>
+                            </td>
+                            <td>
+                              <span className={`badge ${finalStatusDisplay.class}`}>
+                                {finalStatusDisplay.label}
+                              </span>
+                            </td>
+                            <td>${record.calculated_amount || '0.00'}</td>
+                            <td>
+                              <button
+                                className="btn btn-xs btn-info"
+                                onClick={() => fetchOvertimeDetails(record.ot_request_id)}
+                              >
+                                Details
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )}
+
+    {/* Pagination */}
+    {overtimePagination.totalPages > 1 && (
+      <div className="flex justify-center mt-6">
+        <div className="join">
+          <button
+            className={`join-item btn btn-sm ${overtimePagination.page === 1 ? 'btn-disabled' : ''}`}
+            onClick={() => fetchOvertimeData(overtimePagination.page - 1)}
+            disabled={overtimePagination.page === 1}
+          >
+            «
+          </button>
+          
+          {Array.from({ length: overtimePagination.totalPages }, (_, i) => i + 1)
+            .filter(page => 
+              page === 1 || 
+              page === overtimePagination.totalPages || 
+              Math.abs(page - overtimePagination.page) <= 1
+            )
+            .map((page, index, array) => (
+              <React.Fragment key={page}>
+                {index > 0 && array[index - 1] !== page - 1 && (
+                  <button className="join-item btn btn-sm btn-disabled">...</button>
+                )}
+                <button
+                  className={`join-item btn btn-sm ${overtimePagination.page === page ? 'btn-primary' : ''}`}
+                  onClick={() => fetchOvertimeData(page)}
+                >
+                  {page}
+                </button>
+              </React.Fragment>
+            ))
+          }
+          
+          <button
+            className={`join-item btn btn-sm ${overtimePagination.page === overtimePagination.totalPages ? 'btn-disabled' : ''}`}
+            onClick={() => fetchOvertimeData(overtimePagination.page + 1)}
+            disabled={overtimePagination.page === overtimePagination.totalPages}
+          >
+            »
+          </button>
+        </div>
+      </div>
+    )}
+  </div>
+)}
+
       {/* Amendment Modal */}
       {isAmendModalOpen && (
         <dialog open className="modal modal-bottom sm:modal-middle">
@@ -5030,19 +6602,19 @@ const getHolidaysForDate = (d: Date) => {
                             <tr>
                               <th className="font-medium text-sm">Original Record</th>
                               <td className={selectedAppeal.original_check_in ? '' : 'text-error'}>
-                                {selectedAppeal.original_check_in ? format(toSingaporeTime(new Date(selectedAppeal.original_check_in)), 'HH:mm a') : 'No check-in recorded'}
+                                  {selectedAppeal.original_check_in ? displayTime(selectedAppeal.original_check_in) : 'No check-in recorded'}{/* {selectedAppeal.original_check_in ? format(toSingaporeTime(new Date(selectedAppeal.original_check_in)), 'HH:mm a') : 'No check-in recorded'} */}
                               </td>
                               <td className={selectedAppeal.original_check_out ? '' : 'text-error'}>
-                                {selectedAppeal.original_check_out ? format(toSingaporeTime(new Date(selectedAppeal.original_check_out)), 'HH:mm a') : 'No check-out recorded'}
+                                   {selectedAppeal.original_check_out ? displayTime(selectedAppeal.original_check_out) : 'No check-out recorded'}{/* {selectedAppeal.original_check_out ? format(toSingaporeTime(new Date(selectedAppeal.original_check_out)), 'HH:mm a') : 'No check-out recorded'} */}
                               </td>
                             </tr>
                             <tr>
                               <th className="font-medium text-sm bg-base-200">Requested Change</th>
                               <td className="font-medium text-success">
-                                {selectedAppeal.requested_check_in ? format(toSingaporeTime(new Date(selectedAppeal.requested_check_in)), 'HH:mm a') : 'Not specified'}
+                                {selectedAppeal.requested_check_in ? displayRawTime(selectedAppeal.requested_check_in) : 'Not specified'} {/* {selectedAppeal.requested_check_in ? format(toSingaporeTime(new Date(selectedAppeal.requested_check_in)), 'HH:mm a') : 'Not specified'} */}
                               </td>
                               <td className="font-medium text-success">
-                                {selectedAppeal.requested_check_out ? format(toSingaporeTime(new Date(selectedAppeal.requested_check_out)), 'HH:mm a') : 'Not specified'}
+                                 {selectedAppeal.requested_check_out ? displayRawTime(selectedAppeal.requested_check_out) : 'Not specified'}{/* {selectedAppeal.requested_check_out ? format(toSingaporeTime(new Date(selectedAppeal.requested_check_out)), 'HH:mm a') : 'Not specified'} */}
                               </td>
                             </tr>
                           </tbody>
@@ -5394,7 +6966,7 @@ const getHolidaysForDate = (d: Date) => {
                         <label className={`text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Check-in</label>
                         <div className={`border rounded px-2 py-1 text-sm ${theme === 'light' ? 'bg-white border-gray-200 text-gray-900' : 'bg-slate-600 border-slate-500 text-slate-100'}`}>
                           {appealRequestData.originalCheckIn
-                            ? format(parseISO(appealRequestData.date + 'T' + appealRequestData.originalCheckIn), 'hh:mm a')
+                            ? displayTime(appealRequestData.originalCheckIn)
                             : '--:--'}
                         </div>
                       </div>
@@ -5402,7 +6974,7 @@ const getHolidaysForDate = (d: Date) => {
                         <label className={`text-xs ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Check-out</label>
                         <div className={`border rounded px-2 py-1 text-sm ${theme === 'light' ? 'bg-white border-gray-200 text-gray-900' : 'bg-slate-600 border-slate-500 text-slate-100'}`}>
                           {appealRequestData.originalCheckOut
-                            ? format(parseISO(appealRequestData.date + 'T' + appealRequestData.originalCheckOut), 'hh:mm a')
+                            ? displayTime(appealRequestData.originalCheckOut)
                             : '--:--'}
                         </div>
                       </div>
@@ -5505,6 +7077,66 @@ const getHolidaysForDate = (d: Date) => {
         </dialog>
       )}
 
+
+
+      {/* Add this modal to your JSX */}
+      {isOvertimeApplyModalOpen && selectedOvertimeForApply && (
+        <dialog open className="modal modal-bottom sm:modal-middle">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg mb-4">Apply for Overtime</h3>
+            
+            <div className="mb-4">
+              <p>Are you sure you want to apply for overtime on <strong>{displayDateOnly(selectedOvertimeForApply.ot_date)}</strong>?</p>
+              
+              <div className="mt-3 p-3 bg-base-200 rounded-lg">
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>Total Worked:</div>
+                  <div className="font-medium">
+                    {calculateDisplayTimes(selectedOvertimeForApply.total_worked_minutes).hours}h 
+                    {calculateDisplayTimes(selectedOvertimeForApply.total_worked_minutes).minutes}m
+                  </div>
+                  
+                  <div>Overtime Hours:</div>
+                  <div className="font-medium">
+                    {calculateDisplayTimes(selectedOvertimeForApply.ot_minutes).hours}h 
+                    {calculateDisplayTimes(selectedOvertimeForApply.ot_minutes).minutes}m
+                  </div>
+                  
+                  <div>Calculated Amount:</div>
+                  <div className="font-medium text-green-600">
+                    RM {selectedOvertimeForApply.calculated_amount}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-action">
+              <button
+                className="btn btn-ghost"
+                onClick={() => setIsOvertimeApplyModalOpen(false)}
+                disabled={isApplyingOvertime}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => applyForOvertime(selectedOvertimeForApply)}
+                disabled={isApplyingOvertime}
+              >
+                {isApplyingOvertime ? (
+                  <>
+                    <span className="loading loading-spinner loading-sm"></span>
+                    Applying...
+                  </>
+                ) : (
+                  'Confirm Apply'
+                )}
+              </button>
+            </div>
+          </div>
+        </dialog>
+      )}
+          
       {/* Employee Appeal View Modal with transparent background */}
       {isEmployeeAppealViewModalOpen && selectedEmployeeAppeal && (
         <dialog open className="modal">
@@ -5532,7 +7164,7 @@ const getHolidaysForDate = (d: Date) => {
                   <div className={`stat-title ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`}>Attendance Date</div>
                   <div className={`stat-value text-base ${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`}>
                     {selectedEmployeeAppeal.attendance_date ?
-                      new Date(selectedEmployeeAppeal.attendance_date).toLocaleDateString() : ''}
+                      displayDateOnly(selectedEmployeeAppeal.attendance_date) : ''}
                   </div>
                 </div>
                 <div className="stat">
@@ -5555,7 +7187,7 @@ const getHolidaysForDate = (d: Date) => {
                       <p className={`text-xs ${theme === 'light' ? 'opacity-70' : 'text-slate-400'}`}>Original Check-in</p>
                       <p className={`${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`}>
                         {selectedEmployeeAppeal.original_check_in ?
-                          new Date(selectedEmployeeAppeal.original_check_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) :
+                          displayTime(selectedEmployeeAppeal.original_check_in) :
                           'Not recorded'}
                       </p>
                     </div>
@@ -5563,7 +7195,7 @@ const getHolidaysForDate = (d: Date) => {
                       <p className={`text-xs ${theme === 'light' ? 'opacity-70' : 'text-slate-400'}`}>Original Check-out</p>
                       <p className={`${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`}>
                         {selectedEmployeeAppeal.original_check_out ?
-                          new Date(selectedEmployeeAppeal.original_check_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) :
+                          displayTime(selectedEmployeeAppeal.original_check_out) :
                           'Not recorded'}
                       </p>
                     </div>
@@ -5571,7 +7203,7 @@ const getHolidaysForDate = (d: Date) => {
 
                   <div className={`divider ${theme === 'light' ? '' : 'divider-neutral'}`}></div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  {/* <div className="grid grid-cols-2 gap-3">
                     {isEditingAppeal ? (
                       <>
                         <div>
@@ -5601,7 +7233,7 @@ const getHolidaysForDate = (d: Date) => {
                           <p className={`text-xs ${theme === 'light' ? 'opacity-70' : 'text-slate-400'}`}>Requested Check-in</p>
                           <p className={`font-medium ${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`}>
                             {selectedEmployeeAppeal.requested_check_in ?
-                               format(new Date(selectedEmployeeAppeal.requested_check_in), 'hh:mm a') :
+                              displayTime(selectedEmployeeAppeal.requested_check_in) :
                               '--:--'}
                           </p>
                         </div>
@@ -5609,13 +7241,59 @@ const getHolidaysForDate = (d: Date) => {
                           <p className={`text-xs ${theme === 'light' ? 'opacity-70' : 'text-slate-400'}`}>Requested Check-out</p>
                           <p className={`font-medium ${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`}>
                             {selectedEmployeeAppeal.requested_check_out ?
-                              format(new Date(selectedEmployeeAppeal.requested_check_out), 'hh:mm a') :
+                              displayTime(selectedEmployeeAppeal.requested_check_out) :
                               '--:--'}
                           </p>
                         </div>
                       </>
                     )}
-                  </div>
+                  </div> */}
+
+      <div className="grid grid-cols-2 gap-3">
+        {isEditingAppeal ? (
+              <>
+                <div>
+                  <label className={`text-xs ${theme === 'light' ? 'opacity-70' : 'text-slate-400'}`}>Requested Check-in</label>
+                  <input
+                    type="time"
+                    name="requestedCheckIn"
+                    value={editedAppealData.requestedCheckIn}
+                    onChange={handleEditChange}
+                    className={`input input-bordered input-sm w-full mt-1 ${theme === 'light' ? 'bg-white border-gray-300 text-gray-900' : 'bg-slate-600 border-slate-500 text-slate-100'}`}
+                  />
+                </div>
+                <div>
+                  <label className={`text-xs ${theme === 'light' ? 'opacity-70' : 'text-slate-400'}`}>Requested Check-out</label>
+                  <input
+                    type="time"
+                    name="requestedCheckOut"
+                    value={editedAppealData.requestedCheckOut}
+                    onChange={handleEditChange}
+                    className={`input input-bordered input-sm w-full mt-1 ${theme === 'light' ? 'bg-white border-gray-300 text-gray-900' : 'bg-slate-600 border-slate-500 text-slate-100'}`}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <p className={`text-xs ${theme === 'light' ? 'opacity-70' : 'text-slate-400'}`}>Requested Check-in</p>
+                  <p className={`font-medium ${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`}>
+                    {selectedEmployeeAppeal.requested_check_in ?
+                      displayRawTime(selectedEmployeeAppeal.requested_check_in) : // Use raw time
+                      '--:--'}
+                  </p>
+                </div>
+                <div>
+                  <p className={`text-xs ${theme === 'light' ? 'opacity-70' : 'text-slate-400'}`}>Requested Check-out</p>
+                  <p className={`font-medium ${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`}>
+                    {selectedEmployeeAppeal.requested_check_out ?
+                      displayRawTime(selectedEmployeeAppeal.requested_check_out) : // Use raw time
+                      '--:--'}
+                  </p>
+                </div>
+              </>
+            )}
+      </div>
                 </div>
               </div>
 
@@ -5718,6 +7396,362 @@ const getHolidaysForDate = (d: Date) => {
           </div>
         </dialog>
       )}
+
+      {/* Overtime Approval Modal */}
+      {selectedOvertimeForApproval && (
+        <dialog open className="modal modal-bottom sm:modal-middle">
+          <div className="modal-box">
+            <h3 className="font-bold text-lg mb-4">Review Overtime Request</h3>
+            
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <label className="font-semibold">Employee:</label>
+                  <div>{selectedOvertimeForApproval.employee_name}</div>
+                </div>
+                <div>
+                  <label className="font-semibold">Date:</label>
+                  <div>{displayDateOnly(selectedOvertimeForApproval.ot_date)}</div>
+                </div>
+                <div>
+                  <label className="font-semibold">OT Hours:</label>
+                  <div>{calculateDisplayTimes(selectedOvertimeForApproval.ot_minutes).hours}h {calculateDisplayTimes(selectedOvertimeForApproval.ot_minutes).minutes}m</div>
+                </div>
+                <div>
+                  <label className="font-semibold">Amount:</label>
+                  <div className="font-semibold text-green-600">RM {selectedOvertimeForApproval.calculated_amount}</div>
+                </div>
+              </div>
+              
+              <div className="form-control">
+                <label className="label">
+                  <span className="label-text">Comment (Optional)</span>
+                </label>
+                <textarea 
+                  className="textarea textarea-bordered"
+                  placeholder="Add a comment for the employee..."
+                  value={approvalComment}
+                  onChange={(e) => setApprovalComment(e.target.value)}
+                  rows={3}
+                />
+              </div>
+              
+              <div className="modal-action">
+                <button 
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setSelectedOvertimeForApproval(null);
+                    setApprovalComment('');
+                  }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  className="btn btn-error"
+                  onClick={() => handleOvertimeApproval('reject')}
+                  disabled={isProcessingApproval}
+                >
+                  {isProcessingApproval ? 'Rejecting...' : 'Reject'}
+                </button>
+                <button 
+                  className="btn btn-success"
+                  onClick={() => handleOvertimeApproval('approve')}
+                  disabled={isProcessingApproval}
+                >
+                  {isProcessingApproval ? 'Approving...' : 'Approve'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </dialog>
+      )}
+
+{/* Overtime Details Modal */}
+{selectedOvertimeDetails && (
+  <dialog open className="modal modal-bottom sm:modal-middle">
+    <div className={`modal-box relative max-w-4xl ${theme === 'light' ? 'bg-white' : 'bg-slate-800'}`}>
+      <form method="dialog">
+        <button 
+          onClick={() => {
+            setSelectedOvertimeDetails(null);
+            setOvertimeBreakdown(null);
+          }}
+          className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+        >
+          ✕
+        </button>
+      </form>
+      
+      <h3 className="font-bold text-lg mb-2">Overtime Details</h3>
+      <div className={`text-sm mb-6 ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`}>
+        Date: {displayDateOnly(selectedOvertimeDetails.ot_date)}
+        {selectedOvertimeDetails.employee_name && (
+          <> • Employee: {selectedOvertimeDetails.employee_name}</>
+        )}
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className={`stat ${theme === 'light' ? 'bg-base-200' : 'bg-slate-700'} rounded-lg`}>
+          <div className="stat-title">Total Worked</div>
+          <div className="stat-value text-lg">
+            {calculateDisplayTimes(selectedOvertimeDetails.total_worked_minutes).hours}h
+          </div>
+          <div className="stat-desc">
+            {calculateDisplayTimes(selectedOvertimeDetails.total_worked_minutes).minutes}m
+          </div>
+        </div>
+        
+        <div className={`stat ${theme === 'light' ? 'bg-base-200' : 'bg-slate-700'} rounded-lg`}>
+          <div className="stat-title">Regular Hours</div>
+          <div className="stat-value text-lg">
+            {calculateDisplayTimes(selectedOvertimeDetails.regular_minutes).hours}h
+          </div>
+          <div className="stat-desc">
+            {calculateDisplayTimes(selectedOvertimeDetails.regular_minutes).minutes}m
+          </div>
+        </div>
+        
+        <div className={`stat ${theme === 'light' ? 'bg-base-200' : 'bg-slate-700'} rounded-lg`}>
+          <div className="stat-title">OT Hours</div>
+          <div className="stat-value text-lg text-warning">
+            {calculateDisplayTimes(selectedOvertimeDetails.ot_minutes).hours}h
+          </div>
+          <div className="stat-desc">
+            {selectedOvertimeDetails.calculated_ot_hours} payable
+          </div>
+        </div>
+        
+        <div className={`stat ${theme === 'light' ? 'bg-base-200' : 'bg-slate-700'} rounded-lg`}>
+          <div className="stat-title">Amount</div>
+          <div className="stat-value text-lg text-success">
+            RM {selectedOvertimeDetails.calculated_amount || '0.00'}
+          </div>
+          <div className="stat-desc capitalize">{selectedOvertimeDetails.ot_type}</div>
+        </div>
+      </div>
+
+      {/* Breakdown Section */}
+      {overtimeBreakdown && overtimeBreakdown.length > 0 && (
+        <div className="mb-6">
+          <h4 className="font-semibold mb-3">Overtime Breakdown</h4>
+          <div className={`overflow-x-auto ${theme === 'light' ? 'bg-base-100' : 'bg-slate-700'} rounded-lg`}>
+            <table className="table table-zebra w-full">
+              <thead>
+                <tr>
+                  <th>Time Period</th>
+                  <th>Rate Type</th>
+                  <th>Rate Multiplier</th>
+                  <th>Minutes</th>
+                  <th>Hours</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {overtimeBreakdown.map((item: OvertimeBreakdownItem) => (
+                  <tr key={item.breakdown_id}>
+                    <td>{item.time_period}</td>
+                    <td>
+                      <span className={`badge badge-sm ${
+                        item.rate_type === 'weekday' ? 'badge-info' :
+                        item.rate_type === 'weekend' ? 'badge-warning' :
+                        'badge-error'
+                      }`}>
+                        {item.rate_type}
+                      </span>
+                    </td>
+                    <td>{item.rate_multiplier}x</td>
+                    <td>{item.minutes}m</td>
+                    <td>{item.hours}h</td>
+                    <td className="font-medium">RM {item.amount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+{/* Approval Timeline */}
+<div className="mb-6">
+  <h4 className="font-semibold mb-3">Approval Status</h4>
+  <div className="flex flex-col space-y-3">
+    {/* First Approval */}
+    {selectedOvertimeDetails.first_approver_name ? (
+      <div className={`flex items-center p-3 rounded-lg ${theme === 'light' ? 'bg-green-50' : 'bg-green-900/20'}`}>
+        <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white mr-3">
+          ✓
+        </div>
+        <div>
+          <div className="font-medium">First Approval</div>
+          <div className="text-sm opacity-70">
+            {selectedOvertimeDetails.first_approver_name} • 
+            {selectedOvertimeDetails.first_approval_date ? 
+              ` ${displayDateTime(selectedOvertimeDetails.first_approval_date)}` : 
+              ' Pending'
+            }
+          </div>
+          {selectedOvertimeDetails.first_approval_comment && (
+            <div className="text-sm mt-1">{selectedOvertimeDetails.first_approval_comment}</div>
+          )}
+        </div>
+      </div>
+    ) : (
+      <div className={`flex items-center p-3 rounded-lg ${
+        selectedOvertimeDetails.status === 'pending_supervisor' ? 
+        (theme === 'light' ? 'bg-yellow-50 border border-yellow-200' : 'bg-yellow-900/20 border border-yellow-700') :
+        (theme === 'light' ? 'bg-gray-100' : 'bg-slate-700')
+      }`}>
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white mr-3 ${
+          selectedOvertimeDetails.status === 'pending_supervisor' ? 'bg-yellow-500 animate-pulse' : 'bg-gray-400'
+        }`}>
+          {selectedOvertimeDetails.status === 'pending_supervisor' ? '!' : '1'}
+        </div>
+        <div>
+          <div className="font-medium">First Approval</div>
+          <div className="text-sm opacity-70">
+            {selectedOvertimeDetails.first_approver_name || 'Robert Jones'} • 
+            {selectedOvertimeDetails.status === 'pending_supervisor' ? ' Awaiting Approval' : ' Pending'}
+          </div>
+          {selectedOvertimeDetails.status === 'pending_supervisor' && (
+            <div className="text-xs mt-1 text-yellow-600 dark:text-yellow-400">
+              Currently waiting for supervisor approval
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+
+    {/* Second Approval */}
+    {selectedOvertimeDetails.second_approver_name && selectedOvertimeDetails.second_approval_date ? (
+      <div className={`flex items-center p-3 rounded-lg ${theme === 'light' ? 'bg-green-50' : 'bg-green-900/20'}`}>
+        <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white mr-3">
+          ✓
+        </div>
+        <div>
+          <div className="font-medium">Second Approval</div>
+          <div className="text-sm opacity-70">
+            {selectedOvertimeDetails.second_approver_name} • {displayDateTime(selectedOvertimeDetails.second_approval_date)}
+          </div>
+          {selectedOvertimeDetails.second_approval_comment && (
+            <div className="text-sm mt-1">{selectedOvertimeDetails.second_approval_comment}</div>
+          )}
+        </div>
+      </div>
+    ) : (
+      <div className={`flex items-center p-3 rounded-lg ${
+        ['pending_manager', 'pending_admin'].includes(selectedOvertimeDetails.status) ? 
+        (theme === 'light' ? 'bg-blue-50 border border-blue-200' : 'bg-blue-900/20 border border-blue-700') :
+        (theme === 'light' ? 'bg-gray-100' : 'bg-slate-700')
+      }`}>
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white mr-3 ${
+          ['pending_manager', 'pending_admin'].includes(selectedOvertimeDetails.status) ? 'bg-blue-500' : 'bg-gray-400'
+        }`}>
+          2
+        </div>
+        <div>
+          <div className="font-medium">Second Approval</div>
+          <div className="text-sm opacity-70">
+            {selectedOvertimeDetails.second_approver_name || 'Alpha Manager'} • 
+            {selectedOvertimeDetails.status === 'pending_manager' ? ' Next for Approval' : ' Pending'}
+          </div>
+          {selectedOvertimeDetails.status === 'pending_manager' && (
+            <div className="text-xs mt-1 text-blue-600 dark:text-blue-400">
+              Will be routed to manager after supervisor approval
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+
+    {/* Third Approval */}
+    {selectedOvertimeDetails.third_approver_name && selectedOvertimeDetails.third_approval_date ? (
+      <div className={`flex items-center p-3 rounded-lg ${theme === 'light' ? 'bg-green-50' : 'bg-green-900/20'}`}>
+        <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white mr-3">
+          ✓
+        </div>
+        <div>
+          <div className="font-medium">Third Approval</div>
+          <div className="text-sm opacity-70">
+            {selectedOvertimeDetails.third_approver_name} • {displayDateTime(selectedOvertimeDetails.third_approval_date)}
+          </div>
+          {selectedOvertimeDetails.third_approval_comment && (
+            <div className="text-sm mt-1">{selectedOvertimeDetails.third_approval_comment}</div>
+          )}
+        </div>
+      </div>
+    ) : (
+      <div className={`flex items-center p-3 rounded-lg ${
+        selectedOvertimeDetails.status === 'pending_admin' ? 
+        (theme === 'light' ? 'bg-purple-50 border border-purple-200' : 'bg-purple-900/20 border border-purple-700') :
+        (theme === 'light' ? 'bg-gray-100' : 'bg-slate-700')
+      }`}>
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white mr-3 ${
+          selectedOvertimeDetails.status === 'pending_admin' ? 'bg-purple-500' : 'bg-gray-400'
+        }`}>
+          3
+        </div>
+        <div>
+          <div className="font-medium">Third Approval</div>
+          <div className="text-sm opacity-70">
+            {selectedOvertimeDetails.third_approver_name || 'Admin User'} • 
+            {selectedOvertimeDetails.status === 'pending_admin' ? ' Final Approval' : ' Pending'}
+          </div>
+          {selectedOvertimeDetails.status === 'pending_admin' && (
+            <div className="text-xs mt-1 text-purple-600 dark:text-purple-400">
+              Final approval required from admin
+            </div>
+          )}
+        </div>
+      </div>
+    )}
+
+    {/* Current Status Summary */}
+    <div className={`mt-4 p-3 rounded-lg ${
+      selectedOvertimeDetails.status.includes('pending') ? 
+      (theme === 'light' ? 'bg-yellow-50 border border-yellow-200' : 'bg-yellow-900/20 border border-yellow-700') :
+      selectedOvertimeDetails.status === 'approved' ?
+      (theme === 'light' ? 'bg-green-50 border border-green-200' : 'bg-green-900/20 border border-green-700') :
+      (theme === 'light' ? 'bg-red-50 border border-red-200' : 'bg-red-900/20 border border-red-700')
+    }`}>
+      <div className="flex items-center">
+        <div className={`w-3 h-3 rounded-full mr-2 ${
+          selectedOvertimeDetails.status.includes('pending') ? 'bg-yellow-500' :
+          selectedOvertimeDetails.status === 'approved' ? 'bg-green-500' : 'bg-red-500'
+        }`}></div>
+        <div className="text-sm font-medium">
+          Current Status: 
+          <span className={`ml-1 ${
+            selectedOvertimeDetails.status.includes('pending') ? 'text-yellow-700 dark:text-yellow-300' :
+            selectedOvertimeDetails.status === 'approved' ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'
+          }`}>
+            {getOvertimeStatusDisplay(selectedOvertimeDetails.status).label}
+          </span>
+        </div>
+      </div>
+      {selectedOvertimeDetails.submitted_at && (
+        <div className="text-xs mt-1 opacity-70">
+          Submitted: {displayDateTime(selectedOvertimeDetails.submitted_at)}
+        </div>
+      )}
+    </div>
+  </div>
+</div>
+
+      <div className="modal-action">
+        <button
+          className="btn btn-ghost"
+          onClick={() => {
+            setSelectedOvertimeDetails(null);
+            setOvertimeBreakdown(null);
+          }}
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  </dialog>
+)}
 
       {/* Bulk Confirmation Modal */}
       <ConfirmationModal
