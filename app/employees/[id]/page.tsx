@@ -2229,47 +2229,94 @@ const handleDeleteDependent = (keyToDelete: number | string | undefined) => {
   }, []);
   
   // Fetch departments when company changes and in edit mode (for filtering)
-  useEffect(() => {
-    const fetchDepartments = async () => {
-      if (!formData?.company_id) return;
+  // useEffect(() => {
+  //   const fetchDepartments = async () => {
+  //     if (!formData?.company_id) return;
       
-      try {
-        setDepartments([]); // Clear departments while loading
-        const response = await fetch(`${API_BASE_URL}/api/admin/employees/companies/${formData.company_id}/departments`);
+  //     try {
+  //       setDepartments([]); // Clear departments while loading
+  //       const response = await fetch(`${API_BASE_URL}/api/admin/employees/companies/${formData.company_id}/departments`);
         
-        if (response.status === 404) {
-          setDepartments([]);
-          // Clear department selection if there are no departments
-          setFormData(prev => prev ? {...prev, department_id: '', position: '', position_id: '', superior: '', manager_id: '', job_level: ''} : null);
-          return;
-        }
+  //       if (response.status === 404) {
+  //         setDepartments([]);
+  //         // Clear department selection if there are no departments
+  //         setFormData(prev => prev ? {...prev, department_id: '', position: '', position_id: '', superior: '', manager_id: '', job_level: ''} : null);
+  //         return;
+  //       }
         
-        if (!response.ok) {
-          throw new Error(`Failed to fetch departments: ${response.statusText}`);
-        }
+  //       if (!response.ok) {
+  //         throw new Error(`Failed to fetch departments: ${response.statusText}`);
+  //       }
         
-        const data = await response.json();
+  //       const data = await response.json();
         
-        // In edit mode, we only want to show departments for the selected company
-        if (isEditing) {
-          setDepartments(data);
-        }
+  //       // In edit mode, we only want to show departments for the selected company
+  //       if (isEditing) {
+  //         setDepartments(data);
+  //       }
         
-        // Clear the department selection if the current department isn't in the new list
-        if (formData.department_id && !data.some((dept: any) => dept.id === formData.department_id)) {
-          setFormData(prev => prev ? {...prev, department_id: '', position: '', position_id: '', superior: '', manager_id: '', job_level: ''} : null);
-        }
-      } catch (error) {
-        console.error('Error fetching departments for company:', error);
-        setDepartments([]);
-      }
-    };
+  //       // Clear the department selection if the current department isn't in the new list
+  //       if (formData.department_id && !data.some((dept: any) => dept.id === formData.department_id)) {
+  //         setFormData(prev => prev ? {...prev, department_id: '', position: '', position_id: '', superior: '', manager_id: '', job_level: ''} : null);
+  //       }
+  //     } catch (error) {
+  //       console.error('Error fetching departments for company:', error);
+  //       setDepartments([]);
+  //     }
+  //   };
     
-    if (isEditing) {
-      fetchDepartments();
+  //   if (isEditing) {
+  //     fetchDepartments();
+  //   }
+  // }, [formData?.company_id, formData?.department_id, isEditing]);
+
+  // Replace this useEffect with a cleaner version
+useEffect(() => {
+  const fetchDepartments = async () => {
+    if (!formData?.company_id) return;
+    
+    try {
+      // Don't clear departments while loading - this was causing the issue
+      const response = await fetch(`${API_BASE_URL}/api/admin/employees/companies/${formData.company_id}/departments`);
+      
+      if (response.status === 404) {
+        // Only set empty if no departments found
+        setDepartments([]);
+        return;
+      }
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch departments: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      // In edit mode, we only want to show departments for the selected company
+      if (isEditing) {
+        setDepartments(data);
+      }
+      
+      // Only clear department selection if the current department isn't in the new list
+      // Don't clear other fields
+      if (formData.department_id && !data.some((dept: any) => dept.id === formData.department_id)) {
+        setFormData(prev => prev ? {
+          ...prev, 
+          department_id: '', 
+          position: '', 
+          position_id: '', 
+          job_level: '' 
+        } : null);
+      }
+    } catch (error) {
+      console.error('Error fetching departments for company:', error);
+      // Don't clear existing departments on error
     }
-  }, [formData?.company_id, formData?.department_id, isEditing]);
-//}, [formData?.company_id, isEditing]);
+  };
+  
+  if (isEditing) {
+    fetchDepartments();
+  }
+}, [formData?.company_id, isEditing]);
 
   useEffect(() => {
     const fetchManagers = async (companyId: string) => {
@@ -2527,7 +2574,7 @@ useEffect(() => {
   };
   
   // Handle input changes when editing
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const handleChange1 = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     if (!formData) return;
     
@@ -2613,6 +2660,90 @@ else if (name === 'office_id') {
     }
   };
   
+const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const { name, value } = e.target;
+  if (!formData) return;
+  
+  // Special handling for department selection - FIXED
+  if (name === 'department_id') {
+    setFormData({
+      ...formData,
+      department_id: value,
+      job_level: '', // Clear job level when department changes
+      position_id: '', // Clear position_id when department changes
+      position: '' // Clear position when department changes
+      // DON'T clear manager_id and superior - they should persist
+    });
+  }
+  // Special handling for position selection (now by title)
+  else if (name === 'position') {
+    setFormData({
+      ...formData,
+      position: value,
+      job_level: '', // Reset job level when position changes
+      position_id: '' // Reset position_id when position changes
+    });
+
+    // Find available job levels for this position title
+    const availableLevels = [...new Set(
+      positions
+        .filter(pos => pos.title === value)
+        .map(pos => pos.job_level)
+    )].filter(Boolean);
+    
+    setJobLevels(availableLevels as string[]);
+  }
+  // Special handling for job level selection
+  else if (name === 'job_level') {
+    const title = formData.position;
+    const level = value;
+
+    // Try groupedPositions first
+    let positionId = title && level
+      ? groupedPositions[title]?.[level] ?? ''
+      : '';
+
+    // Fallback: search the positions array
+    if (!positionId) {
+      const match = positions.find(p => p.title === title && p.job_level === level);
+      if (match) positionId = String(match.id);
+    }
+
+    setFormData({
+      ...formData,
+      job_level: level,
+      position_id: positionId // '' if not resolvable
+    });
+  }
+  else if (name === 'dob') {
+    setFormData({
+      ...formData,
+      dob: value,
+      age: String(calculateAge(value))
+    });
+  }
+  else if (name === 'benefit_group_id') {
+    setFormData({
+      ...formData,
+      [name]: value
+    });
+  }
+  else if (name === 'office_id') {
+    const selectedOffice = offices.find(o => o.id === value);
+    setFormData({
+      ...formData,
+      office_id: value,
+      office: selectedOffice ? selectedOffice.name : '' // Update both fields
+    });
+  }
+  else {
+    setFormData({
+      ...formData,
+      [name]: value
+    });
+  }
+};
+
   // Employee number validation function
   const validateEmployeeNumber = async (employeeNo: string) => {
     // If empty or same as original, reset validation state
@@ -5166,7 +5297,7 @@ const BondingErrorModal = () => {
                 </div>
 
                 {/* Superior/supervisor field */}
-                <div>
+                {/* <div>
                   <div className="mb-2">Supervisor</div>
                   {isEditing ? (
                     <select
@@ -5190,10 +5321,36 @@ const BondingErrorModal = () => {
                       {departmentEmployees.find(emp => emp.id == employee?.superior)?.name || employee?.superior}
                     </div>
                   )}
-                </div>
+                </div> */}
+                {/* Superior/supervisor field */}
+<div>
+  <div className="mb-2">Supervisor</div>
+  {isEditing ? (
+    <select
+      name="superior"
+      value={formData?.superior || ''}
+      onChange={handleChange}
+      className="select select-bordered w-full"
+      // Remove the disabled prop or fix the condition
+    >
+      <option value="" disabled>Select supervisor</option>
+      {departmentEmployees
+      .filter(emp => emp.id !== employee?.id)
+      .map(emp => (
+        <option key={emp.id} value={emp.id}>
+          {emp.name} ({emp.employee_no})
+        </option>
+      ))}
+    </select>
+  ) : (
+    <div className="p-3 bg-base-200 rounded min-h-[42px]">
+      {departmentEmployees.find(emp => emp.id == employee?.superior)?.name || employee?.superior}
+    </div>
+  )}
+</div>
                 
                 {/* Manager field */}
-                <div>
+                {/* <div>
                   <div className="mb-2">Manager</div>
                   {isEditing ? (
                     <select 
@@ -5225,7 +5382,37 @@ const BondingErrorModal = () => {
                         : 'No manager assigned'}
                     </div>
                   )}
-                </div>
+                </div> */}
+                {/* Manager field */}
+<div>
+  <div className="mb-2">Manager</div>
+  {isEditing ? (
+    <select 
+      name="manager_id" 
+      value={formData?.manager_id || ''} 
+      onChange={handleChange} 
+      className="select select-bordered w-full"
+      // Remove or fix the disabled condition
+    >
+      <option value="" disabled>
+        Select manager
+      </option>
+      {managers
+      .filter(manager => manager.id !== employee?.id)
+      .map(manager => (
+        <option key={manager.id} value={manager.id}>
+          {manager.name} ({manager.employee_no})
+        </option>
+      ))}
+    </select>
+  ) : (
+    <div className="p-3 bg-base-200 rounded min-h-[42px]">
+      {employee?.manager_id && managers.length > 0 
+        ? managers.find(m => m.id === employee?.manager_id)?.name || 'Manager not found'
+        : 'No manager assigned'}
+    </div>
+  )}
+</div>
                 
                 {/* Employment Type field */}
                 <div>
