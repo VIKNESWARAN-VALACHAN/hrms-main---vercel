@@ -193,17 +193,17 @@ const WorkingTimeCounter: React.FC<WorkingTimeCounterProps> = ({
   const intervalRef = useRef<number | null>(null);
 
   // Debug: Log incoming props
-  console.log('WorkingTimeCounter received:', {
-    sessionsCount: sessions.length,
-    isCheckedIn,
-    sessions: sessions.map(s => ({
-      id: s.id,
-      checkIn: s.checkIn?.toISOString(),
-      checkOut: s.checkOut?.toISOString(),
-      checkInValid: s.checkIn instanceof Date && !isNaN(s.checkIn.getTime()),
-      checkOutValid: s.checkOut instanceof Date && !isNaN(s.checkOut.getTime())
-    }))
-  });
+  // console.log('WorkingTimeCounter received:', {
+  //   sessionsCount: sessions.length,
+  //   isCheckedIn,
+  //   sessions: sessions.map(s => ({
+  //     id: s.id,
+  //     checkIn: s.checkIn?.toISOString(),
+  //     checkOut: s.checkOut?.toISOString(),
+  //     checkInValid: s.checkIn instanceof Date && !isNaN(s.checkIn.getTime()),
+  //     checkOutValid: s.checkOut instanceof Date && !isNaN(s.checkOut.getTime())
+  //   }))
+  // });
 
   // Normalize sessions with proper date handling
   const normalized = useMemo(() => {
@@ -234,7 +234,7 @@ const WorkingTimeCounter: React.FC<WorkingTimeCounterProps> = ({
       };
     });
 
-    console.log('Normalized sessions:', normalizedSessions);
+    //console.log('Normalized sessions:', normalizedSessions);
     return normalizedSessions;
   }, [sessions]);
 
@@ -242,18 +242,18 @@ const WorkingTimeCounter: React.FC<WorkingTimeCounterProps> = ({
 const hasOpen = useMemo(() => {
   // If isCheckedIn is true, we definitely have an open session
   if (isCheckedIn) {
-    console.log('Open session detected: isCheckedIn = true');
+    //console.log('Open session detected: isCheckedIn = true');
     return true;
   }
   
   // Check for sessions with checkIn but no checkOut
   const hasOpenSession = normalized.some(s => s.checkIn && !s.checkOut);
-  console.log('Open session check:', { 
-    isCheckedIn, 
-    sessions: normalized.length,
-    openSessions: normalized.filter(s => s.checkIn && !s.checkOut).length,
-    result: hasOpenSession 
-  });
+  // console.log('Open session check:', { 
+  //   isCheckedIn, 
+  //   sessions: normalized.length,
+  //   openSessions: normalized.filter(s => s.checkIn && !s.checkOut).length,
+  //   result: hasOpenSession 
+  // });
   
   return hasOpenSession;
 }, [isCheckedIn, normalized]);
@@ -263,11 +263,11 @@ const calc = useCallback(() => {
   let totalMs = 0;
   const nowMs = Date.now();
 
-  console.log('Calculating time - isCheckedIn:', isCheckedIn, 'now:', new Date(nowMs).toISOString());
+  //console.log('Calculating time - isCheckedIn:', isCheckedIn, 'now:', new Date(nowMs).toISOString());
   
   for (const s of normalized) {
     if (!s.checkIn) {
-      console.log('Skipping session - no checkIn:', s.id);
+      //console.log('Skipping session - no checkIn:', s.id);
       continue;
     }
     
@@ -278,25 +278,25 @@ const calc = useCallback(() => {
     if (isCheckedIn) {
       // User is currently checked in - use current time for this session
       end = nowMs;
-      console.log('Using current time for session (user checked in)');
+     //console.log('Using current time for session (user checked in)');
     } else if (s.checkOut) {
       // User is not checked in and session has checkOut - use the checkOut time
       end = s.checkOut.getTime();
-      console.log('Using checkOut time for session');
+      //console.log('Using checkOut time for session');
     } else {
       // User is not checked in and no checkOut - session not active
       end = start;
-      console.log('Session not active');
+      //console.log('Session not active');
     }
     
-    console.log('Session timing:', {
-      id: s.id,
-      start: new Date(start).toISOString(),
-      end: new Date(end).toISOString(),
-      isCheckedIn,
-      hasCheckOut: !!s.checkOut,
-      duration: end - start
-    });
+    // console.log('Session timing:', {
+    //   id: s.id,
+    //   start: new Date(start).toISOString(),
+    //   end: new Date(end).toISOString(),
+    //   isCheckedIn,
+    //   hasCheckOut: !!s.checkOut,
+    //   duration: end - start
+    // });
     
     if (end > start) {
       totalMs += (end - start);
@@ -313,44 +313,44 @@ const calc = useCallback(() => {
   else if (displayFormat === 'verbose') result = `${Number(hh)} hours ${Number(mm)} minutes ${Number(ss)} seconds`;
   else result = `${hh}:${mm}:${ss}`;
 
-  console.log('Total calculated:', { totalMs, totalSeconds, result });
+  //console.log('Total calculated:', { totalMs, totalSeconds, result });
   return result;
 }, [normalized, isCheckedIn, displayFormat]);
   useEffect(() => {
     // Calculate initial display
     const newDisplay = calc();
     setDisplay(newDisplay);
-    console.log('Initial display set to:', newDisplay);
+    //console.log('Initial display set to:', newDisplay);
 
     // Clear previous interval
     if (intervalRef.current) {
-      console.log('Clearing previous interval');
+      //console.log('Clearing previous interval');
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
 
     // Set up new interval if we have open sessions
     if (hasOpen) {
-      console.log('Setting up timer interval (open session detected)');
+      //console.log('Setting up timer interval (open session detected)');
       intervalRef.current = window.setInterval(() => {
         const updatedDisplay = calc();
         setDisplay(updatedDisplay);
-        console.log('Timer tick - display updated to:', updatedDisplay);
+        //console.log('Timer tick - display updated to:', updatedDisplay);
       }, 1000);
     } else {
-      console.log('No open sessions - timer not running');
+      //console.log('No open sessions - timer not running');
     }
 
     // Cleanup
     return () => {
       if (intervalRef.current) {
-        console.log('Cleaning up interval');
+        //console.log('Cleaning up interval');
         clearInterval(intervalRef.current);
       }
     };
   }, [calc, hasOpen]);
 
-  console.log('Rendering with display:', display);
+  //console.log('Rendering with display:', display);
 
   return (
     <span className={className} data-debug="working-time-counter">
