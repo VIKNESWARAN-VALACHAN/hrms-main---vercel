@@ -123,6 +123,10 @@ interface LeaveType {
   carryover_expiry_months?: number | null;
 }
 
+interface Company {
+  id: string;
+  name: string;
+}
 
 
 const LeaveType = () => {
@@ -140,6 +144,9 @@ const LeaveType = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
   const [editForm, setEditForm] = useState<Partial<LeaveType>>({});
+const [companies, setCompanies] = useState<Company[]>([]);
+// Change state to store company ID
+const [selectedCompanyId, setSelectedCompanyId] = useState<string>('all');
 
 const [addForm, setAddForm] = useState<Partial<LeaveType>>({
   // existing
@@ -211,6 +218,20 @@ const removeYosRow = (idx: number) => {
   });
 };
 
+const filterLeaveTypesByCompany = (types: LeaveType[], companyId: string) => {
+  if (companyId !== 'all') {
+    return types.filter(type => 
+      type.company_id === companyId || 
+      type.company_id?.toString() === companyId
+    );
+  } else {
+    return types.filter(type => 
+      type.company_id === '0' || 
+      !type.company_id || 
+      type.company_name === null
+    );
+  }
+};
 
   const fetchLeaveTypes = useCallback(async () => {
   try {
@@ -228,7 +249,10 @@ const removeYosRow = (idx: number) => {
     }
     
     setLeaveTypes(response.data);
-    let filtered = response.data.filter((type: LeaveType) => type.company_name === null);
+    //let filtered = response.data.filter((type: LeaveType) => type.company_name === null);
+    //setFilteredLeaveTypes(filtered);
+        // Apply current company filter
+    const filtered = filterLeaveTypesByCompany(response.data, selectedCompanyId);
     setFilteredLeaveTypes(filtered);
     setError(null);
   } catch (err) {
@@ -238,24 +262,56 @@ const removeYosRow = (idx: number) => {
   } finally {
     setIsLoading(false);
   }
-}, [showNotification]);
+}, [showNotification, selectedCompanyId]);//}, [showNotification]);
 
       useEffect(() => {
     fetchLeaveTypes();
   }, [fetchLeaveTypes]);
 
-// Build companies as string[]
-const companies: string[] = Array.from(
-  new Set(
-    leaveTypes
-      .map(t => t.company_name)               // (string | null)[]
-      .filter((c): c is string => !!c)        // -> string[]
-  )
-).sort();
+// // Build companies as string[]
+// const companies: string[] = Array.from(
+//   new Set(
+//     leaveTypes
+//       .map(t => t.company_name)               // (string | null)[]
+//       .filter((c): c is string => !!c)        // -> string[]
+//   )
+// ).sort();
+
+// Add this useEffect to fetch companies
 
 
 
-  const handleCompanyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+// Update the useEffect
+useEffect(() => {
+  const fetchCompanies = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/admin/companies`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('hrms_token')}`
+        }
+      });
+      
+      console.log('Companies API response:', response.data);
+      
+      // Map to proper company objects with id and name
+      const companyList = response.data.map((company: any) => ({
+        id: company.id.toString(),
+        name: company.name
+      })).sort((a: Company, b: Company) => a.name.localeCompare(b.name));
+      
+      setCompanies(companyList);
+      
+    } catch (err) {
+      console.error('Error fetching companies:', err);
+      // If API fails, use empty array
+      setCompanies([]);
+    }
+  };
+
+  fetchCompanies();
+}, []);
+
+  const handleCompanyChange1 = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newCompany = e.target.value;
     setSelectedCompany(newCompany);
 
@@ -269,6 +325,29 @@ const companies: string[] = Array.from(
     setCurrentPage(1); // Reset to first page when filtering
   };
 
+
+const handleCompanyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const companyId = e.target.value;
+  setSelectedCompanyId(companyId);
+
+  let filtered = [...leaveTypes];
+  
+  if (companyId !== 'all') {
+    filtered = filtered.filter(type => 
+      type.company_id === companyId || 
+      type.company_id?.toString() === companyId
+    );
+  } else {
+    filtered = filtered.filter(type => 
+      type.company_id === '0' || 
+      !type.company_id || 
+      type.company_name === null
+    );
+  }
+  
+  setFilteredLeaveTypes(filtered);
+  setCurrentPage(1);
+};
   // Calculate pagination
   const totalPages = Math.ceil(filteredLeaveTypes.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -461,24 +540,40 @@ const handleEditSubmit = async (e: React.FormEvent) => {
 
 
   // Unique company options with id + name (ignore null/global)
-const companyOptions: { id: string; name: string }[] = Array.from(
-  new Map(
-    leaveTypes
-      .filter(t => t.company_id && t.company_name) // keep only company-specific
-      .map(t => [t.company_id, t.company_name as string]) // [id, name]
-  ).entries()
-).map(([id, name]) => ({ id, name }))
- .sort((a, b) => a.name.localeCompare(b.name));
+// const companyOptions: { id: string; name: string }[] = Array.from(
+//   new Map(
+//     leaveTypes
+//       .filter(t => t.company_id && t.company_name) // keep only company-specific
+//       .map(t => [t.company_id, t.company_name as string]) // [id, name]
+//   ).entries()
+// ).map(([id, name]) => ({ id, name }))
+//  .sort((a, b) => a.name.localeCompare(b.name));
 
 
 
-  const handleAddLeaveType = () => {
+//   const handleAddLeaveType = () => {
+//   // If page filter shows a specific company, preselect it; otherwise use '0' for Global
+//   let companyId = '0';
+//   if (selectedCompany !== 'all') {
+//     const found = companyOptions.find(c => c.name === selectedCompany);
+//     if (found) companyId = found.id;
+//   }
+
+//   setAddForm(prev => ({
+//     ...prev,
+//     company_id: companyId
+//   }));
+//   setShowAddModal(true);
+// };
+
+
+const handleAddLeaveType = () => {
   // If page filter shows a specific company, preselect it; otherwise use '0' for Global
-  let companyId = '0';
-  if (selectedCompany !== 'all') {
-    const found = companyOptions.find(c => c.name === selectedCompany);
-    if (found) companyId = found.id;
-  }
+ const companyId = selectedCompanyId !== 'all' ? selectedCompanyId : '0'; //let companyId = '0';
+  // if (selectedCompany !== 'all') {
+  //   const found = companies.find(c => c.name === selectedCompany);
+  //   if (found) companyId = found.id;
+  // }
 
   setAddForm(prev => ({
     ...prev,
@@ -500,18 +595,28 @@ const companyOptions: { id: string; name: string }[] = Array.from(
     setShowAddModal(false);
     showNotification('Leave type created successfully', 'success');
 
-    fetchLeaveTypes();
-    // Add to local list (so UI updates instantly)
-    setLeaveTypes(prev => {
-      const next = [created, ...prev];
-      // Respect current company filter
-      const filtered = (selectedCompany !== 'all')
-        ? next.filter(t => t.company_name === selectedCompany)
-        : next.filter(t => t.company_name === null);
-      setFilteredLeaveTypes(filtered);
-      return next;
-    });
+    //fetchLeaveTypes();
+    // // Add to local list (so UI updates instantly)
+    // setLeaveTypes(prev => {
+    //   const next = [created, ...prev];
+    //   // Respect current company filter
+    //   const filtered = (selectedCompany !== 'all')
+    //     ? next.filter(t => t.company_name === selectedCompany)
+    //     : next.filter(t => t.company_name === null);
+    //   setFilteredLeaveTypes(filtered);
+    //   return next;
+    // });
+    //  setLeaveTypes(prev => {
+    //   const next = [created, ...prev];
+      
+    //   // Apply current company filter to the updated list
+    //   const filtered = filterLeaveTypesByCompany(next, selectedCompanyId);
+    //   setFilteredLeaveTypes(filtered);
+      
+    //   return next;
+    // });
 
+    await fetchLeaveTypes();
     // Reset form
     setAddForm({
       leave_type_name: '',
@@ -578,22 +683,23 @@ const companyOptions: { id: string; name: string }[] = Array.from(
       setShowViewModal(false);
       showNotification('Leave type deleted successfully', 'success');
 
-      // Fetch updated leave types
-      const response = await axios.get(`${API_BASE_URL}/api/v1/leave-types`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('hrms_token')}`
-        }
-      });
-      setLeaveTypes(response.data);
+      await fetchLeaveTypes();
+      // // Fetch updated leave types
+      // const response = await axios.get(`${API_BASE_URL}/api/v1/leave-types`, {
+      //   headers: {
+      //     Authorization: `Bearer ${localStorage.getItem('hrms_token')}`
+      //   }
+      // });
+      // setLeaveTypes(response.data);
 
-      // Apply the current company filter
-      let filtered = [...response.data];
-      if (selectedCompany !== 'all') {
-        filtered = filtered.filter(type => type.company_name === selectedCompany);
-      } else {
-        filtered = filtered.filter(type => type.company_name === null);
-      }
-      setFilteredLeaveTypes(filtered);
+      // // Apply the current company filter
+      // let filtered = [...response.data];
+      // if (selectedCompany !== 'all') {
+      //   filtered = filtered.filter(type => type.company_name === selectedCompany);
+      // } else {
+      //   filtered = filtered.filter(type => type.company_name === null);
+      // }
+      // setFilteredLeaveTypes(filtered);
 
     } catch (err: any) {
       console.error('Error deleting leave type:', err);
@@ -615,7 +721,7 @@ const companyOptions: { id: string; name: string }[] = Array.from(
         <div className="mt-4 sm:mt-8 flow-root">
           <div className="mt-1">
             <div>
-              <div>
+              {/* <div>
                 <label htmlFor="company" className={`block text-sm sm:text-base font-medium ${theme === 'light' ? 'text-gray-900' : 'text-slate-200'} mb-2`}>
                   Company
                 </label>
@@ -633,7 +739,30 @@ const companyOptions: { id: string; name: string }[] = Array.from(
                     ))}
                   </select>
                 </div>
-              </div>
+              </div> */}
+
+{/* Company Filter */}
+<div>
+  <label htmlFor="company" className={`block text-sm sm:text-base font-medium ${theme === 'light' ? 'text-gray-900' : 'text-slate-200'} mb-2`}>
+    Company
+  </label>
+  <div className="mt-2">
+    <select
+      id="company"
+      name="company"
+      value={selectedCompanyId}
+      onChange={handleCompanyChange}
+      className={`select select-bordered w-full sm:w-auto sm:max-w-xs text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+    >
+      <option value="all">Default settings</option>
+      {companies.map(company => (
+        <option key={company.id} value={company.id}>
+          {company.name}
+        </option>
+      ))}
+    </select>
+  </div>
+</div>
             </div>
           </div>
         </div>
@@ -1625,7 +1754,7 @@ const companyOptions: { id: string; name: string }[] = Array.from(
                     />
                   </div> */}
 
-                  <div>
+                  {/* <div>
           <label className="label p-0 pb-1">
             <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
               Company
@@ -1637,17 +1766,39 @@ const companyOptions: { id: string; name: string }[] = Array.from(
             onChange={(e) => setAddForm(p => ({ ...p, company_id: e.target.value }))}
             className={`select select-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
           >
-            {/* Global/default option */}
+
             <option value="0">Default settings (Global)</option>
 
-            {/* Company-specific options */}
+
             {companyOptions.map(c => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
           </select>
-        </div>
+        </div> */}
+
+{/* Company Selection in Add Modal */}
+<div>
+  <label className="label p-0 pb-1">
+    <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+      Company
+    </span>
+  </label>
+  <select
+    name="company_id"
+    value={addForm.company_id ?? '0'}
+    onChange={(e) => setAddForm(p => ({ ...p, company_id: e.target.value }))}
+    className={`select select-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+  >
+    <option value="0">Default settings (Global)</option>
+    {companies.map(company => (
+      <option key={`add-company-${company.id}`} value={company.id}>
+        {company.name}
+      </option>
+    ))}
+  </select>
+</div>
 
                 </div>
 
