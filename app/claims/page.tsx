@@ -29,6 +29,33 @@ interface Claim {
   department_name?: string; // From backend's getClaimDetails
 }
 
+interface PendingApproval {
+  id: number;
+  claim_id: number;
+  benefit_type_name: string;
+  employee_name: string;
+  company_name: string;
+  amount: number;
+  claim_date: string;
+  approval_level: number;
+  employee_remark: string;
+  status: string;
+}
+
+interface ApprovalHistory {
+  id: number;
+  claim_id: number;
+  benefit_type_name: string;
+  employee_name: string;
+  company_name: string;
+  amount: number;
+  approval_level: number;
+  approval_status: string;
+  approval_remark: string;
+  action_date: string;
+}
+
+
 interface BenefitSummary {
   id: number;
   employee_id: number;
@@ -80,11 +107,21 @@ interface FullClaimDetailsResponse {
   currentApprovals: CurrentApprovalItem[];
 }
 
+interface ApproverStatus {
+  isApprover: boolean;
+  pendingCount: number;
+  historyCount: number;
+}
 
 export default function ClaimHistoryPage() {
+  // Add these new states
+  const [approverStatus, setApproverStatus] = useState<ApproverStatus | null>(null);
+  const [checkingApproverStatus, setCheckingApproverStatus] = useState(false);
+  const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
+  const [approvalHistory, setApprovalHistory] = useState<ApprovalHistory[]>([]);
+  const [approvalsLoading, setApprovalsLoading] = useState(false);
 
   const [isNewClaimModalOpen, setIsNewClaimModalOpen] = useState(false);
-
   const [user, setUser] = useState<User | null>(null);
   const [benefits, setBenefits] = useState<BenefitSummary[]>([]);
   const [claims, setClaims] = useState<Claim[]>([]);
@@ -101,8 +138,6 @@ export default function ClaimHistoryPage() {
   // State to hold comprehensive claim details for the view modal
   const [fetchedClaimDetails, setFetchedClaimDetails] = useState<FullClaimDetailsResponse | null>(null);
 
-
-  
   // Fetch data on component mount
   useEffect(() => {
     const userData = localStorage.getItem('hrms_user');
@@ -164,6 +199,135 @@ export default function ClaimHistoryPage() {
       toast.error('User data not found. Please log in.');
     }
   }, []);
+
+
+   useEffect(() => {
+    if (user) {
+      checkApproverStatus();
+      fetchApprovalData();
+    }
+  }, [user]);
+
+const checkApproverStatus = async () => {
+  if (!user) return;
+  setCheckingApproverStatus(true);
+  try {
+    // Simple query parameter approach - no headers issues
+    const res = await fetch(`${API_BASE_URL}/api/approval/check-approver-status?user_id=${user.id}`);
+    
+    if (res.ok) {
+      const status = await res.json();
+      setApproverStatus(status);
+    } else {
+      const error = await res.json();
+      toast.error(error.error || 'Failed to check approver status');
+    }
+  } catch (err) {
+    console.error('Error checking approver status:', err);
+    toast.error('Failed to check approver status');
+  } finally {
+    setCheckingApproverStatus(false);
+  }
+};
+
+  // Update the fetchApprovalData function to only fetch if user is approver
+  const fetchApprovalData = async () => {
+    if (!user) return;
+    
+    setApprovalsLoading(true);
+    try {
+      // First check if user is an approver
+
+       const statusRes = await fetch(`${API_BASE_URL}/api/approval/check-approver-status?user_id=${user.id}`);
+    
+      //const statusRes = await fetch(`${API_BASE_URL}/api/approval/check-approver-status`);
+      if (statusRes.ok) {
+        const status = await statusRes.json();
+        setApproverStatus(status);
+
+        // Only fetch approval data if user is an approver
+        if (status.isApprover) {
+          // Fetch pending approvals
+          const pendingRes = await fetch(`${API_BASE_URL}/api/approval/pending-approvals`);
+          if (pendingRes.ok) {
+            const pendingData = await pendingRes.json();
+            setPendingApprovals(pendingData);
+          }
+
+          // Fetch approval history
+          const historyRes = await fetch(`${API_BASE_URL}/api/approval/approval-history`);
+          if (historyRes.ok) {
+            const historyData = await historyRes.json();
+            setApprovalHistory(historyData);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching approval data:', err);
+      toast.error('Failed to load approval data');
+    } finally {
+      setApprovalsLoading(false);
+    }
+  };
+
+  // Add these handler functions
+  const handleApprove = async (claimId: number, level: number) => {
+    const remark = prompt('Enter approval remark (optional):') || '';
+    
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/approval/claims/${claimId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          approver_id: user?.id,
+          approver_name: user?.name,
+          remark: remark
+        })
+      });
+
+      if (res.ok) {
+        toast.success('Claim approved successfully');
+        fetchApprovalData(); // Refresh data
+      } else {
+        const error = await res.json();
+        toast.error(error.error || 'Failed to approve claim');
+      }
+    } catch (err) {
+      console.error('Error approving claim:', err);
+      toast.error('Failed to approve claim');
+    }
+  };
+
+  const handleReject = async (claimId: number, level: number) => {
+    const remark = prompt('Enter rejection reason (required):');
+    if (!remark) {
+      toast.error('Rejection reason is required');
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/approval/claims/${claimId}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          approver_id: user?.id,
+          approver_name: user?.name,
+          remark: remark
+        })
+      });
+
+      if (res.ok) {
+        toast.success('Claim rejected successfully');
+        fetchApprovalData(); // Refresh data
+      } else {
+        const error = await res.json();
+        toast.error(error.error || 'Failed to reject claim');
+      }
+    } catch (err) {
+      console.error('Error rejecting claim:', err);
+      toast.error('Failed to reject claim');
+    }
+  };
 
   // Open view modal - MODIFIED TO FETCH COMPREHENSIVE DATA
   const openViewModal = async (claim: Claim) => {
@@ -293,6 +457,36 @@ export default function ClaimHistoryPage() {
     }
   };
 
+  const refreshClaims = async () => {
+  if (!user) return;
+  
+  setLoading(true);
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/claims/${user.id}`);
+    if (!res.ok) {
+      if (res.status === 404) {
+        setClaims([]);
+        return;
+      }
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      setClaims(data);
+    } else if (typeof data === 'object' && data !== null) {
+      setClaims([data]);
+    } else {
+      setClaims([]);
+    }
+  } catch (err) {
+    console.error('Error refreshing claims:', err);
+    toast.error('Failed to refresh claims.');
+    setClaims([]);
+  } finally {
+    setLoading(false);
+  }
+};
+
   // Filter approval history for 'Approved' or 'Rejected' statuses
   const getFilteredApprovalHistory = (history: ApprovalHistoryItem[]) => {
     return history.filter(item => item.status === 'Approved' || item.status === 'Rejected');
@@ -330,6 +524,8 @@ export default function ClaimHistoryPage() {
     if (current.length === 0) return true; // If no current approvals, consider it final (nothing pending)
     return current.every(item => item.status === 'Approved' || item.status === 'Rejected');
   };
+
+   const shouldShowApprovalTables = approverStatus?.isApprover;
 
   return (
     <div className="p-6 max-w-7xl mx-auto bg-base-100 min-h-screen">
@@ -556,210 +752,210 @@ export default function ClaimHistoryPage() {
       )}
 
       {/* Edit Claim Modal */}{/* Edit Claim Modal */}
-{isEditModalOpen && selectedClaim && (
-  <div className="modal modal-open">
-    <div className="modal-box max-w-2xl">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="text-xl font-bold">Edit Claim</h3>
-        <button 
-          onClick={() => setIsEditModalOpen(false)} 
-          className="btn btn-sm btn-circle btn-ghost"
-        >
-          ✕
-        </button>
-      </div>
-
-      <form onSubmit={handleEditSubmit}>
-        <div className="space-y-6">
-          {/* Basic Claim Info */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text">Benefit Type</span>
-              </label>
-              <input
-                type="text"
-                className="input input-bordered w-full bg-base-200"
-                value={selectedClaim.benefit_type_name}
-                readOnly
-              />
+      {isEditModalOpen && selectedClaim && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold">Edit Claim</h3>
+              <button 
+                onClick={() => setIsEditModalOpen(false)} 
+                className="btn btn-sm btn-circle btn-ghost"
+              >
+                ✕
+              </button>
             </div>
-            <div className="form-control">
-              <label className="label">
-                <span className="label-text">Company</span>
-              </label>
-              <input
-                type="text"
-                className="input input-bordered w-full bg-base-200"
-                value={selectedClaim.company_name}
-                readOnly
-              />
-            </div>
-          </div>
 
-          {/* Entitlement Information */}
-          {(() => {
-            const relevantBenefit = benefits.find(
-              b => b.benefit_type === selectedClaim.benefit_type_name
-            );
-
-            if (!relevantBenefit) {
-              return (
-                <div className="alert alert-warning">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                  <span>Benefit information not available</span>
-                </div>
-              );
-            }
-
-            // Helper function to safely parse numbers
-            const parseSafe = (value: any): number => {
-              const num = typeof value === 'string' ? parseFloat(value) : Number(value);
-              return isNaN(num) ? 0 : num;
-            };
-            
-            // Calculate values
-            const entitled = parseSafe(relevantBenefit.entitled);
-            const balance = parseSafe(relevantBenefit.balance);
-            const currentAmount = parseSafe(editFormData.amount);
-            const originalAmount = parseSafe(selectedClaim.amount);
-            const maxAllowed = Math.min(entitled, balance + originalAmount);
-            const isAmountValid = currentAmount > 0 && currentAmount <= maxAllowed;
-
-            return (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
-                  <div className="stat bg-base-200 rounded-lg p-4">
-                    <div className="stat-title text-sm">Total Entitled</div>
-                    <div className="stat-value text-primary text-lg">
-                      RM {entitled.toFixed(2)}
-                    </div>
+            <form onSubmit={handleEditSubmit}>
+              <div className="space-y-6">
+                {/* Basic Claim Info */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text">Benefit Type</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="input input-bordered w-full bg-base-200"
+                      value={selectedClaim.benefit_type_name}
+                      readOnly
+                    />
                   </div>
-                  <div className="stat bg-base-200 rounded-lg p-4">
-                    <div className="stat-title text-sm">Remaining Balance</div>
-                    <div className="stat-value text-lg">
-                      RM {balance.toFixed(2)}
-                    </div>
-                  </div>
-                  <div className="stat bg-base-200 rounded-lg p-4">
-                    <div className="stat-title text-sm">Max Allowed</div>
-                    <div className="stat-value text-lg">
-                      RM {maxAllowed.toFixed(2)}
-                    </div>
+                  <div className="form-control">
+                    <label className="label">
+                      <span className="label-text">Company</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="input input-bordered w-full bg-base-200"
+                      value={selectedClaim.company_name}
+                      readOnly
+                    />
                   </div>
                 </div>
 
+                {/* Entitlement Information */}
+                {(() => {
+                  const relevantBenefit = benefits.find(
+                    b => b.benefit_type === selectedClaim.benefit_type_name
+                  );
+
+                  if (!relevantBenefit) {
+                    return (
+                      <div className="alert alert-warning">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <span>Benefit information not available</span>
+                      </div>
+                    );
+                  }
+
+                  // Helper function to safely parse numbers
+                  const parseSafe = (value: any): number => {
+                    const num = typeof value === 'string' ? parseFloat(value) : Number(value);
+                    return isNaN(num) ? 0 : num;
+                  };
+                  
+                  // Calculate values
+                  const entitled = parseSafe(relevantBenefit.entitled);
+                  const balance = parseSafe(relevantBenefit.balance);
+                  const currentAmount = parseSafe(editFormData.amount);
+                  const originalAmount = parseSafe(selectedClaim.amount);
+                  const maxAllowed = Math.min(entitled, balance + originalAmount);
+                  const isAmountValid = currentAmount > 0 && currentAmount <= maxAllowed;
+
+                  return (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-2">
+                        <div className="stat bg-base-200 rounded-lg p-4">
+                          <div className="stat-title text-sm">Total Entitled</div>
+                          <div className="stat-value text-primary text-lg">
+                            RM {entitled.toFixed(2)}
+                          </div>
+                        </div>
+                        <div className="stat bg-base-200 rounded-lg p-4">
+                          <div className="stat-title text-sm">Remaining Balance</div>
+                          <div className="stat-value text-lg">
+                            RM {balance.toFixed(2)}
+                          </div>
+                        </div>
+                        <div className="stat bg-base-200 rounded-lg p-4">
+                          <div className="stat-title text-sm">Max Allowed</div>
+                          <div className="stat-value text-lg">
+                            RM {maxAllowed.toFixed(2)}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="form-control">
+                        <label className="label">
+                          <span className="label-text">Claim Amount (RM)</span>
+                          {!isAmountValid && editFormData.amount && (
+                            <span className="label-text-alt text-error">
+                              {currentAmount <= 0 ? 'Must be greater than 0' : 'Exceeds maximum allowed'}
+                            </span>
+                          )}
+                        </label>
+                        <input
+                          type="number"
+                          name="amount"
+                          className={`input input-bordered w-full ${
+                            !isAmountValid && editFormData.amount ? 'input-error' : ''
+                          }`}
+                          value={editFormData.amount}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value === '' || /^[0-9]*\.?[0-9]*$/.test(value)) {
+                              setEditFormData({...editFormData, amount: value});
+                            }
+                          }}
+                          min="0.01"
+                          max={maxAllowed}
+                          step="0.01"
+                          required
+                        />
+                        <div className="text-sm mt-2">
+                          <span className="font-medium">Original amount:</span> RM {originalAmount.toFixed(2)}
+                          {currentAmount !== originalAmount && (
+                            <span className={`ml-2 ${
+                              currentAmount > originalAmount ? 'text-error' : 'text-success'
+                            }`}>
+                              ({currentAmount > originalAmount ? '+' : ''}
+                              {(currentAmount - originalAmount).toFixed(2)})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+
+                {/* Employee Remark */}
                 <div className="form-control">
                   <label className="label">
-                    <span className="label-text">Claim Amount (RM)</span>
-                    {!isAmountValid && editFormData.amount && (
+                    <span className="label-text">Employee Remark</span>
+                    {editFormData.employee_remark && editFormData.employee_remark.trim().length < 10 && (
                       <span className="label-text-alt text-error">
-                        {currentAmount <= 0 ? 'Must be greater than 0' : 'Exceeds maximum allowed'}
+                        Minimum 10 characters required
                       </span>
                     )}
                   </label>
-                  <input
-                    type="number"
-                    name="amount"
-                    className={`input input-bordered w-full ${
-                      !isAmountValid && editFormData.amount ? 'input-error' : ''
-                    }`}
-                    value={editFormData.amount}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === '' || /^[0-9]*\.?[0-9]*$/.test(value)) {
-                        setEditFormData({...editFormData, amount: value});
-                      }
-                    }}
-                    min="0.01"
-                    max={maxAllowed}
-                    step="0.01"
+                  <textarea
+                    name="employee_remark"
+                    className="textarea textarea-bordered"
+                    rows={3}
+                    value={editFormData.employee_remark}
+                    onChange={(e) => setEditFormData({
+                      ...editFormData,
+                      employee_remark: e.target.value
+                    })}
                     required
+                    minLength={10}
                   />
-                  <div className="text-sm mt-2">
-                    <span className="font-medium">Original amount:</span> RM {originalAmount.toFixed(2)}
-                    {currentAmount !== originalAmount && (
-                      <span className={`ml-2 ${
-                        currentAmount > originalAmount ? 'text-error' : 'text-success'
-                      }`}>
-                        ({currentAmount > originalAmount ? '+' : ''}
-                        {(currentAmount - originalAmount).toFixed(2)})
-                      </span>
-                    )}
-                  </div>
                 </div>
-              </>
-            );
-          })()}
+              </div>
 
-          {/* Employee Remark */}
-          <div className="form-control">
-            <label className="label">
-              <span className="label-text">Employee Remark</span>
-              {editFormData.employee_remark && editFormData.employee_remark.trim().length < 10 && (
-                <span className="label-text-alt text-error">
-                  Minimum 10 characters required
-                </span>
-              )}
-            </label>
-            <textarea
-              name="employee_remark"
-              className="textarea textarea-bordered"
-              rows={3}
-              value={editFormData.employee_remark}
-              onChange={(e) => setEditFormData({
-                ...editFormData,
-                employee_remark: e.target.value
-              })}
-              required
-              minLength={10}
-            />
+              <div className="modal-action mt-8">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="btn btn-ghost"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={
+                    !editFormData.amount ||
+                    editFormData.amount.trim() === '' ||
+                    isNaN(Number(editFormData.amount)) ||
+                    Number(editFormData.amount) <= 0 ||
+                    !editFormData.employee_remark ||
+                    editFormData.employee_remark.trim().length < 10 ||
+                    (() => {
+                      const relevantBenefit = benefits.find(
+                        b => b.benefit_type === selectedClaim.benefit_type_name
+                      );
+                      if (!relevantBenefit) return true;
+                      
+                      const entitled = Number(relevantBenefit.entitled) || 0;
+                      const balance = Number(relevantBenefit.balance) || 0;
+                      const originalAmount = Number(selectedClaim.amount) || 0;
+                      const maxAllowed = Math.min(entitled, balance + originalAmount);
+                      const currentAmount = Number(editFormData.amount) || 0;
+
+                      return currentAmount > maxAllowed;
+                    })()
+                  }
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
           </div>
         </div>
-
-        <div className="modal-action mt-8">
-          <button
-            type="button"
-            onClick={() => setIsEditModalOpen(false)}
-            className="btn btn-ghost"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={
-              !editFormData.amount ||
-              editFormData.amount.trim() === '' ||
-              isNaN(Number(editFormData.amount)) ||
-              Number(editFormData.amount) <= 0 ||
-              !editFormData.employee_remark ||
-              editFormData.employee_remark.trim().length < 10 ||
-              (() => {
-                const relevantBenefit = benefits.find(
-                  b => b.benefit_type === selectedClaim.benefit_type_name
-                );
-                if (!relevantBenefit) return true;
-                
-                const entitled = Number(relevantBenefit.entitled) || 0;
-                const balance = Number(relevantBenefit.balance) || 0;
-                const originalAmount = Number(selectedClaim.amount) || 0;
-                const maxAllowed = Math.min(entitled, balance + originalAmount);
-                const currentAmount = Number(editFormData.amount) || 0;
-
-                return currentAmount > maxAllowed;
-              })()
-            }
-          >
-            Save Changes
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-)}
+      )}
 
       {/* Delete Confirmation Modal */}
       {isDeleteModalOpen && selectedClaim && (
@@ -787,6 +983,7 @@ export default function ClaimHistoryPage() {
         </div>
       )}
 
+
       {/* Main Dashboard Content */}
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">My Claim Dashboard</h1>
@@ -811,6 +1008,7 @@ export default function ClaimHistoryPage() {
         isOpen={isNewClaimModalOpen}
         onClose={() => setIsNewClaimModalOpen(false)}
         benefits={benefits}
+        onClaimSubmitted={refreshClaims}
       />
       </div>
 
@@ -1032,6 +1230,199 @@ export default function ClaimHistoryPage() {
           </div>
         )}
       </div>
+
+      
+       {/* Pending Approvals Table - Only show for approvers */}
+      {shouldShowApprovalTables && (
+        <div className="mt-8">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Pending Approvals</h2>
+            <span className="badge badge-warning badge-lg">
+              {pendingApprovals.length} Pending
+            </span>
+          </div>
+
+          {approvalsLoading ? (
+            <div className="flex justify-center">
+              <span className="loading loading-spinner loading-lg"></span>
+            </div>
+          ) : pendingApprovals.length === 0 ? (
+            <div className="alert alert-info shadow-lg">
+              <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span>No pending approvals requiring your action.</span>
+            </div>
+          ) : (
+            <div className="bg-base-100 rounded-lg shadow overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="table">
+                  <thead className="bg-base-200">
+                    <tr>
+                      <th>Employee</th>
+                      <th>Benefit</th>
+                      <th>Amount</th>
+                      <th>Company</th>
+                      <th>Level</th>
+                      <th>Remarks</th>
+                      <th>Date</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-base-300">
+                    {pendingApprovals.map((approval) => (
+                      <tr key={approval.id} className="hover:bg-base-200">
+                        <td>{approval.employee_name}</td>
+                        <td>{approval.benefit_type_name}</td>
+                        <td>RM {parseFloat(approval.amount.toString()).toFixed(2)}</td>
+                        <td>{approval.company_name}</td>
+                        <td>
+                          <span className="badge badge-info">Level {approval.approval_level}</span>
+                        </td>
+                        <td>
+                          <div className="max-w-xs">
+                            <div className="text-sm">{approval.employee_remark}</div>
+                          </div>
+                        </td>
+                        <td>{new Date(approval.claim_date).toLocaleDateString()}</td>
+                        <td>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleApprove(approval.claim_id, approval.approval_level)}
+                              className="btn btn-success btn-sm"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                              </svg>
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleReject(approval.claim_id, approval.approval_level)}
+                              className="btn btn-error btn-sm"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                              Reject
+                            </button>
+                            <button
+                              onClick={() => {
+                                // Find the claim in existing claims or open view modal directly
+                                const claim = claims.find(c => c.id === approval.claim_id);
+                                if (claim) {
+                                  openViewModal(claim);
+                                } else {
+                                  // If claim not in local state, you might want to fetch it or show a message
+                                  toast.error('Please view this claim from the main claims table');
+                                }
+                              }}
+                              className="btn btn-ghost btn-sm"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Approval History Table - Only show for approvers */}
+      {shouldShowApprovalTables && (
+        <div className="mt-8">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">My Approval History</h2>
+            <span className="badge badge-info badge-lg">
+              {approvalHistory.length} Decisions
+            </span>
+          </div>
+
+          {approvalsLoading ? (
+            <div className="flex justify-center">
+              <span className="loading loading-spinner loading-lg"></span>
+            </div>
+          ) : approvalHistory.length === 0 ? (
+            <div className="alert alert-info shadow-lg">
+              <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span>No approval history found.</span>
+            </div>
+          ) : (
+            <div className="bg-base-100 rounded-lg shadow overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="table">
+                  <thead className="bg-base-200">
+                    <tr>
+                      <th>Employee</th>
+                      <th>Benefit</th>
+                      <th>Amount</th>
+                      <th>Company</th>
+                      <th>Level</th>
+                      <th>Decision</th>
+                      <th>Your Remark</th>
+                      <th>Date</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-base-300">
+                    {approvalHistory.map((history) => (
+                      <tr key={history.id} className="hover:bg-base-200">
+                        <td>{history.employee_name}</td>
+                        <td>{history.benefit_type_name}</td>
+                        <td>RM {parseFloat(history.amount.toString()).toFixed(2)}</td>
+                        <td>{history.company_name}</td>
+                        <td>
+                          <span className="badge badge-info">Level {history.approval_level}</span>
+                        </td>
+                        <td>
+                          <span className={`badge ${
+                            history.approval_status === 'Approved' ? 'badge-success' : 'badge-error'
+                          }`}>
+                            {history.approval_status}
+                          </span>
+                        </td>
+                        <td>
+                          <div className="max-w-xs">
+                            <div className="text-sm">{history.approval_remark || '-'}</div>
+                          </div>
+                        </td>
+                        <td>{new Date(history.action_date).toLocaleDateString()}</td>
+                        <td>
+                          <button
+                            onClick={() => {
+                              const claim = claims.find(c => c.id === history.claim_id);
+                              if (claim) {
+                                openViewModal(claim);
+                              } else {
+                                toast.error('Please view this claim from the main claims table');
+                              }
+                            }}
+                            className="btn btn-ghost btn-sm"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
