@@ -935,6 +935,13 @@ export interface PayslipItem {
   origin?: string | null;
 }
 
+interface User {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+}
+
 export interface EmployerContribution {
   id?: number;
   payroll_id?: number;
@@ -1084,7 +1091,7 @@ function lastNMonths(n = 6): string[] {
 export default function PayslipsPage() {
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<PayrollRow[]>([]);
-
+  const [user, setUser] = useState<User | null>(null);
   const currentYear = new Date().getFullYear();
   const periodOptions = useMemo(() => monthsOfYear(currentYear), [currentYear]);
   const [selectedKey, setSelectedKey] = useState<string>(() => {
@@ -1102,26 +1109,107 @@ export default function PayslipsPage() {
   const [isModalOpen, setModalOpen] = useState(false);
   const slipRef = useRef<HTMLDivElement | null>(null);
   const [hideAmounts, setHideAmounts] = useState(true);
+  let EMPLOYEE_ID = user?.id;
+  //const EMPLOYEE_ID = 143;
 
-  const EMPLOYEE_ID = 143;
+useEffect(() => {
+  const userData = localStorage.getItem('hrms_user');
+  console.log('Raw userData from localStorage:', userData);
+  
+  if (userData) {
+    try {
+      const parsedUser = JSON.parse(userData);
+      console.log('Parsed user object:', parsedUser);
+      console.log('User ID:', parsedUser.id);
+      console.log('User employee_id:', parsedUser.employee_id);
+      console.log('All user keys:', Object.keys(parsedUser));
+      EMPLOYEE_ID = parsedUser.id;
+      setUser(parsedUser);
+    } catch (error) {
+      console.error('Error parsing user data:', error);
+      console.log('Failed to parse this userData:', userData);
+      toast.error('Failed to load user data');
+    }
+  } else {
+    console.log('No userData found in localStorage under key "hrms_user"');
+    console.log('Available localStorage keys:', Object.keys(localStorage));
+  }
+}, []);
 
+useEffect(() => {
+  console.log('User state updated:', user);
+  console.log('Employee ID from user state:', user?.id);
+  console.log('User name:', user?.name);
+}, [user]); // This runs every time user state changes
+
+  // useEffect(() => {
+  //   (async () => {
+  //     setLoading(true);
+  //     try {
+  //        console.log('Fetching payslips for employee ID:', EMPLOYEE_ID);
+  //       const res = await fetch(`${API_BASE_URL}/api/payroll/employee/${EMPLOYEE_ID}?status=PAID`, {
+  //         headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+  //       });
+  //       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  //       const data: PayrollRow[] = await res.json();
+  //       setRows((data || []).filter(d => d.status_code === 'PAID'));
+  //     } catch (e: any) {
+  //       toast.error(e?.message || 'Failed to load payslips');
+  //     } finally {
+  //       setLoading(false);
+  //     }
+  //   })();
+  // }, []);
+
+  
+  // Fetch payslips when employeeId is available
   useEffect(() => {
+    if (!EMPLOYEE_ID) {
+      console.log('No employeeId available yet, skipping fetch');
+      return;
+    }
+
+    console.log('Fetching payslips for employee ID:', EMPLOYEE_ID);
+    
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${API_BASE_URL}/api/payroll/employee/${EMPLOYEE_ID}?status=PAID`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` }
+        const token = localStorage.getItem('token') || '';
+        const apiUrl = `${API_BASE_URL}/api/payroll/employee/${EMPLOYEE_ID}?status=PAID`;
+        console.log('API URL:', apiUrl);
+        
+        const res = await fetch(apiUrl, {
+          headers: { 
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        
+        console.log('API Response status:', res.status);
+        
+        if (!res.ok) {
+          if (res.status === 401) {
+            toast.error('Session expired. Please login again.');
+            return;
+          }
+          throw new Error(`HTTP ${res.status}`);
+        }
+        
         const data: PayrollRow[] = await res.json();
-        setRows((data || []).filter(d => d.status_code === 'PAID'));
+        console.log('API Response data:', data);
+        
+        const paidRows = (data || []).filter(d => d.status_code === 'PAID');
+        console.log('Paid rows:', paidRows);
+        
+        setRows(paidRows);
       } catch (e: any) {
+        console.error('Failed to load payslips:', e);
         toast.error(e?.message || 'Failed to load payslips');
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [EMPLOYEE_ID]);
 
   useEffect(() => setGeneratedForId(null), [selectedKey]);
 
@@ -1166,11 +1254,20 @@ export default function PayslipsPage() {
   const fmt = (n: number | string) => hideAmounts ? '••••' : toMYR(num(n));
   const fmtKpi = (n: number | string) => hideAmounts ? '••••' : toMYR(num(n));
 
-  const displayName = useMemo(() => {
+  // const displayName = useMemo(() => {
+  //   const ep = selectedRow?.employee_profile;
+  //   if (ep?.name) return ep.name;
+  //   return selectedRow?.employee_name || rows[0]?.employee_name || '—';
+  // }, [selectedRow, rows]);
+
+    const displayName = useMemo(() => {
+    // Use the logged-in user's name first
+    if (user?.name) return user.name;
+    
     const ep = selectedRow?.employee_profile;
     if (ep?.name) return ep.name;
     return selectedRow?.employee_name || rows[0]?.employee_name || '—';
-  }, [selectedRow, rows]);
+  }, [user, selectedRow, rows]);
 
   const currentMonthKey = useMemo(() => {
     const n = new Date();
