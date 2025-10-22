@@ -24,9 +24,12 @@ import { useTheme } from '../components/ThemeProvider';
 
 // Year-of-service brackets already used by your table
 interface YearOfServiceBracket {
-  min_years: number;     // inclusive
-  max_years: number|null; // null = open-ended
-  days: number;          // allocation for this bracket
+  min_years: number;
+  max_years: number | null;
+  days: number;
+  renewal_period?: RenewalPeriod;
+  carryover_max_days?: number;
+  expire_unused_at_period_end?: boolean;
 }
 
 // New accrual/renewal support
@@ -47,7 +50,7 @@ const toBoolean = (value: boolean | number | string | undefined | null): boolean
   }
   return false;
 };
-const toApiPayload = (f: Partial<LeaveType>) => ({
+const toApiPayload1 = (f: Partial<LeaveType>) => ({
   // required
   leave_type_name: (f.leave_type_name ?? '').trim(),
   code: (f.code ?? '').trim(),
@@ -86,6 +89,88 @@ const toApiPayload = (f: Partial<LeaveType>) => ({
   isNewLeaveType: !!f.isNewLeaveType,
 });
 
+const toApiPayload2 = (f: Partial<LeaveType>) => ({
+  // Required core fields
+  leave_type_name: (f.leave_type_name ?? '').trim(),
+  code: (f.code ?? '').trim(),
+  description: (f.description ?? null) || null,
+  company_id: f.company_id ?? '0',
+
+  // Requirements
+  requires_approval: f.requires_approval ? 1 : 0,
+  requires_documentation: f.requires_documentation ? 1 : 0,
+  is_active: f.is_active ? 1 : 0,
+
+  // Allocation method
+  allocation_primary: f.allocation_primary ?? 'YEAR_OF_SERVICE',
+  eligibility_scope: f.eligibility_scope ?? 'ALL_STAFF',
+
+  // EARN policy fields
+  accrual_frequency: f.accrual_frequency ?? 'MONTHLY',
+  accrual_rate: f.accrual_rate != null ? Number(f.accrual_rate) : null,
+  earn_prorate_join_month: f.earn_prorate_join_month ? 1 : 0,
+
+  // Renewal & carryover (for EARN allocation type)
+  renewal_period: f.renewal_period ?? 'YEARLY',
+  expire_unused_at_period_end: f.expire_unused_at_period_end ? 1 : 0,
+  carryover_max_days: f.carryover_max_days != null ? Number(f.carryover_max_days) : 0,
+  carryover_expiry_months: f.carryover_expiry_months != null ? Number(f.carryover_expiry_months) : null,
+
+  // YOS brackets with all renewal settings
+  yos_brackets: (f.yos_brackets ?? []).map(bracket => ({
+    min_years: bracket.min_years,
+    max_years: bracket.max_years,
+    days: bracket.days,
+    renewal_period: bracket.renewal_period ?? 'YEARLY',
+    carryover_max_days: bracket.carryover_max_days ?? 0,
+    expire_unused_at_period_end: bracket.expire_unused_at_period_end ? 1 : 0
+  }))
+});
+
+const toApiPayload = (f: Partial<LeaveType>) => {
+  const payload: any = {
+    // Required core fields
+    leave_type_name: (f.leave_type_name ?? '').trim(),
+    code: (f.code ?? '').trim(),
+    description: (f.description ?? null) || null,
+    company_id: f.company_id ?? '0',
+
+    // Requirements
+    requires_approval: f.requires_approval ? 1 : 0,
+    requires_documentation: f.requires_documentation ? 1 : 0,
+    is_active: f.is_active ? 1 : 0,
+
+    // Allocation method
+    allocation_primary: f.allocation_primary ?? 'YEAR_OF_SERVICE',
+    eligibility_scope: f.eligibility_scope ?? 'ALL_STAFF',
+  };
+
+  // Handle EARN allocation specific fields
+  if (f.allocation_primary === 'EARN') {
+    payload.accrual_frequency = f.accrual_frequency ?? 'MONTHLY';
+    payload.accrual_rate = f.accrual_rate != null ? Number(f.accrual_rate) : null;
+    payload.earn_prorate_join_month = f.earn_prorate_join_month ? 1 : 0;
+    payload.renewal_period = f.renewal_period ?? 'YEARLY';
+    payload.expire_unused_at_period_end = f.expire_unused_at_period_end ? 1 : 0;
+    payload.carryover_max_days = f.carryover_max_days != null ? Number(f.carryover_max_days) : 0;
+    payload.carryover_expiry_months = f.carryover_expiry_months != null ? Number(f.carryover_expiry_months) : null;
+  }
+
+  // Handle YOS allocation specific fields
+  if (f.allocation_primary === 'YEAR_OF_SERVICE') {
+    payload.yos_brackets = (f.yos_brackets ?? []).map(bracket => ({
+      min_years: bracket.min_years,
+      max_years: bracket.max_years,
+      days: bracket.days,
+      renewal_period: bracket.renewal_period ?? 'YEARLY',
+      carryover_max_days: bracket.carryover_max_days ?? 0,
+      expire_unused_at_period_end: bracket.expire_unused_at_period_end ? 1 : 0
+    }));
+  }
+
+  return payload;
+};
+
 interface LeaveType {
   id: number;
   leave_type_name: string;
@@ -98,6 +183,7 @@ interface LeaveType {
   max_increment_days: number;
   carry_forward_days: number;
   max_days: number;
+  effectiveMaxDays?: number; // Add this for calculated display value
   company_id: string;
   company_name: string | null;
   requires_approval: boolean | number;
@@ -121,6 +207,9 @@ interface LeaveType {
   expire_unused_at_period_end?: boolean | number;
   carryover_max_days?: number;
   carryover_expiry_months?: number | null;
+
+    total_applications?: number;
+  approved_applications?: number;
 }
 
 interface Company {
@@ -193,23 +282,56 @@ const [addForm, setAddForm] = useState<Partial<LeaveType>>({
 
 
 
-
-// YOS helpers
-const updateYosBracket = (idx: number, field: keyof YearOfServiceBracket, value: number | null) => {
+// Simplified helper functions
+// YOS helpers - Fixed TypeScript issues
+const updateYosBracket = (idx: number, field: keyof YearOfServiceBracket, value: any) => {
   setAddForm((prev: any) => {
     const list: YearOfServiceBracket[] = [...(prev.yos_brackets ?? [])];
-    const row = { ...(list[idx] ?? { min_years: 0, max_years: null, days: 0 }) };
-    (row as any)[field] = value;
+    
+    // Get existing row or create new one with defaults
+    const existingRow = list[idx];
+    const row: YearOfServiceBracket = {
+      min_years: existingRow?.min_years ?? 0,
+      max_years: existingRow?.max_years ?? null,
+      days: existingRow?.days ?? 0,
+      renewal_period: existingRow?.renewal_period ?? 'YEARLY',
+      carryover_max_days: existingRow?.carryover_max_days ?? 0,
+      expire_unused_at_period_end: existingRow?.expire_unused_at_period_end ?? false,
+      [field]: value
+    };
+    
+    // Auto-set carryover to 0 when use-it-or-lose-it is enabled
+    if (field === 'expire_unused_at_period_end' && value === true) {
+      row.carryover_max_days = 0;
+    }
+    
+    // If carryover is set above 0, ensure use-it-or-lose-it is disabled
+    if (field === 'carryover_max_days' && Number(value) > 0) {
+      row.expire_unused_at_period_end = false;
+    }
+    
     list[idx] = row;
     return { ...prev, yos_brackets: list };
   });
 };
+
 const addYosRow = () => {
   setAddForm((prev: any) => ({
     ...prev,
-    yos_brackets: [...(prev.yos_brackets ?? []), { min_years: 0, max_years: null, days: 0 }],
+    yos_brackets: [
+      ...(prev.yos_brackets ?? []), 
+      { 
+        min_years: 0, 
+        max_years: null, 
+        days: 0,
+        renewal_period: 'YEARLY' as RenewalPeriod,
+        carryover_max_days: 0,
+        expire_unused_at_period_end: false
+      }
+    ],
   }));
 };
+
 const removeYosRow = (idx: number) => {
   setAddForm((prev: any) => {
     const list: YearOfServiceBracket[] = [...(prev.yos_brackets ?? [])];
@@ -217,6 +339,7 @@ const removeYosRow = (idx: number) => {
     return { ...prev, yos_brackets: list };
   });
 };
+
 
 const filterLeaveTypesByCompany = (types: LeaveType[], companyId: string) => {
   if (companyId !== 'all') {
@@ -233,7 +356,7 @@ const filterLeaveTypesByCompany = (types: LeaveType[], companyId: string) => {
   }
 };
 
-  const fetchLeaveTypes = useCallback(async () => {
+  const fetchLeaveTypes1 = useCallback(async () => {
   try {
     setIsLoading(true);
     const response = await axios.get(`${API_BASE_URL}/api/v1/leave-types`, {
@@ -263,6 +386,87 @@ const filterLeaveTypesByCompany = (types: LeaveType[], companyId: string) => {
     setIsLoading(false);
   }
 }, [showNotification, selectedCompanyId]);//}, [showNotification]);
+
+
+const fetchLeaveTypes = useCallback(async () => {
+  try {
+    setIsLoading(true);
+    const response = await axios.get(`${API_BASE_URL}/api/v1/leave-types`, {
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem('hrms_token')}`
+      }
+    });
+    
+    // Enhanced debugging with allocation method analysis
+    console.log('=== LEAVE TYPES API RESPONSE ===');
+    
+    const processedLeaveTypes = response.data.map((type: LeaveType) => {
+      console.log(`Processing Leave Type:`, {
+        id: type.id,
+        name: type.leave_type_name,
+        code: type.code,
+        max_days: type.max_days,
+        allocation_primary: type.allocation_primary,
+        yos_brackets: type.yos_brackets,
+        accrual_frequency: type.accrual_frequency,
+        accrual_rate: type.accrual_rate,
+        renewal_period: type.renewal_period,
+        carryover_max_days: type.carryover_max_days
+      });
+
+      // Calculate effective max days based on allocation method
+      let effectiveMaxDays = type.max_days || 0;
+      
+      if (type.allocation_primary === 'YEAR_OF_SERVICE' && type.yos_brackets && type.yos_brackets.length > 0) {
+        // For YOS, use the highest days from brackets
+        effectiveMaxDays = Math.max(...type.yos_brackets.map((bracket: YearOfServiceBracket) => bracket.days || 0));
+      } else if (type.allocation_primary === 'EARN' && type.accrual_rate) {
+        // For Accrual, calculate annual equivalent
+        const rate = type.accrual_rate || 0;
+        switch (type.accrual_frequency) {
+          case 'MONTHLY':
+            effectiveMaxDays = rate * 12;
+            break;
+          case 'QUARTERLY':
+            effectiveMaxDays = rate * 4;
+            break;
+          case 'YEARLY':
+            effectiveMaxDays = rate;
+            break;
+          default:
+            effectiveMaxDays = rate * 12; // Default to monthly
+        }
+      }
+
+      return {
+        ...type,
+        effectiveMaxDays, // Add calculated field for display
+        // Ensure yos_brackets has all required fields with defaults
+        yos_brackets: (type.yos_brackets || []).map((bracket: any) => ({
+          min_years: bracket.min_years || 0,
+          max_years: bracket.max_years ?? null,
+          days: bracket.days || 0,
+          renewal_period: bracket.renewal_period || 'YEARLY',
+          carryover_max_days: bracket.carryover_max_days || 0,
+          expire_unused_at_period_end: Boolean(bracket.expire_unused_at_period_end)
+        }))
+      };
+    });
+
+    console.log('Processed Leave Types:', processedLeaveTypes);
+    
+    setLeaveTypes(processedLeaveTypes);
+    const filtered = filterLeaveTypesByCompany(processedLeaveTypes, selectedCompanyId);
+    setFilteredLeaveTypes(filtered);
+    setError(null);
+  } catch (err) {
+    setError('Failed to fetch leave types');
+    showNotification('Failed to fetch leave types', 'error');
+    console.error('Error fetching leave types:', err);
+  } finally {
+    setIsLoading(false);
+  }
+}, [showNotification, selectedCompanyId]);
 
       useEffect(() => {
     fetchLeaveTypes();
@@ -363,24 +567,56 @@ const handleCompanyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setShowViewModal(true);
   };
 
-// --- YOS helpers (EDIT) ---
-const updateEditYosBracket = (idx: number, field: keyof YearOfServiceBracket, value: number | null) => {
-  setEditForm(prev => {
+// Edit modal YOS helpers
+const updateEditYosBracket = (idx: number, field: keyof YearOfServiceBracket, value: any) => {
+  setEditForm((prev: any) => {
     const list: YearOfServiceBracket[] = [...(prev.yos_brackets ?? [])];
-    const row = { ...(list[idx] ?? { min_years: 0, max_years: null, days: 0 }) };
-    (row as any)[field] = value;
+    
+    const existingRow = list[idx];
+    const row: YearOfServiceBracket = {
+      min_years: existingRow?.min_years ?? 0,
+      max_years: existingRow?.max_years ?? null,
+      days: existingRow?.days ?? 0,
+      renewal_period: existingRow?.renewal_period ?? 'YEARLY',
+      carryover_max_days: existingRow?.carryover_max_days ?? 0,
+      expire_unused_at_period_end: existingRow?.expire_unused_at_period_end ?? false,
+      [field]: value
+    };
+    
+    // Auto-set carryover to 0 when use-it-or-lose-it is enabled
+    if (field === 'expire_unused_at_period_end' && value === true) {
+      row.carryover_max_days = 0;
+    }
+    
+    // If carryover is set above 0, ensure use-it-or-lose-it is disabled
+    if (field === 'carryover_max_days' && Number(value) > 0) {
+      row.expire_unused_at_period_end = false;
+    }
+    
     list[idx] = row;
     return { ...prev, yos_brackets: list };
   });
 };
+
 const addEditYosRow = () => {
-  setEditForm(prev => ({
+  setEditForm((prev: any) => ({
     ...prev,
-    yos_brackets: [...(prev.yos_brackets ?? []), { min_years: 0, max_years: null, days: 0 }],
+    yos_brackets: [
+      ...(prev.yos_brackets ?? []), 
+      { 
+        min_years: 0, 
+        max_years: null, 
+        days: 0,
+        renewal_period: 'YEARLY' as RenewalPeriod,
+        carryover_max_days: 0,
+        expire_unused_at_period_end: false
+      }
+    ],
   }));
 };
+
 const removeEditYosRow = (idx: number) => {
-  setEditForm(prev => {
+  setEditForm((prev: any) => {
     const list: YearOfServiceBracket[] = [...(prev.yos_brackets ?? [])];
     list.splice(idx, 1);
     return { ...prev, yos_brackets: list };
@@ -828,9 +1064,10 @@ const handleAddLeaveType = () => {
                               <td className={`px-2 lg:px-4 py-3 max-w-[200px] lg:max-w-[300px] ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'} text-sm lg:text-base`}>
                                 <div className="break-words line-clamp-3">{leaveType.description}</div>
                               </td>
-                              <td className={`px-2 lg:px-4 py-3 ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'} text-sm lg:text-base`}>
-                                {leaveType.code !== 'UNPAID' ? `${leaveType.max_days} days / year` : '-'}
-                              </td>
+{/* In your table - update the days column */}
+<td className={`px-2 lg:px-4 py-3 ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'} text-sm lg:text-base`}>
+  {leaveType.code !== 'UNPAID' ? `${leaveType.effectiveMaxDays || leaveType.max_days} days / year` : '-'}
+</td>
                               <td className="text-center px-2 lg:px-4 py-3">
                                 <div className="flex justify-center gap-1 lg:gap-2 min-w-[100px] lg:min-w-[120px]">
                                   {leaveType?.code !== 'UNPAID' && (
@@ -868,7 +1105,8 @@ const handleAddLeaveType = () => {
                                 {leaveType.leave_type_name}
                               </h3>
                               <p className={`text-xs mt-1 ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>
-                                {leaveType.code !== 'UNPAID' ? `${leaveType.max_days} days / year` : 'Unpaid Leave'}
+                                {/* {leaveType.code !== 'UNPAID' ? `${leaveType.max_days} days / year` : 'Unpaid Leave'} */}
+                                 {leaveType.code !== 'UNPAID' ? `${leaveType.effectiveMaxDays || leaveType.max_days} days / year` : '-'}
                               </p>
                             </div>
                             <div className="flex gap-1 ml-2 flex-shrink-0">
@@ -978,182 +1216,335 @@ const handleAddLeaveType = () => {
           </div>
         </div>
 
-        {/* View Modal */}
-        <dialog
-          id="view_modal"
-          className={`modal ${showViewModal ? 'modal-open' : ''}`}
-        >
-          <div className={`modal-box w-[95%] sm:w-11/12 max-w-5xl p-0 overflow-hidden ${theme === 'light' ? 'bg-white' : 'bg-slate-800'} shadow-lg mx-auto h-auto max-h-[90vh] flex flex-col`}>
-            {/* Modal Header */}
-            <div className={`${theme === 'light' ? 'bg-gradient-to-r from-white to-slate-50 border-slate-200/60' : 'bg-gradient-to-r from-slate-800 to-slate-700 border-slate-600/60'} px-4 sm:px-8 py-4 sm:py-6 border-b backdrop-blur-sm flex justify-between items-center relative overflow-hidden`}>
-              {/* Background Pattern */}
-              <div className={`absolute inset-0 opacity-5 ${theme === 'light' ? 'bg-blue-500' : 'bg-blue-400'}`} style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='currentColor' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
-              }}></div>
-              
-              <div className="flex items-center gap-4 relative z-10">
-                {/* Icon Container */}
-                <div className={`relative p-3 rounded-2xl ${theme === 'light' ? 'bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25' : 'bg-gradient-to-br from-blue-400 to-indigo-500 shadow-lg shadow-blue-400/25'} transform hover:scale-105 transition-all duration-300`}>
-                  <div className={`absolute inset-0 rounded-2xl ${theme === 'light' ? 'bg-white/20' : 'bg-white/10'} backdrop-blur-sm`}></div>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 sm:h-6 sm:w-6 text-white relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  {/* Glow Effect */}
-                  <div className={`absolute inset-0 rounded-2xl blur-xl opacity-30 ${theme === 'light' ? 'bg-blue-500' : 'bg-blue-400'}`}></div>
+{/* View Modal */}
+<dialog
+  id="view_modal"
+  className={`modal ${showViewModal ? 'modal-open' : ''}`}
+>
+  <div className={`modal-box w-[95%] sm:w-11/12 max-w-5xl p-0 overflow-hidden ${theme === 'light' ? 'bg-white' : 'bg-slate-800'} shadow-lg mx-auto h-auto max-h-[90vh] flex flex-col`}>
+    {/* Modal Header */}
+    <div className={`${theme === 'light' ? 'bg-gradient-to-r from-white to-slate-50 border-slate-200/60' : 'bg-gradient-to-r from-slate-800 to-slate-700 border-slate-600/60'} px-4 sm:px-8 py-4 sm:py-6 border-b backdrop-blur-sm flex justify-between items-center relative overflow-hidden`}>
+      {/* Background Pattern */}
+      <div className={`absolute inset-0 opacity-5 ${theme === 'light' ? 'bg-blue-500' : 'bg-blue-400'}`} style={{
+        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='currentColor' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
+      }}></div>
+      
+      <div className="flex items-center gap-4 relative z-10">
+        {/* Icon Container */}
+        <div className={`relative p-3 rounded-2xl ${theme === 'light' ? 'bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25' : 'bg-gradient-to-br from-blue-400 to-indigo-500 shadow-lg shadow-blue-400/25'} transform hover:scale-105 transition-all duration-300`}>
+          <div className={`absolute inset-0 rounded-2xl ${theme === 'light' ? 'bg-white/20' : 'bg-white/10'} backdrop-blur-sm`}></div>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 sm:h-6 sm:w-6 text-white relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          {/* Glow Effect */}
+          <div className={`absolute inset-0 rounded-2xl blur-xl opacity-30 ${theme === 'light' ? 'bg-blue-500' : 'bg-blue-400'}`}></div>
+        </div>
+        
+        {/* Title Section */}
+        <div className="flex flex-col">
+          <h3 className={`font-bold text-lg sm:text-xl lg:text-2xl ${theme === 'light' ? 'text-slate-900' : 'text-white'} leading-tight`}>
+            Leave Type Details
+          </h3>
+          <p className={`text-sm ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'} mt-0.5 font-medium`}>
+            View comprehensive leave configuration
+          </p>
+        </div>
+      </div>
+      
+      {/* Close Button */}
+      <button
+        className={`relative group p-2 rounded-xl transition-all duration-300 hover:scale-110 ${theme === 'light' ? 'text-slate-400 hover:text-slate-600 hover:bg-white/80 hover:shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-600/80 hover:shadow-lg'} backdrop-blur-sm border ${theme === 'light' ? 'border-transparent hover:border-slate-200' : 'border-transparent hover:border-slate-500'}`}
+        onClick={() => setShowViewModal(false)}
+      >
+        <div className={`absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${theme === 'light' ? 'bg-gradient-to-r from-red-50 to-orange-50' : 'bg-gradient-to-r from-red-900/20 to-orange-900/20'}`}></div>
+        <svg className="w-5 h-5 relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    {/* Modal Content - Scrollable */}
+    <div className="p-3 sm:p-6 overflow-y-auto max-h-[calc(90vh-4rem)]">
+      <div className="space-y-4 sm:space-y-6">
+        {/* Basic Information */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+          <div className="space-y-1">
+            <label className="label p-0">
+              <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Leave Type Name</span>
+            </label>
+            <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base break-words`}>{selectedLeaveType?.leave_type_name}</p>
+          </div>
+          <div className="space-y-1">
+            <label className="label p-0">
+              <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Code</span>
+            </label>
+            <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base`}>{selectedLeaveType?.code}</p>
+          </div>
+{selectedLeaveType?.code !== 'UNPAID' && (
+  <div className="space-y-1">
+    <label className="label p-0">
+      <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Maximum Days</span>
+    </label>
+    <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base`}>
+      {selectedLeaveType?.effectiveMaxDays || selectedLeaveType?.max_days || 0} days / year
+      {selectedLeaveType?.effectiveMaxDays !== selectedLeaveType?.max_days && selectedLeaveType?.max_days && (
+        <span className={`text-xs ml-2 ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+          (calculated from allocation method)
+        </span>
+      )}
+    </p>
+  </div>
+)}
+          <div className="space-y-1">
+            <label className="label p-0">
+              <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Company</span>
+            </label>
+            <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base break-words`}>
+              {selectedLeaveType?.company_name || 'Global'}
+            </p>
+          </div>
+        </div>
+
+        {/* Description */}
+        <div className="space-y-1">
+          <label className="label p-0">
+            <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Description</span>
+          </label>
+          <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base break-words`}>
+            {selectedLeaveType?.description || 'No description provided'}
+          </p>
+        </div>
+
+        {/* Requirements */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 sm:gap-6">
+          <div className="space-y-1">
+            <label className="label p-0">
+              <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Requires Documentation</span>
+            </label>
+            <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base`}>
+              {selectedLeaveType?.requires_documentation ? 'Yes' : 'No'}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <label className="label p-0">
+              <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Status</span>
+            </label>
+            <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base`}>
+              {selectedLeaveType?.is_active ? 'Active' : 'Inactive'}
+            </p>
+          </div>
+        </div>
+        
+        {/* Allocation Configuration - Only show for non-UNPAID leave types */}
+        {selectedLeaveType?.code !== 'UNPAID' && (
+          <div className={`border ${theme === 'light' ? 'border-slate-300' : 'border-slate-600'} rounded-lg`}>
+            <h4 className={`text-sm sm:text-base font-semibold ${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} px-3 sm:px-4 py-2 rounded-t-lg`}>
+              Allocation Configuration
+            </h4>
+            <div className="p-3 sm:p-4 space-y-4">
+              {/* Allocation Method */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="label p-0">
+                    <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Allocation Method</span>
+                  </label>
+                  <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base`}>
+                    {selectedLeaveType?.allocation_primary === 'YEAR_OF_SERVICE' && 'Year of Service'}
+                    {selectedLeaveType?.allocation_primary === 'EARN' && 'Accrual'}
+                    {selectedLeaveType?.allocation_primary === 'IMMEDIATE' && 'Immediate'}
+                    {!selectedLeaveType?.allocation_primary && 'Not specified'}
+                  </p>
                 </div>
-                
-                {/* Title Section */}
-                <div className="flex flex-col">
-                  <h3 className={`font-bold text-lg sm:text-xl lg:text-2xl ${theme === 'light' ? 'text-slate-900' : 'text-white'} leading-tight`}>
-                    Leave Type Details
-                  </h3>
-                  <p className={`text-sm ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'} mt-0.5 font-medium`}>
-                    View comprehensive leave configuration
+
+                <div className="space-y-1">
+                  <label className="label p-0">
+                    <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Eligibility Scope</span>
+                  </label>
+                  <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base`}>
+                    {selectedLeaveType?.eligibility_scope === 'ALL_STAFF' && 'All Staff'}
+                    {selectedLeaveType?.eligibility_scope === 'UPON_CONFIRM' && 'Upon Confirmation'}
+                    {selectedLeaveType?.eligibility_scope === 'UNDER_PROBATION' && 'Under Probation'}
+                    {!selectedLeaveType?.eligibility_scope && 'All Staff'}
                   </p>
                 </div>
               </div>
-              
-              {/* Close Button */}
-              <button
-                className={`relative group p-2 rounded-xl transition-all duration-300 hover:scale-110 ${theme === 'light' ? 'text-slate-400 hover:text-slate-600 hover:bg-white/80 hover:shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-600/80 hover:shadow-lg'} backdrop-blur-sm border ${theme === 'light' ? 'border-transparent hover:border-slate-200' : 'border-transparent hover:border-slate-500'}`}
-                onClick={() => setShowViewModal(false)}
-              >
-                <div className={`absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${theme === 'light' ? 'bg-gradient-to-r from-red-50 to-orange-50' : 'bg-gradient-to-r from-red-900/20 to-orange-900/20'}`}></div>
-                <svg className="w-5 h-5 relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+
+              {/* Year of Service Allocation Details */}
+{/* Year of Service Allocation Details */}
+{selectedLeaveType?.allocation_primary === 'YEAR_OF_SERVICE' && selectedLeaveType?.yos_brackets && selectedLeaveType.yos_brackets.length > 0 && (
+  <div className="space-y-3">
+    <label className="label p-0">
+      <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Service-Based Entitlements</span>
+    </label>
+    <div className="space-y-2">
+      {selectedLeaveType.yos_brackets.map((bracket, index) => (
+        <div key={index} className={`p-3 rounded-lg ${theme === 'light' ? 'bg-slate-50 border border-slate-200' : 'bg-slate-700 border border-slate-600'}`}>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+            <div className="flex-1">
+              <span className={`text-sm font-medium ${theme === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>
+                {bracket.min_years} - {bracket.max_years ?? '∞'} years: 
+                <span className="ml-2 font-bold">{bracket.days} days</span>
+              </span>
             </div>
-
-            {/* Modal Content - Scrollable */}
-            <div className="p-3 sm:p-6 overflow-y-auto max-h-[calc(90vh-4rem)]">
-              <div className="space-y-4 sm:space-y-6">
-                {/* Basic Information */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-                  <div className="space-y-1">
-                    <label className="label p-0">
-                      <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Leave Type Name</span>
-                    </label>
-                    <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base break-words`}>{selectedLeaveType?.leave_type_name}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="label p-0">
-                      <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Code</span>
-                    </label>
-                    <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base`}>{selectedLeaveType?.code}</p>
-                  </div>
-                  {selectedLeaveType?.code !== 'UNPAID' && (
-                    <div className="space-y-1">
-                      <label className="label p-0">
-                        <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Maximum Days</span>
-                      </label>
-                      <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base`}>{selectedLeaveType?.max_days} days / year</p>
-                    </div>
-                  )}
-                  <div className="space-y-1">
-                    <label className="label p-0">
-                      <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Company</span>
-                    </label>
-                    <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base break-words`}>{selectedLeaveType?.company_name || 'Global'}</p>
-                  </div>
-                </div>
-
-                {/* Description */}
-                <div className="space-y-1">
-                  <label className="label p-0">
-                    <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Description</span>
-                  </label>
-                  <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base break-words`}>{selectedLeaveType?.description}</p>
-                </div>
-
-                {/* Requirements */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 sm:gap-6">
-                  <div className="space-y-1">
-                    <label className="label p-0">
-                      <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Requires Documentation</span>
-                    </label>
-                    <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base`}>{selectedLeaveType?.requires_documentation ? 'Yes' : 'No'}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="label p-0">
-                      <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Status</span>
-                    </label>
-                    <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base`}>{selectedLeaveType?.is_active ? 'Active' : 'Inactive'}</p>
-                  </div>
-                </div>
-                
-                {selectedLeaveType?.code !== 'UNPAID' && (
-                  <>
-                    {/* Allocation Methods */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-                      <div className="space-y-1">
-                        <label className="label p-0">
-                          <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Upfront Allocation</span>
-                        </label>
-                        <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base`}>{selectedLeaveType?.is_total ? 'Yes' : 'No'}</p>
-                        {selectedLeaveType?.is_total && (
-                          <p className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'} mt-1`}>
-                            Type: {selectedLeaveType?.total_type}
-                          </p>
-                        )}
-                      </div>
-                      <div className="space-y-1">
-                        <label className="label p-0">
-                          <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Gradual Accrual</span>
-                        </label>
-                        <p className={`${theme === 'light' ? 'text-gray-700' : 'text-slate-100'} text-sm sm:text-base`}>{selectedLeaveType?.is_divident ? 'Yes' : 'No'}</p>
-                      </div>
-                    </div>
-
-
-
-
-
-                    {/* Increment Section */}
-                    <div className={`border ${theme === 'light' ? 'border-slate-300' : 'border-slate-600'} rounded-lg`}>
-                      <h4 className={`text-sm sm:text-base font-semibold ${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} px-3 sm:px-4 py-2 rounded-t-lg`}>Increment Details</h4>
-                      <div className="p-3 sm:p-4 space-y-2 sm:space-y-3">
-                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
-                          <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'} font-medium`}>Allocate Days:</span>
-                          <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>{selectedLeaveType?.increment_days ?? 0} day{pluralize(selectedLeaveType?.increment_days)}</span>
-                        </div>
-                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
-                          <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'} font-medium`}>Maximum Allocate Days:</span>
-                          <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>{selectedLeaveType?.max_increment_days ?? 0} day{pluralize(selectedLeaveType?.max_increment_days)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className={`${theme === 'light' ? 'bg-slate-100 border-slate-300' : 'bg-slate-700 border-slate-600'} px-3 sm:px-6 py-2 sm:py-3 border-t flex justify-end items-center gap-3 mt-auto z-10`}>
-              {/* Delete Button - Only show if not UNPAID leave type */}
-              {selectedLeaveType?.code !== 'UNPAID' && (
-                <button
-                  className={`btn btn-sm sm:btn-md ${theme === 'light' ? 'bg-red-600 hover:bg-red-700' : 'bg-red-500 hover:bg-red-600'} text-white border-0 text-xs sm:text-sm flex items-center gap-2`}
-                  onClick={handleDeleteLeaveType}
-                >
-                  <BsTrash className="w-3 h-3" />
-                  Delete
-                </button>
+            <div className="text-xs text-slate-500">
+              {bracket.renewal_period && (
+                <span className={`px-2 py-1 rounded ${theme === 'light' ? 'bg-blue-100 text-blue-800' : 'bg-blue-900 text-blue-200'}`}>
+                  Renews: {bracket.renewal_period.toLowerCase()}
+                </span>
               )}
-              
-              {/* Close Button */}
-              <button
-                className={`btn btn-sm sm:btn-md ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0 text-xs sm:text-sm`}
-                onClick={() => setShowViewModal(false)}
-              >
-                Close
-              </button>
+              {/* FIX: Add null check for carryover_max_days */}
+              {(bracket.carryover_max_days ?? 0) > 0 && (
+                <span className={`ml-2 px-2 py-1 rounded ${theme === 'light' ? 'bg-green-100 text-green-800' : 'bg-green-900 text-green-200'}`}>
+                  Carryover: {bracket.carryover_max_days} days
+                </span>
+              )}
+              {bracket.expire_unused_at_period_end && (
+                <span className={`ml-2 px-2 py-1 rounded ${theme === 'light' ? 'bg-orange-100 text-orange-800' : 'bg-orange-900 text-orange-200'}`}>
+                  Use-it-or-lose-it
+                </span>
+              )}
             </div>
           </div>
-          <form method="dialog" className="modal-backdrop">
-            <button onClick={() => setShowViewModal(false)}>close</button>
-          </form>
-        </dialog>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+
+              {/* Accrual Allocation Details */}
+              {selectedLeaveType?.allocation_primary === 'EARN' && (
+                <div className="space-y-3">
+                  <label className="label p-0">
+                    <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Accrual Details</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <span className={`text-xs font-medium ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>Accrual Frequency</span>
+                      <p className={`text-sm ${theme === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>
+                        {selectedLeaveType?.accrual_frequency ? selectedLeaveType.accrual_frequency.toLowerCase() : 'Not specified'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className={`text-xs font-medium ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>Accrual Rate</span>
+                      <p className={`text-sm ${theme === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>
+                        {selectedLeaveType?.accrual_rate || 0} days per {selectedLeaveType?.accrual_frequency ? selectedLeaveType.accrual_frequency.toLowerCase().slice(0, -2) : 'period'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className={`text-xs font-medium ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>Prorate Join Month</span>
+                      <p className={`text-sm ${theme === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>
+                        {selectedLeaveType?.earn_prorate_join_month ? 'Yes' : 'No'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Renewal & Carryover for Accrual */}
+{/* Renewal & Carryover for Accrual */}
+{(selectedLeaveType?.renewal_period || selectedLeaveType?.carryover_max_days) && (
+  <div className="pt-2 border-t border-slate-200 dark:border-slate-600">
+    <label className="label p-0">
+      <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Renewal & Carryover</span>
+    </label>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+      {selectedLeaveType?.renewal_period && (
+        <div className="space-y-1">
+          <span className={`text-xs font-medium ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>Renewal Period</span>
+          <p className={`text-sm ${theme === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>
+            {selectedLeaveType.renewal_period.toLowerCase()}
+          </p>
+        </div>
+      )}
+      {/* FIX: Add null check for carryover_max_days */}
+      {(selectedLeaveType?.carryover_max_days ?? 0) > 0 && (
+        <div className="space-y-1">
+          <span className={`text-xs font-medium ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>Max Carryover</span>
+          <p className={`text-sm ${theme === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>
+            {selectedLeaveType.carryover_max_days} days
+          </p>
+        </div>
+      )}
+      {selectedLeaveType?.expire_unused_at_period_end && (
+        <div className="space-y-1">
+          <span className={`text-xs font-medium ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>Carryover Policy</span>
+          <p className={`text-sm ${theme === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>
+            Use-it-or-lose-it
+          </p>
+        </div>
+      )}
+    </div>
+  </div>
+)}
+                </div>
+              )}
+
+              {/* Legacy Allocation Display (for backward compatibility) */}
+              {!selectedLeaveType?.allocation_primary && (
+                <div className="space-y-3">
+                  <label className="label p-0">
+                    <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Legacy Allocation</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <span className={`text-xs font-medium ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>Upfront Allocation</span>
+                      <p className={`text-sm ${theme === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>
+                        {selectedLeaveType?.is_total ? 'Yes' : 'No'}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className={`text-xs font-medium ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>Gradual Accrual</span>
+                      <p className={`text-sm ${theme === 'light' ? 'text-slate-800' : 'text-slate-200'}`}>
+                        {selectedLeaveType?.is_divident ? 'Yes' : 'No'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+
+    {/* Modal Footer */}
+    <div className={`${theme === 'light' ? 'bg-slate-100 border-slate-300' : 'bg-slate-700 border-slate-600'} px-3 sm:px-6 py-2 sm:py-3 border-t flex justify-end items-center gap-3 mt-auto z-10`}>
+      {/* Delete Button - Only show if not UNPAID leave type */}
+      {selectedLeaveType?.code !== 'UNPAID' && (
+        <button
+          className={`btn btn-sm sm:btn-md ${theme === 'light' ? 'bg-red-600 hover:bg-red-700' : 'bg-red-500 hover:bg-red-600'} text-white border-0 text-xs sm:text-sm flex items-center gap-2`}
+          onClick={handleDeleteLeaveType}
+        >
+          <BsTrash className="w-3 h-3" />
+          Delete
+        </button>
+      )}
+      
+      {/* Edit Button */}
+      {selectedLeaveType?.code !== 'UNPAID' && (
+        <button
+          className={`btn btn-sm sm:btn-md ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0 text-xs sm:text-sm flex items-center gap-2`}
+          onClick={() => {
+            setShowViewModal(false);
+            handleEditLeaveType(selectedLeaveType!);
+          }}
+        >
+          <BsPencil className="w-3 h-3" />
+          Edit
+        </button>
+      )}
+      
+      {/* Close Button */}
+      <button
+        className={`btn btn-sm sm:btn-md ${theme === 'light' ? 'bg-slate-600 hover:bg-slate-700' : 'bg-slate-500 hover:bg-slate-600'} text-white border-0 text-xs sm:text-sm`}
+        onClick={() => setShowViewModal(false)}
+      >
+        Close
+      </button>
+    </div>
+  </div>
+  <form method="dialog" className="modal-backdrop">
+    <button onClick={() => setShowViewModal(false)}>close</button>
+  </form>
+</dialog>
 
 {/* Edit Modal */}
 <dialog id="edit_modal" className={`modal ${showEditModal ? 'modal-open' : ''}`}>
@@ -1163,6 +1554,7 @@ const handleAddLeaveType = () => {
       <div className={`absolute inset-0 opacity-5 ${theme === 'light' ? 'bg-emerald-500' : 'bg-emerald-400'}`} style={{
         backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='currentColor' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
       }} />
+      
       <div className="flex items-center gap-4 relative z-10">
         <div className={`relative p-3 rounded-2xl ${theme === 'light' ? 'bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/25' : 'bg-gradient-to-br from-emerald-400 to-teal-500 shadow-lg shadow-emerald-400/25'} transform hover:scale-105 transition-all duration-300`}>
           <div className={`absolute inset-0 rounded-2xl ${theme === 'light' ? 'bg-white/20' : 'bg-white/10'} backdrop-blur-sm`} />
@@ -1171,6 +1563,7 @@ const handleAddLeaveType = () => {
           </svg>
           <div className={`absolute inset-0 rounded-2xl blur-xl opacity-30 ${theme === 'light' ? 'bg-emerald-500' : 'bg-emerald-400'}`} />
         </div>
+        
         <div className="flex flex-col">
           <h3 className={`font-bold text-lg sm:text-xl lg:text-2xl ${theme === 'light' ? 'text-slate-900' : 'text-white'} leading-tight`}>
             Edit Leave Type
@@ -1199,27 +1592,28 @@ const handleAddLeaveType = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
           <div>
             <label className="label p-0 pb-1">
-              <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Leave Type Name</span>
+              <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                Leave Type Name <span className="text-red-500">*</span>
+              </span>
             </label>
             <input
               type="text"
-              id="leave_type_name"
               name="leave_type_name"
               value={editForm.leave_type_name ?? ''}
               onChange={handleInputChange}
-              className={`input input-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-gray-50 border-slate-300 text-slate-900' : 'bg-slate-600 border-slate-500 text-slate-100'}`}
+              className={`input input-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
               required
-              readOnly
             />
           </div>
 
           <div>
             <label className="label p-0 pb-1">
-              <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Code</span>
+              <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                Code <span className="text-red-500">*</span>
+              </span>
             </label>
             <input
               type="text"
-              id="code"
               name="code"
               value={editForm.code ?? ''}
               onChange={handleInputChange}
@@ -1232,31 +1626,16 @@ const handleAddLeaveType = () => {
             />
           </div>
 
-          {editForm.code !== 'UNPAID' && (
-            <div>
-              <label className="label p-0 pb-1">
-                <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Maximum Days</span>
-              </label>
-              <input
-                type="number"
-                id="max_days"
-                name="max_days"
-                value={editForm.max_days ?? 0}
-                onChange={handleInputChange}
-                className={`input input-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                required
-              />
-            </div>
-          )}
-
+          {/* Company Selection */}
           <div>
             <label className="label p-0 pb-1">
-              <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Company</span>
+              <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                Company
+              </span>
             </label>
             <input
               type="text"
-              id="company_name"
-              value={selectedLeaveType?.company_name ?? ''}
+              value={selectedLeaveType?.company_name || 'Global'}
               className={`input input-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-gray-50 border-slate-300 text-slate-900' : 'bg-slate-600 border-slate-500 text-slate-100'}`}
               readOnly
             />
@@ -1266,10 +1645,11 @@ const handleAddLeaveType = () => {
         {/* Description */}
         <div>
           <label className="label p-0 pb-1">
-            <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Description</span>
+            <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+              Description <span className="text-red-500">*</span>
+            </span>
           </label>
           <textarea
-            id="description"
             name="description"
             value={editForm.description ?? ''}
             onChange={handleInputChange}
@@ -1281,27 +1661,32 @@ const handleAddLeaveType = () => {
 
         {/* Requirements */}
         <div className="space-y-3 sm:space-y-4">
-          <h4 className={`text-sm sm:text-base font-semibold ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Requirements</h4>
-          <div className="space-y-3 sm:grid sm:grid-cols-2 lg:grid-cols-2 sm:gap-4 sm:space-y-0">
+          <h4 className={`text-sm sm:text-base font-semibold ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+            Requirements
+          </h4>
+          
+          <div className="space-y-3 sm:grid sm:grid-cols-2 sm:gap-4 sm:space-y-0">
             <div className={`flex items-center justify-between p-3 rounded-lg ${theme === 'light' ? 'bg-slate-50' : 'bg-slate-700'}`}>
-              <span className={`text-xs sm:text-sm font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Requires Documentation</span>
+              <span className={`text-xs sm:text-sm font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                Requires Documentation
+              </span>
               <input
                 type="checkbox"
-                id="requires_documentation"
                 name="requires_documentation"
-                checked={!!editForm.requires_documentation}//checked={editForm.requires_documentation ?? false}
+                checked={!!editForm.requires_documentation}
                 onChange={handleInputChange}
                 className="checkbox checkbox-sm sm:checkbox-md checkbox-primary"
               />
             </div>
 
             <div className={`flex items-center justify-between p-3 rounded-lg ${theme === 'light' ? 'bg-slate-50' : 'bg-slate-700'}`}>
-              <span className={`text-xs sm:text-sm font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Active</span>
+              <span className={`text-xs sm:text-sm font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                Active
+              </span>
               <input
                 type="checkbox"
-                id="is_active"
                 name="is_active"
-                checked={!!editForm.is_active}//checked={editForm.is_active ?? false}
+                checked={!!editForm.is_active}
                 onChange={handleInputChange}
                 className="checkbox checkbox-sm sm:checkbox-md checkbox-primary"
               />
@@ -1309,7 +1694,7 @@ const handleAddLeaveType = () => {
           </div>
         </div>
 
-        {/* ===== NEW: Allocation & Eligibility (EDIT) ===== */}
+        {/* ===== Allocation & Eligibility ===== */}
         {editForm.code !== 'UNPAID' && (
           <div className="space-y-3 sm:space-y-4">
             <h4 className={`text-sm sm:text-base font-semibold ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
@@ -1319,40 +1704,180 @@ const handleAddLeaveType = () => {
             {/* Primary Allocation */}
             <div className={`p-3 rounded-lg border ${theme === 'light' ? 'border-slate-200 bg-slate-50' : 'border-slate-600 bg-slate-700'}`}>
               <label className={`block text-xs sm:text-sm font-medium mb-2 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                Primary Allocation
+                Allocation Method
               </label>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {[
-                  { val: 'IMMEDIATE', label: 'Immediate' },
-                  { val: 'EARN', label: 'Earn (accrual)' },
-                  { val: 'YEAR_OF_SERVICE', label: 'Year of service' },
-                ].map(opt => (
-                  <label key={opt.val} className={`flex items-center gap-2 p-2 rounded-md cursor-pointer ${theme === 'light' ? 'bg-white border border-slate-200' : 'bg-slate-600 border border-slate-500'}`}>
+                  { val: 'YEAR_OF_SERVICE', label: 'Year of Service', description: 'Full allocation based on service years' },
+                  { val: 'EARN', label: 'Accrual', description: 'Gradual earning over time' },
+                ].map((opt) => (
+                  <label key={opt.val} className={`flex items-start gap-2 p-3 rounded-md cursor-pointer ${theme === 'light' ? 'bg-white border border-slate-200' : 'bg-slate-600 border border-slate-500'} ${(editForm.allocation_primary ?? 'YEAR_OF_SERVICE') === opt.val ? 'ring-2 ring-primary' : ''}`}>
                     <input
                       type="radio"
-                      name="allocation_primary_edit"
+                      name="allocation_primary"
                       value={opt.val}
-                      checked={(editForm.allocation_primary ?? 'IMMEDIATE') === opt.val}
+                      checked={(editForm.allocation_primary ?? 'YEAR_OF_SERVICE') === opt.val}
                       onChange={(e) => setEdit({ allocation_primary: e.target.value as AllocationPrimary })}
-                      className="radio radio-primary radio-sm"
+                      className="radio radio-primary radio-sm mt-0.5"
                     />
-                    <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>{opt.label}</span>
+                    <div className="flex-1">
+                      <span className={`text-xs sm:text-sm font-medium block ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>
+                        {opt.label}
+                      </span>
+                      <span className={`text-xs ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'} mt-0.5 block`}>
+                        {opt.description}
+                      </span>
+                    </div>
                   </label>
                 ))}
               </div>
 
-              {/* If EARN (accrual) */}
+              {/* Year of Service Configuration */}
+              {editForm.allocation_primary === 'YEAR_OF_SERVICE' && (
+                <div className="mt-4 space-y-4">
+                  {/* Service Brackets */}
+                  <div>
+                    <label className={`block text-xs sm:text-sm font-medium mb-2 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                      Service-Based Entitlement
+                    </label>
+                    
+                    <div className="space-y-3">
+                      {(editForm.yos_brackets ?? []).map((row, idx) => (
+                        <div key={idx} className={`p-4 rounded-lg border ${theme === 'light' ? 'bg-white border-slate-200' : 'bg-slate-600 border-slate-500'}`}>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                            <div>
+                              <label className={`block text-xs font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                                Min Years
+                              </label>
+                              <input
+                                type="number"
+                                min={0}
+                                value={row.min_years}
+                                onChange={(e) => updateEditYosBracket(idx, 'min_years', Number(e.target.value))}
+                                className={`input input-bordered input-sm w-full ${theme === 'light' ? 'bg-white' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+                              />
+                            </div>
+                            <div>
+                              <label className={`block text-xs font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                                Max Years (blank = ∞)
+                              </label>
+                              <input
+                                type="number"
+                                min={0}
+                                placeholder="∞"
+                                value={row.max_years ?? ''}
+                                onChange={(e) => updateEditYosBracket(idx, 'max_years', e.target.value ? Number(e.target.value) : null)}
+                                className={`input input-bordered input-sm w-full ${theme === 'light' ? 'bg-white' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+                              />
+                            </div>
+                            <div>
+                              <label className={`block text-xs font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                                Days Allocation
+                              </label>
+                              <input
+                                type="number"
+                                min={0}
+                                value={row.days}
+                                onChange={(e) => updateEditYosBracket(idx, 'days', Number(e.target.value))}
+                                className={`input input-bordered input-sm w-full ${theme === 'light' ? 'bg-white' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Renewal & Carryover Settings for this bracket */}
+                          <div className={`p-3 rounded-lg ${theme === 'light' ? 'bg-slate-50 border border-slate-200' : 'bg-slate-700 border border-slate-600'}`}>
+                            <h6 className={`text-xs font-medium mb-2 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                              Renewal & Carryover Settings for this bracket
+                            </h6>
+                            
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <div>
+                                <label className={`block text-xs font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                                  Renewal Period
+                                </label>
+                                <select
+                                  value={row.renewal_period ?? 'YEARLY'}
+                                  onChange={(e) => updateEditYosBracket(idx, 'renewal_period', e.target.value)}
+                                  className={`select select-bordered select-sm w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+                                >
+                                  <option value="YEARLY">Yearly</option>
+                                  <option value="QUARTERLY">Quarterly</option>
+                                  <option value="MONTHLY">Monthly</option>
+                                  <option value="NONE">No automatic renewal</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className={`block text-xs font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                                  Max Carryover Days
+                                </label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={row.carryover_max_days ?? 0}
+                                  onChange={(e) => updateEditYosBracket(idx, 'carryover_max_days', Number(e.target.value))}
+                                  className={`input input-bordered input-sm w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+                                  placeholder="Days that can carry over"
+                                  disabled={!!row.expire_unused_at_period_end}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="mt-2">
+                              <label className={`flex items-center gap-2 p-1 rounded-md ${theme === 'light' ? 'bg-white' : 'bg-slate-600'}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={!!row.expire_unused_at_period_end}
+                                  onChange={(e) => {
+                                    updateEditYosBracket(idx, 'expire_unused_at_period_end', e.target.checked);
+                                    if (e.target.checked) {
+                                      updateEditYosBracket(idx, 'carryover_max_days', 0);
+                                    }
+                                  }}
+                                  className="checkbox checkbox-primary checkbox-xs"
+                                />
+                                <span className={`text-xs ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>
+                                  Use-it-or-lose-it (no carryover allowed)
+                                </span>
+                              </label>
+                            </div>
+                          </div>
+
+                          <div className="flex justify-end mt-2">
+                            <button
+                              type="button"
+                              onClick={() => removeEditYosRow(idx)}
+                              className="btn btn-xs btn-ghost text-red-600"
+                            >
+                              Remove Bracket
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <button
+                      type="button"
+                      onClick={addEditYosRow}
+                      className={`btn btn-sm btn-outline mt-2 ${theme === 'light' ? '' : 'btn-ghost'}`}
+                    >
+                      Add Service Bracket
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Earn (Accrual) Configuration */}
               {editForm.allocation_primary === 'EARN' && (
-                <div className="mt-3 space-y-4">
-                  {/* Frequency / Rate / Prorate */}
+                <div className="mt-4 space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className={`block text-xs sm:text-sm font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                        Accrual frequency
+                        Accrual Frequency
                       </label>
                       <select
-                        name="accrual_frequency_edit"
+                        name="accrual_frequency"
                         value={editForm.accrual_frequency ?? 'MONTHLY'}
                         onChange={(e) => setEdit({ accrual_frequency: e.target.value as AccrualFrequency })}
                         className={`select select-bordered w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
@@ -1365,17 +1890,14 @@ const handleAddLeaveType = () => {
 
                     <div>
                       <label className={`block text-xs sm:text-sm font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                        {editForm.accrual_frequency === 'QUARTERLY'
-                          ? 'Days earned per quarter'
-                          : editForm.accrual_frequency === 'YEARLY'
-                          ? 'Days earned per year'
-                          : 'Days earned per month'}
+                        {editForm.accrual_frequency === 'QUARTERLY' ? 'Days per Quarter' :
+                         editForm.accrual_frequency === 'YEARLY' ? 'Days per Year' : 'Days per Month'}
                       </label>
                       <input
                         type="number"
                         step="0.1"
                         min={0}
-                        name="accrual_rate_edit"
+                        name="accrual_rate"
                         value={editForm.accrual_rate ?? 0}
                         onChange={(e) => setEditNumber('accrual_rate', Number(e.target.value))}
                         className={`input input-bordered w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
@@ -1386,234 +1908,112 @@ const handleAddLeaveType = () => {
                       <label className={`flex items-center gap-2 p-2 rounded-md w-full ${theme === 'light' ? 'bg-slate-100' : 'bg-slate-600'}`}>
                         <input
                           type="checkbox"
-                          name="earn_prorate_join_month_edit"
+                          name="earn_prorate_join_month"
                           checked={!!editForm.earn_prorate_join_month}
                           onChange={(e) => setEdit({ earn_prorate_join_month: e.target.checked })}
                           className="checkbox checkbox-primary checkbox-sm"
                         />
                         <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>
-                          Prorate join {(editForm.accrual_frequency ?? 'MONTHLY').toLowerCase()}
+                          Prorate for new joiners
                         </span>
                       </label>
                     </div>
                   </div>
 
-                  {/* Carryover & Reset */}
+                  {/* Renewal & Carryover Settings for Earn Type */}
                   <div className={`p-3 rounded-lg ${theme === 'light' ? 'bg-slate-50 border border-slate-200' : 'bg-slate-700 border border-slate-600'}`}>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      <div className="flex items-end">
-                        <label className={`flex items-center gap-2 p-2 rounded-md w-full ${theme === 'light' ? 'bg-white' : 'bg-slate-600'}`}>
-                          <input
-                            type="checkbox"
-                            name="expire_unused_at_period_end_edit"
-                            checked={!!editForm.expire_unused_at_period_end}
-                            onChange={(e) => setEdit({ expire_unused_at_period_end: e.target.checked })}
-                            className="checkbox checkbox-primary checkbox-sm"
-                          />
-                          <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>
-                            Use-it-or-lose-it at end of {(editForm.accrual_frequency ?? 'MONTHLY').toLowerCase()}
-                          </span>
+                    <h5 className={`text-xs sm:text-sm font-medium mb-2 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                      Renewal & Carryover Settings
+                    </h5>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className={`block text-xs sm:text-sm font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                          Renewal Period
                         </label>
+                        <select
+                          value={editForm.renewal_period ?? 'YEARLY'}
+                          onChange={(e) => setEdit({ renewal_period: e.target.value as RenewalPeriod })}
+                          className={`select select-bordered w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+                        >
+                          <option value="YEARLY">Yearly</option>
+                          <option value="QUARTERLY">Quarterly</option>
+                          <option value="MONTHLY">Monthly</option>
+                          <option value="NONE">No automatic renewal</option>
+                        </select>
                       </div>
 
                       <div>
                         <label className={`block text-xs sm:text-sm font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                          Renewal period (reset cycle)
+                          Max Carryover Days
                         </label>
-                        <select
-                          name="renewal_period_edit"
-                          value={editForm.renewal_period ?? 'YEARLY'}
-                          onChange={(e) => setEdit({ renewal_period: e.target.value as RenewalPeriod })}
-                          className={`select select-bordered w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+                        <input
+                          type="number"
+                          min={0}
+                          value={editForm.carryover_max_days ?? 0}
+                          onChange={(e) => setEditNumber('carryover_max_days', Number(e.target.value))}
+                          className={`input input-bordered w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+                          placeholder="Days that can carry over"
                           disabled={!!editForm.expire_unused_at_period_end}
-                        >
-                          <option value="YEARLY">Yearly</option>
-                          <option value="QUARTERLY">Quarterly</option>
-                          <option value="NONE">No renewal/reset</option>
-                        </select>
+                        />
                       </div>
-
-                      {!editForm.expire_unused_at_period_end && editForm.renewal_period !== 'NONE' && (
-                        <div>
-                          <label className={`block text-xs sm:text-sm font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                            Carryover max days
-                          </label>
-                          <input
-                            type="number"
-                            min={0}
-                            name="carryover_max_days_edit"
-                            value={editForm.carryover_max_days ?? 0}
-                            onChange={(e) => setEditNumber('carryover_max_days', Number(e.target.value))}
-                            className={`input input-bordered w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                          />
-                        </div>
-                      )}
                     </div>
-                  </div>
-                </div>
-              )}
 
-              {/* YEAR_OF_SERVICE brackets */}
-              {editForm.allocation_primary === 'YEAR_OF_SERVICE' && (
-                <div className="mt-3">
-                  <label className={`block text-xs sm:text-sm font-medium mb-2 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                    Year-of-Service Brackets
-                  </label>
-
-                  <div className="overflow-auto rounded-md border border-slate-200 dark:border-slate-600">
-                    <table className="table table-sm">
-                      <thead>
-                        <tr>
-                          <th className="text-xs">Min years</th>
-                          <th className="text-xs">Max years (blank = ∞)</th>
-                          <th className="text-xs">Days</th>
-                          <th></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(editForm.yos_brackets ?? []).map((row: YearOfServiceBracket, idx: number) => (
-                          <tr key={idx}>
-                            <td>
-                              <input
-                                type="number"
-                                min={0}
-                                value={row.min_years ?? 0}
-                                onChange={(e) => updateEditYosBracket(idx, 'min_years', Number(e.target.value))}
-                                className={`input input-bordered input-xs w-24 ${theme === 'light' ? 'bg-white' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                              />
-                            </td>
-                            <td>
-                              <input
-                                type="number"
-                                min={0}
-                                placeholder="∞"
-                                value={row.max_years ?? ''}
-                                onChange={(e) => updateEditYosBracket(idx, 'max_years', e.target.value === '' ? null : Number(e.target.value))}
-                                className={`input input-bordered input-xs w-24 ${theme === 'light' ? 'bg-white' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                              />
-                            </td>
-                            <td>
-                              <input
-                                type="number"
-                                min={0}
-                                value={row.days ?? 0}
-                                onChange={(e) => updateEditYosBracket(idx, 'days', Number(e.target.value))}
-                                className={`input input-bordered input-xs w-24 ${theme === 'light' ? 'bg-white' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                              />
-                            </td>
-                            <td>
-                              <button type="button" onClick={() => removeEditYosRow(idx)} className="btn btn-xs btn-ghost text-red-600">
-                                Remove
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="mt-2">
-                    <button type="button" onClick={addEditYosRow} className={`btn btn-sm ${theme === 'light' ? 'btn-outline' : 'btn-outline'}`}>
-                      Add bracket
-                    </button>
+                    <div className="mt-3">
+                      <label className={`flex items-center gap-2 p-2 rounded-md ${theme === 'light' ? 'bg-white' : 'bg-slate-600'}`}>
+                        <input
+                          type="checkbox"
+                          checked={!!editForm.expire_unused_at_period_end}
+                          onChange={(e) => setEdit({ 
+                            expire_unused_at_period_end: e.target.checked,
+                            carryover_max_days: e.target.checked ? 0 : editForm.carryover_max_days
+                          })}
+                          className="checkbox checkbox-primary checkbox-sm"
+                        />
+                        <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>
+                          Use-it-or-lose-it (no carryover allowed)
+                        </span>
+                      </label>
+                    </div>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Eligibility */}
+            {/* Eligibility Scope */}
             <div className={`p-3 rounded-lg border ${theme === 'light' ? 'border-slate-200 bg-slate-50' : 'border-slate-600 bg-slate-700'}`}>
               <label className={`block text-xs sm:text-sm font-medium mb-2 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
                 Eligibility Scope
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {[
-                  { val: 'UPON_CONFIRM', label: 'Upon confirmation' },
-                  { val: 'UNDER_PROBATION', label: 'Under probation' },
-                  { val: 'ALL_STAFF', label: 'All staff' },
-                ].map(opt => (
-                  <label key={opt.val} className={`flex items-center gap-2 p-2 rounded-md cursor-pointer ${theme === 'light' ? 'bg-white border border-slate-200' : 'bg-slate-600 border border-slate-500'}`}>
+                  { val: 'ALL_STAFF', label: 'All Staff', description: 'Available to all employees' },
+                  { val: 'UPON_CONFIRM', label: 'Upon Confirmation', description: 'After probation period' },
+                  { val: 'UNDER_PROBATION', label: 'Under Probation', description: 'During probation only' },
+                ].map((opt) => (
+                  <label key={opt.val} className={`flex items-start gap-2 p-3 rounded-md cursor-pointer ${theme === 'light' ? 'bg-white border border-slate-200' : 'bg-slate-600 border border-slate-500'} ${(editForm.eligibility_scope ?? 'ALL_STAFF') === opt.val ? 'ring-2 ring-primary' : ''}`}>
                     <input
                       type="radio"
-                      name="eligibility_scope_edit"
+                      name="eligibility_scope"
                       value={opt.val}
                       checked={(editForm.eligibility_scope ?? 'ALL_STAFF') === opt.val}
                       onChange={(e) => setEdit({ eligibility_scope: e.target.value as EligibilityScope })}
-                      className="radio radio-primary radio-sm"
+                      className="radio radio-primary radio-sm mt-0.5"
                     />
-                    <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>{opt.label}</span>
+                    <div className="flex-1">
+                      <span className={`text-xs sm:text-sm font-medium block ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>
+                        {opt.label}
+                      </span>
+                      <span className={`text-xs ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'} mt-0.5 block`}>
+                        {opt.description}
+                      </span>
+                    </div>
                   </label>
                 ))}
               </div>
             </div>
           </div>
         )}
-
-        {/* Carry Forward */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-          <div>
-            <label className="label p-0 pb-1">
-              <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Carry Forward Days</span>
-            </label>
-            <input
-              type="number"
-              id="carry_forward_days"
-              name="carry_forward_days"
-              value={editForm.carry_forward_days ?? 0}
-              onChange={handleInputChange}
-              className={`input input-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-              required
-            />
-          </div>
-        </div>
-
-        {/* Increment Section */}
-        <div className={`border ${theme === 'light' ? 'border-slate-300' : 'border-slate-600'} rounded-lg`}>
-          <h4 className={`text-sm sm:text-base font-semibold ${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} px-3 sm:px-4 py-2 rounded-t-lg`}>Increment Details</h4>
-          <div className="p-3 sm:p-4 space-y-3 sm:space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-              <div>
-                <label className={`block text-xs sm:text-sm font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'} mb-2`}>
-                  Allocate Days
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    id="increment_days"
-                    name="increment_days"
-                    value={editForm.increment_days ?? 0}
-                    onChange={handleInputChange}
-                    className={`input input-bordered w-20 sm:w-24 text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                    required
-                  />
-                  <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                    day{pluralize(editForm?.increment_days)}
-                  </span>
-                </div>
-              </div>
-
-              <div>
-                <label className={`block text-xs sm:text-sm font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'} mb-2`}>
-                  Maximum Allocate Days
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    id="max_increment_days"
-                    name="max_increment_days"
-                    value={editForm.max_increment_days ?? 0}
-                    onChange={handleInputChange}
-                    className={`input input-bordered w-20 sm:w-24 text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                    required
-                  />
-                  <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                    day{pluralize(editForm?.max_increment_days)} max
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </form>
     </div>
 
@@ -1643,623 +2043,505 @@ const handleAddLeaveType = () => {
 </dialog>
 
 
+{/* Add Modal */}
+<dialog id="add_modal" className={`modal ${showAddModal ? 'modal-open' : ''}`}>
+  <div className={`modal-box w-[95%] sm:w-11/12 max-w-5xl p-0 overflow-hidden ${theme === 'light' ? 'bg-white' : 'bg-slate-800'} shadow-lg mx-auto h-auto max-h-[90vh] flex flex-col`}>
+    {/* Modal Header */}
+    <div className={`${theme === 'light' ? 'bg-gradient-to-r from-white to-slate-50 border-slate-200/60' : 'bg-gradient-to-r from-slate-800 to-slate-700 border-slate-600/60'} px-4 sm:px-8 py-4 sm:py-6 border-b backdrop-blur-sm flex justify-between items-center relative overflow-hidden`}>
+      <div className={`absolute inset-0 opacity-5 ${theme === 'light' ? 'bg-green-500' : 'bg-green-400'}`} style={{
+        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='currentColor' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
+      }} />
+      
+      <div className="flex items-center gap-4 relative z-10">
+        <div className={`relative p-3 rounded-2xl ${theme === 'light' ? 'bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/25' : 'bg-gradient-to-br from-green-400 to-emerald-500 shadow-lg shadow-green-400/25'} transform hover:scale-105 transition-all duration-300`}>
+          <div className={`absolute inset-0 rounded-2xl ${theme === 'light' ? 'bg-white/20' : 'bg-white/10'} backdrop-blur-sm`} />
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 sm:h-6 sm:w-6 text-white relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          <div className={`absolute inset-0 rounded-2xl blur-xl opacity-30 ${theme === 'light' ? 'bg-green-500' : 'bg-green-400'}`} />
+        </div>
+        
+        <div className="flex flex-col">
+          <h3 className={`font-bold text-lg sm:text-xl lg:text-2xl ${theme === 'light' ? 'text-slate-900' : 'text-white'} leading-tight`}>
+            Add New Leave Type
+          </h3>
+          <p className={`text-sm ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'} mt-0.5 font-medium`}>
+            Create a new leave configuration
+          </p>
+        </div>
+      </div>
+      
+      <button
+        className={`relative group p-2 rounded-xl transition-all duration-300 hover:scale-110 ${theme === 'light' ? 'text-slate-400 hover:text-slate-600 hover:bg-white/80 hover:shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-600/80 hover:shadow-lg'} backdrop-blur-sm border ${theme === 'light' ? 'border-transparent hover:border-slate-200' : 'border-transparent hover:border-slate-500'}`}
+        onClick={() => setShowAddModal(false)}
+      >
+        <div className={`absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${theme === 'light' ? 'bg-gradient-to-r from-red-50 to-orange-50' : 'bg-gradient-to-r from-red-900/20 to-orange-900/20'}`} />
+        <svg className="w-5 h-5 relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
 
-        {/* Add Modal */}
-        <dialog id="add_modal" className={`modal ${showAddModal ? 'modal-open' : ''}`}>
-          <div className={`modal-box w-[95%] sm:w-11/12 max-w-5xl p-0 overflow-hidden ${theme === 'light' ? 'bg-white' : 'bg-slate-800'} shadow-lg mx-auto h-auto max-h-[90vh] flex flex-col`}>
-            {/* Modal Header */}
-            <div className={`${theme === 'light' ? 'bg-gradient-to-r from-white to-slate-50 border-slate-200/60' : 'bg-gradient-to-r from-slate-800 to-slate-700 border-slate-600/60'} px-4 sm:px-8 py-4 sm:py-6 border-b backdrop-blur-sm flex justify-between items-center relative overflow-hidden`}>
-              {/* Background Pattern */}
-              <div className={`absolute inset-0 opacity-5 ${theme === 'light' ? 'bg-green-500' : 'bg-green-400'}`} style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='currentColor' fill-opacity='0.1'%3E%3Ccircle cx='30' cy='30' r='1'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
-              }}></div>
-              
-              <div className="flex items-center gap-4 relative z-10">
-                {/* Icon Container */}
-                <div className={`relative p-3 rounded-2xl ${theme === 'light' ? 'bg-gradient-to-br from-green-500 to-emerald-600 shadow-lg shadow-green-500/25' : 'bg-gradient-to-br from-green-400 to-emerald-500 shadow-lg shadow-green-400/25'} transform hover:scale-105 transition-all duration-300`}>
-                  <div className={`absolute inset-0 rounded-2xl ${theme === 'light' ? 'bg-white/20' : 'bg-white/10'} backdrop-blur-sm`}></div>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 sm:h-6 sm:w-6 text-white relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  {/* Glow Effect */}
-                  <div className={`absolute inset-0 rounded-2xl blur-xl opacity-30 ${theme === 'light' ? 'bg-green-500' : 'bg-green-400'}`}></div>
-                </div>
-                
-                {/* Title Section */}
-                <div className="flex flex-col">
-                  <h3 className={`font-bold text-lg sm:text-xl lg:text-2xl ${theme === 'light' ? 'text-slate-900' : 'text-white'} leading-tight`}>
-                    Add New Leave Type
-                  </h3>
-                  <p className={`text-sm ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'} mt-0.5 font-medium`}>
-                    Create a new leave configuration
-                  </p>
-                </div>
-              </div>
-              
-              {/* Close Button */}
-              <button
-                className={`relative group p-2 rounded-xl transition-all duration-300 hover:scale-110 ${theme === 'light' ? 'text-slate-400 hover:text-slate-600 hover:bg-white/80 hover:shadow-lg' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-600/80 hover:shadow-lg'} backdrop-blur-sm border ${theme === 'light' ? 'border-transparent hover:border-slate-200' : 'border-transparent hover:border-slate-500'}`}
-                onClick={() => setShowAddModal(false)}
-              >
-                <div className={`absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 ${theme === 'light' ? 'bg-gradient-to-r from-red-50 to-orange-50' : 'bg-gradient-to-r from-red-900/20 to-orange-900/20'}`}></div>
-                <svg className="w-5 h-5 relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+    {/* Modal Content - Scrollable */}
+    <div className="p-3 sm:p-6 overflow-y-auto max-h-[calc(90vh-4rem)]">
+      <form onSubmit={handleAddSubmit} className="space-y-4 sm:space-y-6">
+        {/* Basic Information */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+          <div>
+            <label className="label p-0 pb-1">
+              <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                Leave Type Name <span className="text-red-500">*</span>
+              </span>
+            </label>
+            <input
+              type="text"
+              name="leave_type_name"
+              value={addForm.leave_type_name ?? ''}
+              onChange={handleAddInputChange}
+              className={`input input-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+              placeholder="e.g., Annual Leave"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="label p-0 pb-1">
+              <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                Code <span className="text-red-500">*</span>
+              </span>
+            </label>
+            <input
+              type="text"
+              name="code"
+              value={addForm.code ?? ''}
+              onChange={handleAddInputChange}
+              className={`input input-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+              placeholder="e.g., AL"
+              required
+            />
+          </div>
+
+          {/* Company Selection */}
+          <div>
+            <label className="label p-0 pb-1">
+              <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                Company
+              </span>
+            </label>
+            <select
+              name="company_id"
+              value={addForm.company_id ?? '0'}
+              onChange={(e) => setAddForm(p => ({ ...p, company_id: e.target.value }))}
+              className={`select select-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+            >
+              <option value="0">Default settings (Global)</option>
+              {companies.map(company => (
+                <option key={`add-company-${company.id}`} value={company.id}>
+                  {company.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Description */}
+        <div>
+          <label className="label p-0 pb-1">
+            <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+              Description <span className="text-red-500">*</span>
+            </span>
+          </label>
+          <textarea
+            name="description"
+            value={addForm.description ?? ''}
+            onChange={handleAddInputChange}
+            rows={3}
+            className={`textarea textarea-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+            placeholder="Describe the leave type..."
+            required
+          />
+        </div>
+
+        {/* Requirements */}
+        <div className="space-y-3 sm:space-y-4">
+          <h4 className={`text-sm sm:text-base font-semibold ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+            Requirements
+          </h4>
+          
+          <div className="space-y-3 sm:grid sm:grid-cols-2 sm:gap-4 sm:space-y-0">
+            <div className={`flex items-center justify-between p-3 rounded-lg ${theme === 'light' ? 'bg-slate-50' : 'bg-slate-700'}`}>
+              <span className={`text-xs sm:text-sm font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                Requires Documentation
+              </span>
+              <input
+                type="checkbox"
+                name="requires_documentation"
+                checked={!!addForm.requires_documentation}
+                onChange={handleAddInputChange}
+                className="checkbox checkbox-sm sm:checkbox-md checkbox-primary"
+              />
             </div>
 
-            {/* Modal Content - Scrollable */}
-            <div className="p-3 sm:p-6 overflow-y-auto max-h-[calc(90vh-4rem)]">
-              <form onSubmit={handleAddSubmit} className="space-y-4 sm:space-y-6">
-                {/* Basic Information */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+            <div className={`flex items-center justify-between p-3 rounded-lg ${theme === 'light' ? 'bg-slate-50' : 'bg-slate-700'}`}>
+              <span className={`text-xs sm:text-sm font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                Active
+              </span>
+              <input
+                type="checkbox"
+                name="is_active"
+                checked={!!addForm.is_active}
+                onChange={handleAddInputChange}
+                className="checkbox checkbox-sm sm:checkbox-md checkbox-primary"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ===== Allocation & Eligibility ===== */}
+        <div className="space-y-3 sm:space-y-4">
+          <h4 className={`text-sm sm:text-base font-semibold ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+            Allocation & Eligibility
+          </h4>
+
+          {/* Primary Allocation */}
+          <div className={`p-3 rounded-lg border ${theme === 'light' ? 'border-slate-200 bg-slate-50' : 'border-slate-600 bg-slate-700'}`}>
+            <label className={`block text-xs sm:text-sm font-medium mb-2 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+              Allocation Method
+            </label>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {[
+                { val: 'YEAR_OF_SERVICE', label: 'Year of Service', description: 'Full allocation based on service years' },
+                { val: 'EARN', label: 'Accrual', description: 'Gradual earning over time' },
+              ].map((opt) => (
+                <label key={opt.val} className={`flex items-start gap-2 p-3 rounded-md cursor-pointer ${theme === 'light' ? 'bg-white border border-slate-200' : 'bg-slate-600 border border-slate-500'} ${(addForm.allocation_primary ?? 'YEAR_OF_SERVICE') === opt.val ? 'ring-2 ring-primary' : ''}`}>
+                  <input
+                    type="radio"
+                    name="allocation_primary"
+                    value={opt.val}
+                    checked={(addForm.allocation_primary ?? 'YEAR_OF_SERVICE') === opt.val}
+                    onChange={(e) => setAddForm(p => ({ ...p, allocation_primary: e.target.value as AllocationPrimary }))}
+                    className="radio radio-primary radio-sm mt-0.5"
+                  />
+                  <div className="flex-1">
+                    <span className={`text-xs sm:text-sm font-medium block ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>
+                      {opt.label}
+                    </span>
+                    <span className={`text-xs ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'} mt-0.5 block`}>
+                      {opt.description}
+                    </span>
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            {/* Year of Service Configuration */}
+            {addForm.allocation_primary === 'YEAR_OF_SERVICE' && (
+              <div className="mt-4 space-y-4">
+                {/* Service Brackets */}
+                <div>
+                  <label className={`block text-xs sm:text-sm font-medium mb-2 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                    Service-Based Entitlement
+                  </label>
+                  
+                  <div className="space-y-3">
+                    {(addForm.yos_brackets ?? []).map((row, idx) => (
+                      <div key={idx} className={`p-4 rounded-lg border ${theme === 'light' ? 'bg-white border-slate-200' : 'bg-slate-600 border-slate-500'}`}>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                          <div>
+                            <label className={`block text-xs font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                              Min Years
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              value={row.min_years}
+                              onChange={(e) => updateYosBracket(idx, 'min_years', Number(e.target.value))}
+                              className={`input input-bordered input-sm w-full ${theme === 'light' ? 'bg-white' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+                            />
+                          </div>
+                          <div>
+                            <label className={`block text-xs font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                              Max Years (blank = ∞)
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              placeholder="∞"
+                              value={row.max_years ?? ''}
+                              onChange={(e) => updateYosBracket(idx, 'max_years', e.target.value ? Number(e.target.value) : null)}
+                              className={`input input-bordered input-sm w-full ${theme === 'light' ? 'bg-white' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+                            />
+                          </div>
+                          <div>
+                            <label className={`block text-xs font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                              Days Allocation
+                            </label>
+                            <input
+                              type="number"
+                              min={0}
+                              value={row.days}
+                              onChange={(e) => updateYosBracket(idx, 'days', Number(e.target.value))}
+                              className={`input input-bordered input-sm w-full ${theme === 'light' ? 'bg-white' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Renewal & Carryover Settings for this bracket */}
+                        <div className={`p-3 rounded-lg ${theme === 'light' ? 'bg-slate-50 border border-slate-200' : 'bg-slate-700 border border-slate-600'}`}>
+                          <h6 className={`text-xs font-medium mb-2 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                            Renewal & Carryover Settings for this bracket
+                          </h6>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div>
+                              <label className={`block text-xs font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                                Renewal Period
+                              </label>
+                              <select
+                                value={row.renewal_period ?? 'YEARLY'}
+                                onChange={(e) => updateYosBracket(idx, 'renewal_period', e.target.value)}
+                                className={`select select-bordered select-sm w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+                              >
+                                <option value="YEARLY">Yearly</option>
+                                <option value="QUARTERLY">Quarterly</option>
+                                <option value="MONTHLY">Monthly</option>
+                                <option value="NONE">No automatic renewal</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className={`block text-xs font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                                Max Carryover Days
+                              </label>
+                              <input
+                                type="number"
+                                min={0}
+                                value={row.carryover_max_days ?? 0}
+                                onChange={(e) => updateYosBracket(idx, 'carryover_max_days', Number(e.target.value))}
+                                className={`input input-bordered input-sm w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+                                placeholder="Days that can carry over"
+                                disabled={!!row.expire_unused_at_period_end}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mt-2">
+                            <label className={`flex items-center gap-2 p-1 rounded-md ${theme === 'light' ? 'bg-white' : 'bg-slate-600'}`}>
+                              <input
+                                type="checkbox"
+                                checked={!!row.expire_unused_at_period_end}
+                                onChange={(e) => {
+                                  updateYosBracket(idx, 'expire_unused_at_period_end', e.target.checked);
+                                  if (e.target.checked) {
+                                    updateYosBracket(idx, 'carryover_max_days', 0);
+                                  }
+                                }}
+                                className="checkbox checkbox-primary checkbox-xs"
+                              />
+                              <span className={`text-xs ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>
+                                Use-it-or-lose-it (no carryover allowed)
+                              </span>
+                            </label>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end mt-2">
+                          <button
+                            type="button"
+                            onClick={() => removeYosRow(idx)}
+                            className="btn btn-xs btn-ghost text-red-600"
+                          >
+                            Remove Bracket
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <button
+                    type="button"
+                    onClick={addYosRow}
+                    className={`btn btn-sm btn-outline mt-2 ${theme === 'light' ? '' : 'btn-ghost'}`}
+                  >
+                    Add Service Bracket
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Earn (Accrual) Configuration */}
+            {addForm.allocation_primary === 'EARN' && (
+              <div className="mt-4 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="label p-0 pb-1">
-                      <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Leave Type Name <span className="text-red-500">*</span></span>
+                    <label className={`block text-xs sm:text-sm font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                      Accrual Frequency
                     </label>
-                    <input
-                      type="text"
-                      id="leave_type_name"
-                      name="leave_type_name"
-                      value={addForm.leave_type_name ?? ''}
-                      onChange={handleAddInputChange}
-                      className={`input input-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                      placeholder="e.g., Annual Leave"
-                      required
-                    />
+                    <select
+                      name="accrual_frequency"
+                      value={addForm.accrual_frequency ?? 'MONTHLY'}
+                      onChange={(e) => setAddForm(p => ({ ...p, accrual_frequency: e.target.value as AccrualFrequency }))}
+                      className={`select select-bordered w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+                    >
+                      <option value="MONTHLY">Monthly</option>
+                      <option value="QUARTERLY">Quarterly</option>
+                      <option value="YEARLY">Yearly</option>
+                    </select>
                   </div>
 
                   <div>
-                    <label className="label p-0 pb-1">
-                      <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Code <span className="text-red-500">*</span></span>
-                    </label>
-                    <input
-                      type="text"
-                      id="code"
-                      name="code"
-                      value={addForm.code ?? ''}
-                      onChange={handleAddInputChange}
-                      className={`input input-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                      placeholder="e.g., AL"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="label p-0 pb-1">
-                      <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Maximum Days <span className="text-red-500">*</span></span>
+                    <label className={`block text-xs sm:text-sm font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                      {addForm.accrual_frequency === 'QUARTERLY' ? 'Days per Quarter' :
+                       addForm.accrual_frequency === 'YEARLY' ? 'Days per Year' : 'Days per Month'}
                     </label>
                     <input
                       type="number"
-                      id="max_days"
-                      name="max_days"
-                      value={addForm.max_days ?? 0}
-                      onChange={handleAddInputChange}
-                      className={`input input-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                      min="0"
-                      placeholder="e.g., 14"
-                      required
+                      step="0.1"
+                      min={0}
+                      name="accrual_rate"
+                      value={addForm.accrual_rate ?? 0}
+                      onChange={(e) => setAddForm(p => ({ ...p, accrual_rate: Number(e.target.value) }))}
+                      className={`input input-bordered w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
                     />
                   </div>
 
-                  {/* <div>
-                    <label className="label p-0 pb-1">
-                      <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Company</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={selectedCompany == 'all' ? 'All Companies' : selectedCompany}
-                      className={`input input-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-gray-50 border-slate-300 text-slate-900' : 'bg-slate-600 border-slate-500 text-slate-100'}`}
-                      readOnly
-                    />
-                  </div> */}
-
-                  {/* <div>
-          <label className="label p-0 pb-1">
-            <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-              Company
-            </span>
-          </label>
-          <select
-            name="company_id"
-            value={addForm.company_id ?? '0'}
-            onChange={(e) => setAddForm(p => ({ ...p, company_id: e.target.value }))}
-            className={`select select-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-          >
-
-            <option value="0">Default settings (Global)</option>
-
-
-            {companyOptions.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div> */}
-
-{/* Company Selection in Add Modal */}
-<div>
-  <label className="label p-0 pb-1">
-    <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-      Company
-    </span>
-  </label>
-  <select
-    name="company_id"
-    value={addForm.company_id ?? '0'}
-    onChange={(e) => setAddForm(p => ({ ...p, company_id: e.target.value }))}
-    className={`select select-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-  >
-    <option value="0">Default settings (Global)</option>
-    {companies.map(company => (
-      <option key={`add-company-${company.id}`} value={company.id}>
-        {company.name}
-      </option>
-    ))}
-  </select>
-</div>
-
-                </div>
-
-                {/* Description */}
-                <div>
-                  <label className="label p-0 pb-1">
-                    <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Description <span className="text-red-500">*</span></span>
-                  </label>
-                  <textarea
-                    id="description"
-                    name="description"
-                    value={addForm.description ?? ''}
-                    onChange={handleAddInputChange}
-                    rows={3}
-                    className={`textarea textarea-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                    placeholder="Describe the leave type..."
-                    required
-                  />
-                </div>
-
-                {/* Requirements */}
-                <div className="space-y-3 sm:space-y-4">
-                  <h4 className={`text-sm sm:text-base font-semibold ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Requirements</h4>
-                  
-                  <div className="space-y-3 sm:grid sm:grid-cols-2 lg:grid-cols-2 sm:gap-4 sm:space-y-0">
-                    <div className={`flex items-center justify-between p-3 rounded-lg ${theme === 'light' ? 'bg-slate-50' : 'bg-slate-700'}`}>
-                      <span className={`text-xs sm:text-sm font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Requires Documentation</span>
+                  <div className="flex items-end">
+                    <label className={`flex items-center gap-2 p-2 rounded-md w-full ${theme === 'light' ? 'bg-slate-100' : 'bg-slate-600'}`}>
                       <input
                         type="checkbox"
-                        id="requires_documentation"
-                        name="requires_documentation"
-                        checked={!!addForm.requires_documentation}//checked={addForm.requires_documentation ?? false}
-                        onChange={handleAddInputChange}
-                        className={`checkbox checkbox-sm sm:checkbox-md ${theme === 'light' ? 'checkbox-primary' : 'checkbox-primary'}`}
+                        name="earn_prorate_join_month"
+                        checked={!!addForm.earn_prorate_join_month}
+                        onChange={(e) => setAddForm(p => ({ ...p, earn_prorate_join_month: e.target.checked }))}
+                        className="checkbox checkbox-primary checkbox-sm"
                       />
-                    </div>
-
-                    <div className={`flex items-center justify-between p-3 rounded-lg ${theme === 'light' ? 'bg-slate-50' : 'bg-slate-700'}`}>
-                      <span className={`text-xs sm:text-sm font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Active</span>
-                      <input
-                        type="checkbox"
-                        id="is_active"
-                        name="is_active"
-                        checked={!!addForm.is_active}//checked={addForm.is_active ?? false}
-                        onChange={handleAddInputChange}
-                        className={`checkbox checkbox-sm sm:checkbox-md ${theme === 'light' ? 'checkbox-primary' : 'checkbox-primary'}`}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Allocation Methods (existing) */}
-                {/* <div className="space-y-3 sm:space-y-4">
-                  <h4 className={`text-sm sm:text-base font-semibold ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Allocation Methods</h4>
-                  
-                  <div className="space-y-3">
-                    <div className={`p-3 rounded-lg border ${theme === 'light' ? 'border-slate-200 bg-slate-50' : 'border-slate-600 bg-slate-700'}`}>
-                      <label className="flex items-start gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          id="is_total"
-                          name="is_total"
-                          checked={addForm.is_total ?? false}
-                          onChange={handleAddInputChange}
-                          className={`checkbox checkbox-sm sm:checkbox-md mt-0.5 ${theme === 'light' ? 'checkbox-primary' : 'checkbox-primary'}`}
-                        />
-                        <div className="flex-1">
-                          <span className={`text-xs sm:text-sm font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'} block`}>Upfront Allocation</span>
-                          <span className={`text-xs ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Total leave days given at once</span>
-                        </div>
-                      </label>
-                      
-                      {addForm.is_total && (
-                        <div className="mt-3 pl-6 sm:pl-8">
-                          <label className={`block text-xs sm:text-sm font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'} mb-2`}>
-                            Allocation Type
-                          </label>
-                          <div className="relative">
-                            <select
-                              id="total_type"
-                              name="total_type"
-                              value={addForm.total_type ?? 'IMMEDIATE'}
-                              onChange={handleAddInputChange}
-                              className={`w-full appearance-none rounded-md py-2 pr-8 pl-3 text-sm sm:text-base outline-1 -outline-offset-1 focus:outline-2 focus:-outline-offset-2 ${
-                                theme === 'light' 
-                                  ? 'bg-white text-gray-900 outline-gray-300 focus:outline-blue-600' 
-                                  : 'bg-slate-700 text-slate-100 outline-slate-600 focus:outline-blue-400'
-                              }`}
-                            >
-                              <option value="IMMEDIATE">Immediate</option>
-                              <option value="ONCE CONFIRMED">Once Confirmed</option>
-                            </select></div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className={`p-3 rounded-lg border ${theme === 'light' ? 'border-slate-200 bg-slate-50' : 'border-slate-600 bg-slate-700'}`}>
-                      <label className="flex items-start gap-3 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          id="is_divident"
-                          name="is_divident"
-                          checked={addForm.is_divident ?? false}
-                          onChange={handleAddInputChange}
-                          className={`checkbox checkbox-sm sm:checkbox-md mt-0.5 ${theme === 'light' ? 'checkbox-primary' : 'checkbox-primary'}`}
-                        />
-                        <div className="flex-1">
-                          <span className={`text-xs sm:text-sm font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'} block`}>Gradual Accrual</span>
-                          <span className={`text-xs ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Leave earned monthly</span>
-                        </div>
-                      </label>
-                    </div>
-                  </div>
-                </div> */}
-
-                {/* ===== NEW: Allocation & Eligibility (mock) ===== */}
-                <div className="space-y-3 sm:space-y-4">
-                  <h4 className={`text-sm sm:text-base font-semibold ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                    Allocation & Eligibility
-                  </h4>
-
-                  {/* Primary Allocation */}
-                  <div className={`p-3 rounded-lg border ${theme === 'light' ? 'border-slate-200 bg-slate-50' : 'border-slate-600 bg-slate-700'}`}>
-                    <label className={`block text-xs sm:text-sm font-medium mb-2 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                      Primary Allocation
+                      <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>
+                        Prorate for new joiners
+                      </span>
                     </label>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {[
-                        { val: 'IMMEDIATE', label: 'Immediate' },
-                        { val: 'EARN', label: 'Earn (accrual)' },
-                        { val: 'YEAR_OF_SERVICE', label: 'Year of service' },
-                      ].map((opt) => (
-                        <label key={opt.val} className={`flex items-center gap-2 p-2 rounded-md cursor-pointer ${theme === 'light' ? 'bg-white border border-slate-200' : 'bg-slate-600 border border-slate-500'}`}>
-                          <input
-                            type="radio"
-                            name="allocation_primary"
-                            value={opt.val}
-                            checked={(addForm.allocation_primary ?? 'IMMEDIATE') === opt.val}
-                            onChange={(e) => setAddForm((p: any) => ({ ...p, allocation_primary: e.target.value as AllocationPrimary }))}
-                            className="radio radio-primary radio-sm"
-                          />
-                          <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>{opt.label}</span>
-                        </label>
-                      ))}
-                    </div>
-
-                    {/* If EARN (accrual), show rate inputs */}
-        {/* If EARN (accrual), show frequency, rate, proration, and carryover in one block */}
-        {addForm.allocation_primary === 'EARN' && (
-          <div className="mt-3 space-y-4">
-            {/* Frequency / Rate / Prorate */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* Frequency */}
-              <div>
-                <label className={`block text-xs sm:text-sm font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                  Accrual frequency
-                </label>
-                <select
-                  name="accrual_frequency"
-                  value={addForm.accrual_frequency ?? 'MONTHLY'}
-                  onChange={(e) => setAddForm(p => ({ ...p, accrual_frequency: e.target.value as AccrualFrequency }))}
-                  className={`select select-bordered w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                >
-                  <option value="MONTHLY">Monthly</option>
-                  <option value="QUARTERLY">Quarterly</option>
-                  <option value="YEARLY">Yearly</option>
-                </select>
-              </div>
-
-              {/* Rate (days per period) */}
-              <div>
-                <label className={`block text-xs sm:text-sm font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                  {addForm.accrual_frequency === 'QUARTERLY'
-                    ? 'Days earned per quarter'
-                    : addForm.accrual_frequency === 'YEARLY'
-                    ? 'Days earned per year'
-                    : 'Days earned per month'}
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  min={0}
-                  name="accrual_rate"
-                  value={addForm.accrual_rate ?? 0}
-                  onChange={(e) => setAddForm(p => ({ ...p, accrual_rate: Number(e.target.value) }))}
-                  className={`input input-bordered w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                />
-              </div>
-
-              {/* Prorate join period */}
-              <div className="flex items-end">
-                <label className={`flex items-center gap-2 p-2 rounded-md w-full ${theme === 'light' ? 'bg-slate-100' : 'bg-slate-600'}`}>
-                  <input
-                    type="checkbox"
-                    name="earn_prorate_join_month"
-                    checked={!!addForm.earn_prorate_join_month}//checked={addForm.earn_prorate_join_month ?? false}
-                    onChange={(e) => setAddForm(p => ({ ...p, earn_prorate_join_month: e.target.checked }))}
-                    className="checkbox checkbox-primary checkbox-sm"
-                  />
-                  <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>
-                    Prorate join { (addForm.accrual_frequency ?? 'MONTHLY').toLowerCase() }
-                  </span>
-                </label>
-              </div>
-            </div>
-
-            {/* Carryover & Reset (inside Earn) */}
-            <div className={`p-3 rounded-lg ${theme === 'light' ? 'bg-slate-50 border border-slate-200' : 'bg-slate-700 border border-slate-600'}`}>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {/* Use-it-or-lose-it at end of accrual period */}
-                <div className="flex items-end">
-                  <label className={`flex items-center gap-2 p-2 rounded-md w-full ${theme === 'light' ? 'bg-white' : 'bg-slate-600'}`}>
-                    <input
-                      type="checkbox"
-                      name="expire_unused_at_period_end"
-                      checked={!!addForm.expire_unused_at_period_end}//checked={addForm.expire_unused_at_period_end ?? false}
-                      onChange={(e) => setAddForm(p => ({ ...p, expire_unused_at_period_end: e.target.checked }))}
-                      className="checkbox checkbox-primary checkbox-sm"
-                    />
-                    <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>
-                      Use-it-or-lose-it at end of {(addForm.accrual_frequency ?? 'MONTHLY').toLowerCase()}
-                    </span>
-                  </label>
+                  </div>
                 </div>
 
-                {/* Renewal cadence (reset cycle) */}
-                <div>
-                  <label className={`block text-xs sm:text-sm font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                    Renewal period (reset cycle)
-                  </label>
-                  <select
-                    name="renewal_period"
-                    value={addForm.renewal_period ?? 'YEARLY'}
-                    onChange={(e) => setAddForm(p => ({ ...p, renewal_period: e.target.value as RenewalPeriod }))}
-                    className={`select select-bordered w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                    disabled={!!addForm.expire_unused_at_period_end}//disabled={addForm.expire_unused_at_period_end}
-                  >
-                    <option value="YEARLY">Yearly</option>
-                    <option value="QUARTERLY">Quarterly</option>
-                    <option value="NONE">No renewal/reset</option>
-                  </select>
-                </div>
-
-                {/* Carryover controls (only when not expiring per period and renewal is active) */}
-                {(!addForm.expire_unused_at_period_end && addForm.renewal_period !== 'NONE') && (
-                  <>
+                {/* Renewal & Carryover Settings for Earn Type */}
+                <div className={`p-3 rounded-lg ${theme === 'light' ? 'bg-slate-50 border border-slate-200' : 'bg-slate-700 border border-slate-600'}`}>
+                  <h5 className={`text-xs sm:text-sm font-medium mb-2 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                    Renewal & Carryover Settings
+                  </h5>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className={`block text-xs sm:text-sm font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                        Carryover max days
+                        Renewal Period
+                      </label>
+                      <select
+                        value={addForm.renewal_period ?? 'YEARLY'}
+                        onChange={(e) => setAddForm(p => ({ ...p, renewal_period: e.target.value as RenewalPeriod }))}
+                        className={`select select-bordered w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+                      >
+                        <option value="YEARLY">Yearly</option>
+                        <option value="QUARTERLY">Quarterly</option>
+                        <option value="MONTHLY">Monthly</option>
+                        <option value="NONE">No automatic renewal</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className={`block text-xs sm:text-sm font-medium mb-1 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                        Max Carryover Days
                       </label>
                       <input
                         type="number"
                         min={0}
-                        name="carryover_max_days"
                         value={addForm.carryover_max_days ?? 0}
                         onChange={(e) => setAddForm(p => ({ ...p, carryover_max_days: Number(e.target.value) }))}
                         className={`input input-bordered w-full ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
+                        placeholder="Days that can carry over"
+                        disabled={!!addForm.expire_unused_at_period_end}
                       />
                     </div>
-                  </>
-                )}
+                  </div>
+
+                  <div className="mt-3">
+                    <label className={`flex items-center gap-2 p-2 rounded-md ${theme === 'light' ? 'bg-white' : 'bg-slate-600'}`}>
+                      <input
+                        type="checkbox"
+                        checked={!!addForm.expire_unused_at_period_end}
+                        onChange={(e) => setAddForm(p => ({ 
+                          ...p, 
+                          expire_unused_at_period_end: e.target.checked,
+                          carryover_max_days: e.target.checked ? 0 : p.carryover_max_days
+                        }))}
+                        className="checkbox checkbox-primary checkbox-sm"
+                      />
+                      <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>
+                        Use-it-or-lose-it (no carryover allowed)
+                      </span>
+                    </label>
+                  </div>
+                </div>
               </div>
+            )}
+          </div>
+
+          {/* Eligibility Scope */}
+          <div className={`p-3 rounded-lg border ${theme === 'light' ? 'border-slate-200 bg-slate-50' : 'border-slate-600 bg-slate-700'}`}>
+            <label className={`block text-xs sm:text-sm font-medium mb-2 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+              Eligibility Scope
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {[
+                { val: 'ALL_STAFF', label: 'All Staff', description: 'Available to all employees' },
+                { val: 'UPON_CONFIRM', label: 'Upon Confirmation', description: 'After probation period' },
+                { val: 'UNDER_PROBATION', label: 'Under Probation', description: 'During probation only' },
+              ].map((opt) => (
+                <label key={opt.val} className={`flex items-start gap-2 p-3 rounded-md cursor-pointer ${theme === 'light' ? 'bg-white border border-slate-200' : 'bg-slate-600 border border-slate-500'} ${(addForm.eligibility_scope ?? 'ALL_STAFF') === opt.val ? 'ring-2 ring-primary' : ''}`}>
+                  <input
+                    type="radio"
+                    name="eligibility_scope"
+                    value={opt.val}
+                    checked={(addForm.eligibility_scope ?? 'ALL_STAFF') === opt.val}
+                    onChange={(e) => setAddForm(p => ({ ...p, eligibility_scope: e.target.value as EligibilityScope }))}
+                    className="radio radio-primary radio-sm mt-0.5"
+                  />
+                  <div className="flex-1">
+                    <span className={`text-xs sm:text-sm font-medium block ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>
+                      {opt.label}
+                    </span>
+                    <span className={`text-xs ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'} mt-0.5 block`}>
+                      {opt.description}
+                    </span>
+                  </div>
+                </label>
+              ))}
             </div>
           </div>
-        )}
+        </div>
+      </form>
+    </div>
 
+    {/* Modal Footer */}
+    <div className={`${theme === 'light' ? 'bg-slate-100 border-slate-300' : 'bg-slate-700 border-slate-600'} px-3 sm:px-6 py-2 sm:py-3 border-t flex flex-col sm:flex-row justify-end gap-2 mt-auto z-10`}>
+      <button
+        type="button"
+        onClick={() => setShowAddModal(false)}
+        className={`btn btn-sm sm:btn-md btn-ghost w-full sm:w-auto ${theme === 'light' ? 'text-slate-600 hover:bg-slate-200' : 'text-slate-400 hover:bg-slate-600'} text-xs sm:text-sm order-2 sm:order-1`}
+      >
+        Cancel
+      </button>
+      <button
+        type="submit"
+        onClick={handleAddSubmit}
+        className={`btn btn-sm sm:btn-md w-full sm:w-auto ${theme === 'light' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white border-0 text-xs sm:text-sm order-1 sm:order-2`}
+      >
+        Create Leave Type
+      </button>
+    </div>
+  </div>
+  <form method="dialog" className="modal-backdrop">
+    <button onClick={() => setShowAddModal(false)}>close</button>
+  </form>
+</dialog>
 
-
-                    {/* If YEAR_OF_SERVICE, show brackets */}
-                    {(addForm.allocation_primary === 'YEAR_OF_SERVICE') && (
-                      <div className="mt-3">
-                        <label className={`block text-xs sm:text-sm font-medium mb-2 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                          Year-of-Service Brackets
-                        </label>
-
-                        <div className="overflow-auto rounded-md border border-slate-200 dark:border-slate-600">
-                          <table className="table table-sm">
-                            <thead>
-                              <tr>
-                                <th className="text-xs">Min years</th>
-                                <th className="text-xs">Max years (blank = ∞)</th>
-                                <th className="text-xs">Days</th>
-                                <th></th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {(addForm.yos_brackets ?? []).map((row: YearOfServiceBracket, idx: number) => (
-                                <tr key={idx}>
-                                  <td>
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      value={row.min_years ?? 0}
-                                      onChange={(e) => updateYosBracket(idx, 'min_years', Number(e.target.value))}
-                                      className={`input input-bordered input-xs w-24 ${theme === 'light' ? 'bg-white' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                                    />
-                                  </td>
-                                  <td>
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      placeholder="∞"
-                                      value={row.max_years ?? ''}
-                                      onChange={(e) => updateYosBracket(idx, 'max_years', e.target.value === '' ? null : Number(e.target.value))}
-                                      className={`input input-bordered input-xs w-24 ${theme === 'light' ? 'bg-white' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                                    />
-                                  </td>
-                                  <td>
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      value={row.days ?? 0}
-                                      onChange={(e) => updateYosBracket(idx, 'days', Number(e.target.value))}
-                                      className={`input input-bordered input-xs w-24 ${theme === 'light' ? 'bg-white' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                                    />
-                                  </td>
-                                  <td>
-                                    <button
-                                      type="button"
-                                      onClick={() => removeYosRow(idx)}
-                                      className="btn btn-xs btn-ghost text-red-600"
-                                    >
-                                      Remove
-                                    </button>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-
-                        <div className="mt-2">
-                          <button type="button" onClick={addYosRow} className={`btn btn-sm ${theme === 'light' ? 'btn-outline' : 'btn-outline'}`}>
-                            Add bracket
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Eligibility */}
-                  <div className={`p-3 rounded-lg border ${theme === 'light' ? 'border-slate-200 bg-slate-50' : 'border-slate-600 bg-slate-700'}`}>
-                    <label className={`block text-xs sm:text-sm font-medium mb-2 ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                      Eligibility Scope
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {[
-                        { val: 'UPON_CONFIRM', label: 'Upon confirmation' },
-                        { val: 'UNDER_PROBATION', label: 'Under probation' },
-                        { val: 'ALL_STAFF', label: 'All staff' },
-                      ].map((opt) => (
-                        <label key={opt.val} className={`flex items-center gap-2 p-2 rounded-md cursor-pointer ${theme === 'light' ? 'bg-white border border-slate-200' : 'bg-slate-600 border border-slate-500'}`}>
-                          <input
-                            type="radio"
-                            name="eligibility_scope"
-                            value={opt.val}
-                            checked={(addForm.eligibility_scope ?? 'ALL_STAFF') === opt.val}
-                            onChange={(e) => setAddForm((p: any) => ({ ...p, eligibility_scope: e.target.value as EligibilityScope }))}
-                            className="radio radio-primary radio-sm"
-                          />
-                          <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>{opt.label}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Carry Forward */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                  <div>
-                    <label className="label p-0 pb-1">
-                      <span className={`label-text font-semibold text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Carry Forward Days</span>
-                    </label>
-                    <input
-                      type="number"
-                      id="carry_forward_days"
-                      name="carry_forward_days"
-                      value={addForm.carry_forward_days ?? 0}
-                      onChange={handleAddInputChange}
-                      className={`input input-bordered w-full text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                      min="0"
-                      placeholder="0"
-                    />
-                  </div>
-                </div>
-
-                {/* Increment Section */}
-                <div className={`border ${theme === 'light' ? 'border-slate-300' : 'border-slate-600'} rounded-lg`}>
-                  <h4 className={`text-sm sm:text-base font-semibold ${theme === 'light' ? 'bg-slate-100 text-slate-900' : 'bg-slate-700 text-slate-100'} px-3 sm:px-4 py-2 rounded-t-lg`}>Increment Details</h4>
-                  <div className="p-3 sm:p-4 space-y-3 sm:space-y-4">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                      <div>
-                        <label className={`block text-xs sm:text-sm font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'} mb-2`}>
-                          Allocate Days
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            id="increment_days"
-                            name="increment_days"
-                            value={addForm.increment_days ?? 0}
-                            onChange={handleAddInputChange}
-                            className={`input input-bordered w-20 sm:w-24 text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                            min="0"
-                            placeholder="0"
-                          />
-                          <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                            day{pluralize(addForm?.increment_days)}
-                          </span>
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <label className={`block text-xs sm:text-sm font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'} mb-2`}>
-                          Maximum Allocate Days
-                        </label>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            id="max_increment_days"
-                            name="max_increment_days"
-                            value={addForm.max_increment_days ?? 0}
-                            onChange={handleAddInputChange}
-                            className={`input input-bordered w-20 sm:w-24 text-sm sm:text-base ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                            min="0"
-                            placeholder="0"
-                          />
-                          <span className={`text-xs sm:text-sm ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-                            day{pluralize(addForm?.max_increment_days)} max
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </form>
-            </div>
-
-            {/* Modal Footer */}
-            <div className={`${theme === 'light' ? 'bg-slate-100 border-slate-300' : 'bg-slate-700 border-slate-600'} px-3 sm:px-6 py-2 sm:py-3 border-t flex flex-col sm:flex-row justify-end gap-2 mt-auto z-10`}>
-              <button
-                type="button"
-                onClick={() => setShowAddModal(false)}
-                className={`btn btn-sm sm:btn-md btn-ghost w-full sm:w-auto ${theme === 'light' ? 'text-slate-600 hover:bg-slate-200' : 'text-slate-400 hover:bg-slate-600'} text-xs sm:text-sm order-2 sm:order-1`}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                onClick={handleAddSubmit}
-                className={`btn btn-sm sm:btn-md w-full sm:w-auto ${theme === 'light' ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'} text-white border-0 text-xs sm:text-sm order-1 sm:order-2`}
-              >
-                Create Leave Type
-              </button>
-            </div>
-          </div>
-          <form method="dialog" className="modal-backdrop">
-            <button onClick={() => setShowAddModal(false)}>close</button>
-          </form>
-        </dialog>
 
         {/* Delete Confirmation Modal */}
         <dialog id="delete_confirm_modal" className={`modal ${showDeleteConfirmModal ? 'modal-open' : ''}`}>
