@@ -28,6 +28,9 @@ interface BenefitGroupItem {
   group_id: number;
   benefit_type_id: number;
   benefit_type_name: string;
+  job_level: string | null;
+  min_service_years: number | null;
+  max_service_years: number | null;
   amount: number;
   frequency: string;
   start_date: string | null;
@@ -267,6 +270,9 @@ export default function BenefitGroupTab() {
   const [benefitForm, setBenefitForm] = useState({
     group_id: '',
     benefit_type_id: '',
+    job_level: '',
+    min_service_years: '',
+    max_service_years: '',
     amount: '0.00',
     frequency: 'Yearly',
     start_date: '',
@@ -492,6 +498,9 @@ export default function BenefitGroupTab() {
     setBenefitForm({
       group_id: String(group.id),
       benefit_type_id: '',
+      job_level: '',
+      min_service_years: '',
+      max_service_years: '',
       amount: '0.00',
       frequency: 'Yearly',
       start_date: '',
@@ -598,7 +607,7 @@ export default function BenefitGroupTab() {
     });
   };
 
-  const saveBenefit = async () => {
+  const saveBenefit1 = async () => {
     if (!benefitForm.benefit_type_id || !benefitForm.amount) {
       toast.error('Benefit Type and Amount are required');
       return;
@@ -631,6 +640,43 @@ export default function BenefitGroupTab() {
       toast.error(err.message || 'Failed to add benefit');
     }
   };
+
+  const saveBenefit = async () => {
+  if (!benefitForm.benefit_type_id || !benefitForm.amount) {
+    toast.error('Benefit Type and Amount are required');
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/benefit-group-items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        group_id: parseInt(benefitForm.group_id, 10),
+        benefit_type_id: parseInt(benefitForm.benefit_type_id, 10),
+        job_level: benefitForm.job_level || null,
+        min_service_years: benefitForm.min_service_years ? parseInt(benefitForm.min_service_years, 10) : null,
+        max_service_years: benefitForm.max_service_years ? parseInt(benefitForm.max_service_years, 10) : null,
+        amount: parseFloat(benefitForm.amount),
+        frequency: benefitForm.frequency,
+        start_date: benefitForm.start_date || null,
+        end_date: benefitForm.end_date || null,
+        is_active: parseInt(benefitForm.is_active, 10),
+      }),
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error?.message || 'Save failed');
+    }
+
+    toast.success('Benefit added to group');
+    setShowBenefitModal(false);
+    if (selectedGroup) await fetchGroupDetails(selectedGroup.id);
+  } catch (err: any) {
+    toast.error(err.message || 'Failed to add benefit');
+  }
+};
 
   const assignGroup = async () => {
     if (assignForm.employee_ids.length === 0) {
@@ -1007,70 +1053,99 @@ export default function BenefitGroupTab() {
       )}
 
       {/* Add Benefit Modal (above details) */}
-      {showBenefitModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" style={{ zIndex: 70 }}>
-          <div className="bg-white rounded-lg shadow-lg w-full max-w-2xl overflow-hidden">
-            <div className="flex items-center justify-between border-b px-6 py-4">
-              <div className="flex items-center gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                <h3 className="text-lg font-semibold text-gray-800">Add Benefit to {selectedGroup?.name}</h3>
-              </div>
-              <button onClick={() => setShowBenefitModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
-            </div>
+{showBenefitModal && (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4" style={{ zIndex: 70 }}>
+    <div className="bg-white rounded-lg shadow-lg w-full max-w-2xl overflow-hidden">
+      <div className="flex items-center justify-between border-b px-6 py-4">
+        <div className="flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          </svg>
+          <h3 className="text-lg font-semibold text-gray-800">Add Benefit to {selectedGroup?.name}</h3>
+        </div>
+        <button onClick={() => setShowBenefitModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+      </div>
 
-            <div className="px-6 py-5 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="form-control">
-                  <label className="label"><span className="label-text font-medium">Benefit Type</span></label>
-                  <select className="select select-bordered w-full" value={benefitForm.benefit_type_id} onChange={e => setBenefitForm({ ...benefitForm, benefit_type_id: e.target.value })}>
-                    <option value="">Select Benefit Type</option>
-                    {benefitTypes.map(bt => <option key={bt.id} value={bt.id}>{bt.name}</option>)}
-                  </select>
-                </div>
-                <div className="form-control">
-                  <label className="label"><span className="label-text font-medium">Amount</span></label>
-                  <input type="number" className="input input-bordered w-full" placeholder="0.00" value={benefitForm.amount} onChange={e => setBenefitForm({ ...benefitForm, amount: e.target.value })} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="form-control">
-                  <label className="label"><span className="label-text font-medium">Frequency</span></label>
-                  <select className="select select-bordered w-full" value={benefitForm.frequency} onChange={e => setBenefitForm({ ...benefitForm, frequency: e.target.value })}>
-                    <option value="Yearly">Yearly</option>
-                    <option value="Monthly">Monthly</option>
-                  </select>
-                </div>
-                <div className="form-control">
-                  <label className="label"><span className="label-text font-medium">Status</span></label>
-                  <select className="select select-bordered w-full" value={benefitForm.is_active} onChange={e => setBenefitForm({ ...benefitForm, is_active: e.target.value })}>
-                    <option value="1">Active</option>
-                    <option value="0">Inactive</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="form-control">
-                  <label className="label"><span className="label-text font-medium">Start Date</span></label>
-                  <input type="date" className="input input-bordered w-full" value={benefitForm.start_date} onChange={e => setBenefitForm({ ...benefitForm, start_date: e.target.value })} />
-                </div>
-                <div className="form-control">
-                  <label className="label"><span className="label-text font-medium">End Date</span></label>
-                  <input type="date" className="input input-bordered w-full" value={benefitForm.end_date} onChange={e => setBenefitForm({ ...benefitForm, end_date: e.target.value })} />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 border-t px-6 py-4 bg-gray-50">
-              <button className="btn btn-outline border-blue-600 text-blue-600 hover:bg-blue-50" onClick={() => setShowBenefitModal(false)}>Cancel</button>
-              <button className="btn bg-blue-600 hover:bg-blue-700 text-white border-0" onClick={saveBenefit}>Add Benefit</button>
-            </div>
+      <div className="px-6 py-5 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="form-control">
+            <label className="label"><span className="label-text font-medium">Benefit Type</span></label>
+            <select className="select select-bordered w-full" value={benefitForm.benefit_type_id} onChange={e => setBenefitForm({ ...benefitForm, benefit_type_id: e.target.value })}>
+              <option value="">Select Benefit Type</option>
+              {benefitTypes.map(bt => <option key={bt.id} value={bt.id}>{bt.name}</option>)}
+            </select>
+          </div>
+          <div className="form-control">
+            <label className="label"><span className="label-text font-medium">Amount</span></label>
+            <input type="number" className="input input-bordered w-full" placeholder="0.00" value={benefitForm.amount} onChange={e => setBenefitForm({ ...benefitForm, amount: e.target.value })} />
           </div>
         </div>
-      )}
+
+        {/* NEW: Job Level and Service Years Fields */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="form-control">
+            <label className="label"><span className="label-text font-medium">Job Level</span></label>
+            <select className="select select-bordered w-full" value={benefitForm.job_level} onChange={e => setBenefitForm({ ...benefitForm, job_level: e.target.value })}>
+              <option value="">Any Level</option>
+              <option value="Junior">Junior</option>
+              <option value="Executive">Executive</option>
+              <option value="Senior">Senior</option>
+              <option value="Assistant Manager">Assistant Manager</option>
+              <option value="Manager">Manager</option>
+              <option value="General Manager">General Manager</option>
+              <option value="Head">Head</option>
+              <option value="C-Level">C-Level</option>
+              <option value="Specialist">Specialist</option>
+            </select>
+          </div>
+          <div className="form-control">
+            <label className="label"><span className="label-text font-medium">Min Service Years</span></label>
+            <input type="number" className="input input-bordered w-full" placeholder="0" value={benefitForm.min_service_years} onChange={e => setBenefitForm({ ...benefitForm, min_service_years: e.target.value })} />
+          </div>
+          <div className="form-control">
+            <label className="label"><span className="label-text font-medium">Max Service Years</span></label>
+            <input type="number" className="input input-bordered w-full" placeholder="No limit" value={benefitForm.max_service_years} onChange={e => setBenefitForm({ ...benefitForm, max_service_years: e.target.value })} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="form-control">
+            <label className="label"><span className="label-text font-medium">Frequency</span></label>
+            <select className="select select-bordered w-full" value={benefitForm.frequency} onChange={e => setBenefitForm({ ...benefitForm, frequency: e.target.value })}>
+              <option value="Yearly">Yearly</option>
+              <option value="Monthly">Monthly</option>
+              <option value="Quarterly">Quarterly</option>
+              <option value="Per_Baby">Per Baby</option>
+            </select>
+          </div>
+          <div className="form-control">
+            <label className="label"><span className="label-text font-medium">Status</span></label>
+            <select className="select select-bordered w-full" value={benefitForm.is_active} onChange={e => setBenefitForm({ ...benefitForm, is_active: e.target.value })}>
+              <option value="1">Active</option>
+              <option value="0">Inactive</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="form-control">
+            <label className="label"><span className="label-text font-medium">Start Date</span></label>
+            <input type="date" className="input input-bordered w-full" value={benefitForm.start_date} onChange={e => setBenefitForm({ ...benefitForm, start_date: e.target.value })} />
+          </div>
+          <div className="form-control">
+            <label className="label"><span className="label-text font-medium">End Date</span></label>
+            <input type="date" className="input input-bordered w-full" value={benefitForm.end_date} onChange={e => setBenefitForm({ ...benefitForm, end_date: e.target.value })} />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-3 border-t px-6 py-4 bg-gray-50">
+        <button className="btn btn-outline border-blue-600 text-blue-600 hover:bg-blue-50" onClick={() => setShowBenefitModal(false)}>Cancel</button>
+        <button className="btn bg-blue-600 hover:bg-blue-700 text-white border-0" onClick={saveBenefit}>Add Benefit</button>
+      </div>
+    </div>
+  </div>
+)}
 
 {/* Group Details Modal (responsive, fixed header/footer, scrollable body) */}
 {showDetailsModal && selectedGroup && (
@@ -1200,67 +1275,69 @@ export default function BenefitGroupTab() {
             )}
           </div>
 
-          {/* Benefits table */}
-          <div>
-            <div className="flex justify-between items-center mb-3">
-              <h4 className="font-medium text-gray-800">Benefits in this Group</h4>
-            </div>
+{/* Benefits table in Details Modal */}
+<div>
+  <div className="flex justify-between items-center mb-3">
+    <h4 className="font-medium text-gray-800">Benefits in this Group</h4>
+  </div>
 
-            <div className="overflow-x-auto">
-              <table className="table table-sm min-w-[800px]">
-                <thead>
-                  <tr>
-                    <th>Benefit Type</th>
-                    <th>Amount</th>
-                    <th>Frequency</th>
-                    <th>Start Date</th>
-                    <th>End Date</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {groupBenefits.length > 0 ? (
-                    groupBenefits.map((benefit) => (
-                      <tr key={benefit.id}>
-                        <td>{benefit.benefit_type_name}</td>
-                        <td>RM {Number(benefit.amount).toFixed(2)}</td>
-                        <td>{benefit.frequency}</td>
-                        <td>{formatDateTime(benefit.start_date)}</td>
-                        <td>{formatDateTime(benefit.end_date)}</td>
-                        <td>
-                          <span
-                            className={`badge badge-sm ${
-                              benefit.is_active ? 'badge-success' : 'badge-ghost'
-                            }`}
-                          >
-                            {benefit.is_active ? 'Active' : 'Inactive'}
-                          </span>
-                        </td>
-                        <td>
-                          <button
-                            className="btn btn-xs btn-outline border-red-600 text-red-600 hover:bg-red-50"
-                            onClick={() => removeBenefitFromGroup(benefit.id)}
-                          >
-                            Remove
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan={7}
-                        className="text-center text-gray-500 py-4"
-                      >
-                        No benefits added to this group yet
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+  <div className="overflow-x-auto">
+    <table className="table table-sm min-w-[1000px]">
+      <thead>
+        <tr>
+          <th>Benefit Type</th>
+          <th>Job Level</th>
+          <th>Service Years</th>
+          <th>Amount</th>
+          <th>Frequency</th>
+          <th>Start Date</th>
+          <th>End Date</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {groupBenefits.length > 0 ? (
+          groupBenefits.map((benefit) => (
+            <tr key={benefit.id}>
+              <td>{benefit.benefit_type_name}</td>
+              <td>{benefit.job_level || '-'}</td>
+              <td>
+                {benefit.min_service_years !== null || benefit.max_service_years !== null 
+                  ? `${benefit.min_service_years || 0} - ${benefit.max_service_years || '∞'} years`
+                  : '-'
+                }
+              </td>
+              <td>RM {Number(benefit.amount).toFixed(2)}</td>
+              <td>{benefit.frequency}</td>
+              <td>{formatDateTime(benefit.start_date)}</td>
+              <td>{formatDateTime(benefit.end_date)}</td>
+              <td>
+                <span className={`badge badge-sm ${benefit.is_active ? 'badge-success' : 'badge-ghost'}`}>
+                  {benefit.is_active ? 'Active' : 'Inactive'}
+                </span>
+              </td>
+              <td>
+                <button
+                  className="btn btn-xs btn-outline border-red-600 text-red-600 hover:bg-red-50"
+                  onClick={() => removeBenefitFromGroup(benefit.id)}
+                >
+                  Remove
+                </button>
+              </td>
+            </tr>
+          ))
+        ) : (
+          <tr>
+            <td colSpan={9} className="text-center text-gray-500 py-4">
+              No benefits added to this group yet
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+</div>
 
           {/* Assigned Employees table */}
           <div>
