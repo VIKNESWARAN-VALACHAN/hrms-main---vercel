@@ -29,6 +29,17 @@ interface Claim {
   department_name?: string; // From backend's getClaimDetails
 }
 
+interface ClaimAttachment {
+  id: number;
+  file_name: string;
+  file_url: string;
+  mime_type: string;
+  uploaded_at: string;
+  s3_key: string;
+  uploaded_by_name: string;
+  file_size?: number;
+}
+
 interface PendingApproval {
   id: number;
   claim_id: number;
@@ -120,7 +131,11 @@ export default function ClaimHistoryPage() {
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
   const [approvalHistory, setApprovalHistory] = useState<ApprovalHistory[]>([]);
   const [approvalsLoading, setApprovalsLoading] = useState(false);
-
+// Update the shouldShowApprovalTables condition
+const shouldShowApprovalTables = approverStatus?.isApprover;
+const [claimAttachments, setClaimAttachments] = useState<ClaimAttachment[]>([]);
+const [loadingAttachments, setLoadingAttachments] = useState(false);
+const [downloadingAttachment, setDownloadingAttachment] = useState<number | null>(null);
   const [isNewClaimModalOpen, setIsNewClaimModalOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [benefits, setBenefits] = useState<BenefitSummary[]>([]);
@@ -135,6 +150,10 @@ export default function ClaimHistoryPage() {
     employee_remark: '',
   });
 
+  // Add these to your existing state declarations
+const [showActionModal, setShowActionModal] = useState(false);
+const [actionType, setActionType] = useState<'approve' | 'reject' | null>(null);
+const [actionRemark, setActionRemark] = useState('');
   // State to hold comprehensive claim details for the view modal
   const [fetchedClaimDetails, setFetchedClaimDetails] = useState<FullClaimDetailsResponse | null>(null);
 
@@ -200,6 +219,136 @@ export default function ClaimHistoryPage() {
     }
   }, []);
 
+// Add this function to handle file downloads
+const downloadAttachment = async (attachment: ClaimAttachment) => {
+  try {
+    setDownloadingAttachment(attachment.id);
+    console.log(`📥 Downloading attachment: ${attachment.file_name}`);
+    
+    // Open download URL in new tab
+    const downloadUrl = `${API_BASE_URL}/api/claims/attachments/${attachment.id}/download`;
+    window.open(downloadUrl, '_blank');
+    
+    toast.success(`Downloading ${attachment.file_name}`);
+    
+  } catch (error: any) {
+    console.error('❌ Download error:', error);
+    toast.error(`Failed to download: ${attachment.file_name}`);
+  } finally {
+    setDownloadingAttachment(null);
+  }
+};
+  
+const canUserApproveClaim = async (claimId: number, level: number): Promise<boolean> => {
+  if (!user) return false;
+  
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/api/approval/check-approval-authorization?claim_id=${claimId}&user_id=${user.id}`
+    );
+    
+    if (!response.ok) return false;
+    
+    const data = await response.json();
+    return data.canApprove;
+  } catch (error) {
+    console.error('Error checking approval authorization:', error);
+    return false;
+  }
+};
+
+const PendingApprovalRow = ({ approval }: { approval: PendingApproval }) => {
+  const [canApprove, setCanApprove] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(false);
+  const [authReason, setAuthReason] = useState('');
+
+  useEffect(() => {
+    const checkAuthorization = async () => {
+      if (user) {
+        setCheckingAuth(true);
+        try {
+          const response = await fetch(
+            `${API_BASE_URL}/api/approval/check-approval-authorization?claim_id=${approval.claim_id}&user_id=${user.id}`
+          );
+          
+          if (response.ok) {
+            const data = await response.json();
+            setCanApprove(data.canApprove);
+            setAuthReason(data.reason || '');
+          }
+        } catch (error) {
+          console.error('Authorization check failed:', error);
+          setCanApprove(false);
+          setAuthReason('Check failed');
+        } finally {
+          setCheckingAuth(false);
+        }
+      }
+    };
+
+    checkAuthorization();
+  }, [approval, user]);
+
+  return (
+    <tr key={approval.id} className="hover:bg-base-200">
+      <td>{approval.employee_name}</td>
+      <td>{approval.benefit_type_name}</td>
+      <td>RM {parseFloat(approval.amount.toString()).toFixed(2)}</td>
+      <td>{approval.company_name}</td>
+      <td>
+        <span className="badge badge-info">Level {approval.approval_level}</span>
+      </td>
+      <td>
+        <div className="max-w-xs">
+          <div className="text-sm">{approval.employee_remark}</div>
+        </div>
+      </td>
+      <td>{new Date(approval.claim_date).toLocaleDateString()}</td>
+      <td>
+        <div className="flex gap-2 items-center">
+          {checkingAuth ? (
+            <>
+              <span className="loading loading-spinner loading-xs"></span>
+              <span className="text-xs text-gray-500">Checking...</span>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => handleViewPendingClaim(approval.claim_id)}
+                className="btn btn-ghost btn-sm"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              </button>
+              {canApprove ? (
+                <>
+                  <button
+                    onClick={() => openActionModal(approval.claim_id, approval.approval_level, 'approve')}
+                    className="btn btn-success btn-sm"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => openActionModal(approval.claim_id, approval.approval_level, 'reject')}
+                    className="btn btn-error btn-sm"
+                  >
+                    Reject
+                  </button>
+                </>
+              ) : (
+                <span className="text-xs text-gray-500">
+                  {authReason || 'Not authorized'}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+};
 
    useEffect(() => {
     if (user) {
@@ -207,148 +356,262 @@ export default function ClaimHistoryPage() {
       fetchApprovalData();
     }
   }, [user]);
-
+// Update the checkApproverStatus function
 const checkApproverStatus = async () => {
   if (!user) return;
   setCheckingApproverStatus(true);
   try {
-    // Simple query parameter approach - no headers issues
     const res = await fetch(`${API_BASE_URL}/api/approval/check-approver-status?user_id=${user.id}`);
     
     if (res.ok) {
       const status = await res.json();
+      console.log('Approver Status:', status);
       setApproverStatus(status);
     } else {
-      const error = await res.json();
-      toast.error(error.error || 'Failed to check approver status');
+      console.warn('User is not an approver');
+      setApproverStatus({ isApprover: false, pendingCount: 0, historyCount: 0 });
     }
   } catch (err) {
     console.error('Error checking approver status:', err);
-    toast.error('Failed to check approver status');
+    setApproverStatus({ isApprover: false, pendingCount: 0, historyCount: 0 });
   } finally {
     setCheckingApproverStatus(false);
   }
 };
 
-  // Update the fetchApprovalData function to only fetch if user is approver
-  const fetchApprovalData = async () => {
-    if (!user) return;
+
+// Update the fetchApprovalData function
+const fetchApprovalData = async () => {
+  if (!user) return;
+  
+  setApprovalsLoading(true);
+  try {
+    // Fetch pending approvals
+    const pendingRes = await fetch(`${API_BASE_URL}/api/approval/pending-approvals?user_id=${user.id}`);
+    if (pendingRes.ok) {
+      const pendingData = await pendingRes.json();
+      console.log('Pending Approvals:', pendingData);
+      setPendingApprovals(pendingData);
+    } else {
+      console.warn('No pending approvals found');
+      setPendingApprovals([]);
+    }
+
+    // Fetch approval history
+    const historyRes = await fetch(`${API_BASE_URL}/api/approval/my-approval-history?user_id=${user.id}`);
+    if (historyRes.ok) {
+      const historyData = await historyRes.json();
+      console.log('Approval History:', historyData);
+      setApprovalHistory(historyData);
+    } else {
+      console.warn('No approval history found');
+      setApprovalHistory([]);
+    }
+  } catch (err) {
+    console.error('Error fetching approval data:', err);
+    toast.error('Failed to load approval data');
+    setPendingApprovals([]);
+    setApprovalHistory([]);
+  } finally {
+    setApprovalsLoading(false);
+  }
+};
+
+// Replace the existing view button handler in the pending approvals table
+const handleViewPendingClaim = async (claimId: number) => {
+  try {
+    // Fetch claim details directly from API
+    const res = await fetch(`${API_BASE_URL}/api/approval/claims/${claimId}`);
     
-    setApprovalsLoading(true);
-    try {
-      // First check if user is an approver
-
-       const statusRes = await fetch(`${API_BASE_URL}/api/approval/check-approver-status?user_id=${user.id}`);
+    if (!res.ok) {
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
     
-      //const statusRes = await fetch(`${API_BASE_URL}/api/approval/check-approver-status`);
-      if (statusRes.ok) {
-        const status = await statusRes.json();
-        setApproverStatus(status);
-
-        // Only fetch approval data if user is an approver
-        if (status.isApprover) {
-          // Fetch pending approvals
-          const pendingRes = await fetch(`${API_BASE_URL}/api/approval/pending-approvals`);
-          if (pendingRes.ok) {
-            const pendingData = await pendingRes.json();
-            setPendingApprovals(pendingData);
-          }
-
-          // Fetch approval history
-          const historyRes = await fetch(`${API_BASE_URL}/api/approval/approval-history`);
-          if (historyRes.ok) {
-            const historyData = await historyRes.json();
-            setApprovalHistory(historyData);
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching approval data:', err);
-      toast.error('Failed to load approval data');
-    } finally {
-      setApprovalsLoading(false);
-    }
-  };
-
-  // Add these handler functions
-  const handleApprove = async (claimId: number, level: number) => {
-    const remark = prompt('Enter approval remark (optional):') || '';
+    const data = await res.json();
     
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/approval/claims/${claimId}/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          approver_id: user?.id,
-          approver_name: user?.name,
-          remark: remark
-        })
-      });
-
-      if (res.ok) {
-        toast.success('Claim approved successfully');
-        fetchApprovalData(); // Refresh data
-      } else {
-        const error = await res.json();
-        toast.error(error.error || 'Failed to approve claim');
-      }
-    } catch (err) {
-      console.error('Error approving claim:', err);
-      toast.error('Failed to approve claim');
-    }
-  };
-
-  const handleReject = async (claimId: number, level: number) => {
-    const remark = prompt('Enter rejection reason (required):');
-    if (!remark) {
-      toast.error('Rejection reason is required');
-      return;
-    }
-
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/approval/claims/${claimId}/reject`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          approver_id: user?.id,
-          approver_name: user?.name,
-          remark: remark
-        })
-      });
-
-      if (res.ok) {
-        toast.success('Claim rejected successfully');
-        fetchApprovalData(); // Refresh data
-      } else {
-        const error = await res.json();
-        toast.error(error.error || 'Failed to reject claim');
-      }
-    } catch (err) {
-      console.error('Error rejecting claim:', err);
-      toast.error('Failed to reject claim');
-    }
-  };
-
-  // Open view modal - MODIFIED TO FETCH COMPREHENSIVE DATA
-  const openViewModal = async (claim: Claim) => {
-    setSelectedClaim(claim); // Set the basic claim data immediately for loading state
-    setFetchedClaimDetails(null); // Clear previous details
-    setIsViewModalOpen(true); // Open the modal
-
-    try {
-      // Fetch comprehensive claim details from the backend
-      const res = await fetch(`${API_BASE_URL}/api/approval/claims/${claim.id}`);
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-      const data: FullClaimDetailsResponse = await res.json();
+   if (data.claimDetails) {
+      // Set the claim details
+      setSelectedClaim(data.claimDetails);
       setFetchedClaimDetails(data);
-    } catch (err: any) {
-      console.error('Error fetching comprehensive claim details:', err);
-      toast.error(err.message || 'Failed to load claim details for view.');
-      setIsViewModalOpen(false); // Close modal on error
+      
+      // 🆕 Fetch attachments for this claim
+      setLoadingAttachments(true);
+      const attachmentsRes = await fetch(`${API_BASE_URL}/api/claims/${claimId}/attachments`);
+      if (attachmentsRes.ok) {
+        const attachments = await attachmentsRes.json();
+        setClaimAttachments(attachments);
+        console.log(`✅ Loaded ${attachments.length} attachments for claim ${claimId}`);
+      } else {
+        console.log('No attachments found for this claim');
+        setClaimAttachments([]);
+      }
+      
+      setIsViewModalOpen(true);
+    } else {
+      toast.error('Failed to load claim details');
     }
-  };
+  } catch (err: any) {
+    console.error('Error fetching claim details:', err);
+    toast.error(err.message || 'Failed to load claim details');
+  }
+};
+
+// Replace the existing handleApprove and handleReject functions with these:
+
+const openActionModal = (claimId: number, level: number, type: 'approve' | 'reject') => {
+  // Find the claim from pending approvals
+  const claim = pendingApprovals.find(pa => pa.claim_id === claimId);
+  if (claim) {
+    setSelectedClaim({
+      id: claim.claim_id,
+      benefit_type_name: claim.benefit_type_name,
+      amount: claim.amount,
+      approved_amount: null,
+      claim_date: claim.claim_date,
+      status: claim.status,
+      employee_remark: claim.employee_remark,
+      admin_remark: null,
+      company_name: claim.company_name,
+      current_approval_level: claim.approval_level,
+      final_approval_level: 3, // You might need to adjust this based on your data
+      created_at: new Date().toISOString(),
+      employee_id: 0, // You might need to get this from the claim data
+      employee_name: claim.employee_name
+    });
+    setActionType(type);
+    setActionRemark('');
+    setShowActionModal(true);
+  }
+};
+
+const formatCurrency = (value: string | number) => {
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  if (Number.isNaN(num)) return 'RM 0.00';
+  return `RM ${num.toFixed(2)}`;
+};
+
+const handleApprove = async () => {
+  if (!selectedClaim || !user) {
+    toast.error('No claim selected or user not logged in.');
+    return;
+  }
+  
+  // Check authorization first
+  const authorized = await canUserApproveClaim(selectedClaim.id, selectedClaim.current_approval_level);
+  if (!authorized) {
+    toast.error('You are not authorized to approve this claim at the current level');
+    setShowActionModal(false);
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/approval/claims/${selectedClaim.id}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        approver_id: user.id,
+        approver_name: user.name,
+        remark: actionRemark
+      })
+    });
+
+    if (res.ok) {
+      toast.success('Claim approved successfully');
+      setShowActionModal(false);
+      setActionRemark('');
+      fetchApprovalData(); // Refresh the approval data
+    } else {
+      const error = await res.json();
+      toast.error(error.error || 'Failed to approve claim');
+    }
+  } catch (err) {
+    console.error('Error approving claim:', err);
+    toast.error('Failed to approve claim');
+  }
+};
+
+const handleReject = async () => {
+  if (!selectedClaim || !user) {
+    toast.error('No claim selected or user not logged in.');
+    return;
+  }
+  
+  if (!actionRemark.trim()) {
+    toast.error('Rejection reason is required.');
+    return;
+  }
+
+  // Check authorization first
+  const authorized = await canUserApproveClaim(selectedClaim.id, selectedClaim.current_approval_level);
+  if (!authorized) {
+    toast.error('You are not authorized to reject this claim at the current level');
+    setShowActionModal(false);
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/approval/claims/${selectedClaim.id}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        approver_id: user.id,
+        approver_name: user.name,
+        remark: actionRemark
+      })
+    });
+
+    if (res.ok) {
+      toast.success('Claim rejected successfully');
+      setShowActionModal(false);
+      setActionRemark('');
+      fetchApprovalData(); // Refresh the approval data
+    } else {
+      const error = await res.json();
+      toast.error(error.error || 'Failed to reject claim');
+    }
+  } catch (err) {
+    console.error('Error rejecting claim:', err);
+    toast.error('Failed to reject claim');
+  }
+};
+
+
+
+// Update your existing openViewModal function
+const openViewModal = async (claim: Claim) => {
+  setSelectedClaim(claim);
+  setFetchedClaimDetails(null);
+  setClaimAttachments([]); // Clear previous attachments
+  setIsViewModalOpen(true);
+
+  try {
+    // Fetch comprehensive claim details
+    const res = await fetch(`${API_BASE_URL}/api/approval/claims/${claim.id}`);
+    if (!res.ok) {
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
+    const data: FullClaimDetailsResponse = await res.json();
+    setFetchedClaimDetails(data);
+
+    // 🆕 Fetch attachments for this claim
+    setLoadingAttachments(true);
+    const attachmentsRes = await fetch(`${API_BASE_URL}/api/claims/${claim.id}/attachments`);
+    if (attachmentsRes.ok) {
+      const attachments = await attachmentsRes.json();
+      setClaimAttachments(attachments);
+      console.log(`✅ Loaded ${attachments.length} attachments for claim ${claim.id}`);
+    } else {
+      console.log('No attachments found for this claim');
+      setClaimAttachments([]);
+    }
+  } catch (err: any) {
+    console.error('Error fetching comprehensive claim details:', err);
+    toast.error(err.message || 'Failed to load claim details for view.');
+    setIsViewModalOpen(false);
+  } finally {
+    setLoadingAttachments(false);
+  }
+};
 
   // Open edit modal and initialize form data
   const openEditModal = (claim: Claim) => {
@@ -525,231 +788,296 @@ const checkApproverStatus = async () => {
     return current.every(item => item.status === 'Approved' || item.status === 'Rejected');
   };
 
-   const shouldShowApprovalTables = approverStatus?.isApprover;
+
 
   return (
     <div className="p-6 max-w-7xl mx-auto bg-base-100 min-h-screen">
       
       {/* View Claim Modal */}
-      {isViewModalOpen && selectedClaim && (
-        <div className="modal modal-open">
-          <div className="modal-box max-w-2xl p-0"> {/* Remove padding and control it internally */}
-            <div className="bg-base-200 px-6 py-4 rounded-t-lg flex justify-between items-center">
-              <h3 className="text-xl font-bold">Claim Details</h3>
-              <button onClick={() => setIsViewModalOpen(false)} className="btn btn-sm btn-circle bg-transparent border-none text-gray-500 hover:bg-gray-200">
-                ✕
-              </button>
+{isViewModalOpen && selectedClaim && (
+  <div className="modal modal-open">
+    <div className="modal-box max-w-4xl p-0">
+      <div className="bg-base-200 px-6 py-4 rounded-t-lg flex justify-between items-center">
+        <h3 className="text-xl font-bold">Claim Details</h3>
+        <button onClick={() => setIsViewModalOpen(false)} className="btn btn-sm btn-circle bg-transparent border-none text-gray-500 hover:bg-gray-200">
+          ✕
+        </button>
+      </div>
+
+      <div className="p-6 space-y-4">
+        {!fetchedClaimDetails ? (
+          <div className="text-center py-10">
+            <span className="loading loading-spinner loading-lg"></span>
+            <p className="mt-2">Loading claim details...</p>
+          </div>
+        ) : (
+          <>
+            {/* Basic Claim Information */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label">
+                  <span className="label-text">Benefit Type</span>
+                </label>
+                <input
+                  type="text"
+                  className="input input-bordered w-full bg-base-100"
+                  value={fetchedClaimDetails.claimDetails.benefit_type_name}
+                  disabled
+                />
+              </div>
+              <div>
+                <label className="label">
+                  <span className="label-text">Amount</span>
+                </label>
+                <input
+                  type="text"
+                  className="input input-bordered w-full bg-base-100"
+                  value={`RM ${parseFloat(fetchedClaimDetails.claimDetails.amount.toString()).toFixed(2)}`}
+                  disabled
+                />
+              </div>
+              {fetchedClaimDetails.claimDetails.approved_amount !== null && (
+                <div>
+                  <label className="label">
+                    <span className="label-text">Approved Amount</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="input input-bordered w-full bg-base-100"
+                    value={`RM ${parseFloat(fetchedClaimDetails.claimDetails.approved_amount.toString()).toFixed(2)}`}
+                    disabled
+                  />
+                </div>
+              )}
+              <div>
+                <label className="label">
+                  <span className="label-text">Company</span>
+                </label>
+                <input
+                  type="text"
+                  className="input input-bordered w-full bg-base-100"
+                  value={fetchedClaimDetails.claimDetails.company_name}
+                  disabled
+                />
+              </div>
+              <div>
+                <label className="label">
+                  <span className="label-text">Claim Date</span>
+                </label>
+                <input
+                  type="text"
+                  className="input input-bordered w-full bg-base-100"
+                  value={new Date(fetchedClaimDetails.claimDetails.claim_date).toLocaleDateString()}
+                  disabled
+                />
+              </div>
+              <div>
+                <label className="label">
+                  <span className="label-text">Status</span>
+                </label>
+                <input
+                  type="text"
+                  className="input input-bordered w-full bg-base-100"
+                  value={fetchedClaimDetails.claimDetails.status}
+                  disabled
+                />
+              </div>
+              <div>
+                <label className="label">
+                  <span className="label-text">Created At</span>
+                </label>
+                <input
+                  type="text"
+                  className="input input-bordered w-full bg-base-100"
+                  value={new Date(fetchedClaimDetails.claimDetails.created_at).toLocaleString()}
+                  disabled
+                />
+              </div>
             </div>
 
-            <div className="p-6 space-y-4">
-              {!fetchedClaimDetails ? (
-                <div className="text-center py-10">
-                  <span className="loading loading-spinner loading-lg"></span>
-                  <p className="mt-2">Loading claim details...</p>
+            <div>
+              <label className="label">
+                <span className="label-text">Employee Remark</span>
+              </label>
+              <textarea
+                className="textarea textarea-bordered w-full bg-base-100"
+                rows={3}
+                value={fetchedClaimDetails.claimDetails.employee_remark}
+                disabled
+              />
+            </div>
+
+            {fetchedClaimDetails.claimDetails.admin_remark && (
+              <div>
+                <label className="label">
+                  <span className="label-text">Admin Remark</span>
+                </label>
+                <textarea
+                  className="textarea textarea-bordered w-full bg-base-100"
+                  rows={3}
+                  value={fetchedClaimDetails.claimDetails.admin_remark}
+                  disabled
+                />
+              </div>
+            )}
+
+            {/* 🆕 Attachments Section */}
+            <div className="mt-6">
+              <h4 className="text-lg font-bold mb-3 border-t pt-4">Supporting Documents</h4>
+              {loadingAttachments ? (
+                <div className="text-center py-4">
+                  <span className="loading loading-spinner loading-sm"></span>
+                  <span className="ml-2 text-gray-600">Loading attachments...</span>
+                </div>
+              ) : claimAttachments.length > 0 ? (
+                <div className="space-y-2">
+                  {claimAttachments.map((attachment) => (
+                    <div key={attachment.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <div className="flex items-center space-x-3">
+                        <div className={`p-2 rounded-lg ${
+                          attachment.mime_type?.startsWith('image/') ? 'bg-blue-100 text-blue-600' :
+                          attachment.mime_type === 'application/pdf' ? 'bg-red-100 text-red-600' :
+                          attachment.mime_type?.startsWith('application/') ? 'bg-purple-100 text-purple-600' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {attachment.mime_type?.startsWith('image/') ? '🖼️' : 
+                           attachment.mime_type === 'application/pdf' ? '📄' : 
+                           '📎'}
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-800 text-sm">{attachment.file_name}</p>
+                          <p className="text-xs text-gray-500">
+                            Uploaded by {attachment.uploaded_by_name} • 
+                            {new Date(attachment.uploaded_at).toLocaleDateString()} • 
+                            {attachment.file_size ? ` ${(attachment.file_size / 1024).toFixed(1)} KB` : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => downloadAttachment(attachment)}
+                        disabled={downloadingAttachment === attachment.id}
+                        className="btn btn-sm btn-outline btn-primary flex items-center gap-2"
+                      >
+                        {downloadingAttachment === attachment.id ? (
+                          <>
+                            <span className="loading loading-spinner loading-xs"></span>
+                            Downloading...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            Download
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ))}
                 </div>
               ) : (
-                <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="label">
-                        <span className="label-text">Benefit Type</span>
-                      </label>
-                      <input
-                        type="text"
-                        className="input input-bordered w-full bg-base-100"
-                        value={fetchedClaimDetails.claimDetails.benefit_type_name}
-                        disabled
-                      />
-                    </div>
-                    <div>
-                      <label className="label">
-                        <span className="label-text">Amount</span>
-                      </label>
-                      <input
-                        type="text"
-                        className="input input-bordered w-full bg-base-100"
-                        value={`RM ${parseFloat(fetchedClaimDetails.claimDetails.amount.toString()).toFixed(2)}`}
-                        disabled
-                      />
-                    </div>
-                    {fetchedClaimDetails.claimDetails.approved_amount !== null && (
-                      <div>
-                        <label className="label">
-                          <span className="label-text">Approved Amount</span>
-                        </label>
-                        <input
-                          type="text"
-                          className="input input-bordered w-full bg-base-100"
-                          value={`RM ${parseFloat(fetchedClaimDetails.claimDetails.approved_amount.toString()).toFixed(2)}`}
-                          disabled
-                        />
-                      </div>
-                    )}
-                    <div>
-                      <label className="label">
-                        <span className="label-text">Company</span>
-                      </label>
-                      <input
-                        type="text"
-                        className="input input-bordered w-full bg-base-100"
-                        value={fetchedClaimDetails.claimDetails.company_name}
-                        disabled
-                      />
-                    </div>
-                    <div>
-                      <label className="label">
-                        <span className="label-text">Claim Date</span>
-                      </label>
-                      <input
-                        type="text"
-                        className="input input-bordered w-full bg-base-100"
-                        value={new Date(fetchedClaimDetails.claimDetails.claim_date).toLocaleDateString()}
-                        disabled
-                      />
-                    </div>
-                    <div>
-                      <label className="label">
-                        <span className="label-text">Status</span>
-                      </label>
-                      <input
-                        type="text"
-                        className="input input-bordered w-full bg-base-100"
-                        value={fetchedClaimDetails.claimDetails.status}
-                        disabled
-                      />
-                    </div>
-                    <div>
-                      <label className="label">
-                        <span className="label-text">Created At</span>
-                      </label>
-                      <input
-                        type="text"
-                        className="input input-bordered w-full bg-base-100"
-                        value={new Date(fetchedClaimDetails.claimDetails.created_at).toLocaleString()}
-                        disabled
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="label">
-                      <span className="label-text">Employee Remark</span>
-                    </label>
-                    <textarea
-                      className="textarea textarea-bordered w-full bg-base-100"
-                      rows={3}
-                      value={fetchedClaimDetails.claimDetails.employee_remark}
-                      disabled
-                    />
-                  </div>
-
-                  {fetchedClaimDetails.claimDetails.admin_remark && (
-                    <div>
-                      <label className="label">
-                        <span className="label-text">Admin Remark</span>
-                      </label>
-                      <textarea
-                        className="textarea textarea-bordered w-full bg-base-100"
-                        rows={3}
-                        value={fetchedClaimDetails.claimDetails.admin_remark}
-                        disabled
-                      />
-                    </div>
-                  )}
-
-                  {/* Section for Approval History (Approved/Rejected only) */}
-                  <h4 className="text-lg font-bold mt-6 mb-3 border-t pt-4">Approval History</h4>
-                  {getFilteredApprovalHistory(fetchedClaimDetails.approvalHistory).length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <table className="table w-full text-sm">
-                        <thead>
-                          <tr className="bg-base-200">
-                            <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Level</th>
-                            <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Approver</th>
-                            <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-                            <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Remark</th>
-                            <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Date</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {getFilteredApprovalHistory(fetchedClaimDetails.approvalHistory)
-                            .sort((a, b) => new Date(a.approved_at).getTime() - new Date(b.approved_at).getTime()) // Sort by date
-                            .map((historyItem, index) => (
-                            <tr key={historyItem.id}>
-                              <td className="py-2">{historyItem.level}</td>
-                              <td className="py-2">{historyItem.approver_name}</td>
-                              <td className="py-2">
-                                <span className={`badge ${
-                                  historyItem.status === 'Approved' ? 'badge-success' :
-                                  historyItem.status === 'Rejected' ? 'badge-error' : ''
-                                }`}>
-                                  {historyItem.status}
-                                </span>
-                              </td>
-                              <td className="py-2">{historyItem.remark || '-'}</td>
-                              <td className="py-2">{historyItem.approved_at ? new Date(historyItem.approved_at).toLocaleString() : '-'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <p className="text-center text-gray-500 py-4">No approved or rejected history found.</p>
-                  )}
-
-                  {/* Section for Current Approval Status (only if not all are final) */}
-                  {!areAllCurrentApprovalsFinal(getProcessedCurrentApprovals(fetchedClaimDetails.currentApprovals)) && (
-                    <>
-                      <h4 className="text-lg font-bold mt-6 mb-3 border-t pt-4">Current Approval Status</h4>
-                      {getProcessedCurrentApprovals(fetchedClaimDetails.currentApprovals).length > 0 ? (
-                        <div className="overflow-x-auto">
-                          <table className="table w-full text-sm">
-                            <thead>
-                              <tr className="bg-base-200">
-                                <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Level</th>
-                                <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Approver</th>
-                                <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
-                                <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Remark</th>
-                                <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Action Date</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {getProcessedCurrentApprovals(fetchedClaimDetails.currentApprovals)
-                                .map((currentItem, index) => (
-                                <tr key={currentItem.approver_id || index}>
-                                  <td className="py-2">{currentItem.level}</td>
-                                  <td className="py-2">{currentItem.approver_name}</td>
-                                  <td className="py-2">
-                                    <span className={`badge ${
-                                      currentItem.status === 'Approved' ? 'badge-success' :
-                                      currentItem.status === 'Rejected' ? 'badge-error' :
-                                      'badge-warning' // Pending status
-                                    }`}>
-                                      {currentItem.status}
-                                    </span>
-                                  </td>
-                                  <td className="py-2">{currentItem.remark || '-'}</td>
-                                  <td className="py-2">{currentItem.action_date ? new Date(currentItem.action_date).toLocaleString() : '-'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : (
-                        <p className="text-center text-gray-500 py-4">No current approval status data available.</p>
-                      )}
-                    </>
-                  )}
-                </>
+                <div className="text-center py-6 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                  <svg className="w-12 h-12 text-gray-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                  </svg>
+                  <p className="text-gray-500 text-sm">No supporting documents attached</p>
+                </div>
               )}
             </div>
 
-            <div className="modal-action bg-base-200 px-6 py-4 rounded-b-lg mt-0 justify-end">
-              <button onClick={() => setIsViewModalOpen(false)} className="btn">Close</button>
-            </div>
-          </div>
-        </div>
-      )}
+            {/* Existing Approval History Section */}
+            <h4 className="text-lg font-bold mt-6 mb-3 border-t pt-4">Approval History</h4>
+            {getFilteredApprovalHistory(fetchedClaimDetails.approvalHistory).length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="table w-full text-sm">
+                  <thead>
+                    <tr className="bg-base-200">
+                      <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Level</th>
+                      <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Approver</th>
+                      <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
+                      <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Remark</th>
+                      <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {getFilteredApprovalHistory(fetchedClaimDetails.approvalHistory)
+                      .sort((a, b) => new Date(a.approved_at).getTime() - new Date(b.approved_at).getTime())
+                      .map((historyItem, index) => (
+                      <tr key={historyItem.id}>
+                        <td className="py-2">{historyItem.level}</td>
+                        <td className="py-2">{historyItem.approver_name}</td>
+                        <td className="py-2">
+                          <span className={`badge ${
+                            historyItem.status === 'Approved' ? 'badge-success' :
+                            historyItem.status === 'Rejected' ? 'badge-error' : ''
+                          }`}>
+                            {historyItem.status}
+                          </span>
+                        </td>
+                        <td className="py-2">{historyItem.remark || '-'}</td>
+                        <td className="py-2">{historyItem.approved_at ? new Date(historyItem.approved_at).toLocaleString() : '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-center text-gray-500 py-4">No approved or rejected history found.</p>
+            )}
+
+            {/* Existing Current Approval Status Section */}
+            {!areAllCurrentApprovalsFinal(getProcessedCurrentApprovals(fetchedClaimDetails.currentApprovals)) && (
+              <>
+                <h4 className="text-lg font-bold mt-6 mb-3 border-t pt-4">Current Approval Status</h4>
+                {getProcessedCurrentApprovals(fetchedClaimDetails.currentApprovals).length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="table w-full text-sm">
+                      <thead>
+                        <tr className="bg-base-200">
+                          <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Level</th>
+                          <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Approver</th>
+                          <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
+                          <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Remark</th>
+                          <th className="p-2 text-left text-xs font-semibold text-gray-600 uppercase">Action Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {getProcessedCurrentApprovals(fetchedClaimDetails.currentApprovals)
+                          .map((currentItem, index) => (
+                          <tr key={currentItem.approver_id || index}>
+                            <td className="py-2">{currentItem.level}</td>
+                            <td className="py-2">{currentItem.approver_name}</td>
+                            <td className="py-2">
+                              <span className={`badge ${
+                                currentItem.status === 'Approved' ? 'badge-success' :
+                                currentItem.status === 'Rejected' ? 'badge-error' :
+                                'badge-warning'
+                              }`}>
+                                {currentItem.status}
+                              </span>
+                            </td>
+                            <td className="py-2">{currentItem.remark || '-'}</td>
+                            <td className="py-2">{currentItem.action_date ? new Date(currentItem.action_date).toLocaleString() : '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-center text-gray-500 py-4">No current approval status data available.</p>
+                )}
+              </>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="modal-action bg-base-200 px-6 py-4 rounded-b-lg mt-0 justify-end">
+        <button onClick={() => setIsViewModalOpen(false)} className="btn">Close</button>
+      </div>
+    </div>
+  </div>
+)}
 
       {/* Edit Claim Modal */}{/* Edit Claim Modal */}
       {isEditModalOpen && selectedClaim && (
@@ -982,7 +1310,77 @@ const checkApproverStatus = async () => {
           </div>
         </div>
       )}
+      
+       {/* ======================== Approve / Reject Modal ======================== */}
+    {showActionModal && selectedClaim && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-base-300/40 backdrop-blur-[2px]" role="dialog" aria-modal="true">
+        <div className="bg-base-100 rounded-lg max-w-2xl w-full p-6 shadow-lg relative max-h-[90vh] overflow-y-auto">
+          <h2 className={`text-xl font-bold mb-4 ${actionType === 'approve' ? 'text-green-600' : 'text-red-600'}`}>
+            {actionType === 'approve' ? '✅ Approve Claim Request' : '❌ Reject Claim Request'}
+          </h2>
+          
+          {/* Close button */}
+          <button 
+            onClick={() => setShowActionModal(false)} 
+            className="btn btn-sm btn-circle btn-ghost absolute top-4 right-4"
+          >
+            ✕
+          </button>
 
+          <div className="grid grid-cols-2 gap-4 text-sm text-gray-700 mb-6">
+            <div><strong>Employee:</strong> {selectedClaim.employee_name}</div>
+            <div><strong>Company:</strong> {selectedClaim.company_name}</div>
+            <div><strong>Benefit Type:</strong> {selectedClaim.benefit_type_name}</div>
+            <div><strong>Date:</strong> {new Date(selectedClaim.claim_date).toLocaleDateString()}</div>
+            <div><strong>Amount:</strong> {formatCurrency(selectedClaim.amount)}</div>
+            <div><strong>Status:</strong> {selectedClaim.status}</div>
+            <div className="col-span-2">
+              <strong>Employee Remark:</strong> 
+              <span className="italic text-gray-600 ml-1">{selectedClaim.employee_remark}</span>
+            </div>
+          </div>
+
+          <label className="block font-medium text-sm text-gray-700 mb-1">
+            {actionType === 'approve' ? 'Approval Comment (Optional)' : 'Rejection Reason'} 
+            {actionType === 'reject' && <span className="text-red-500">*</span>}
+          </label>
+          <textarea
+            className="textarea textarea-bordered w-full mb-4"
+            value={actionRemark}
+            onChange={(e) => setActionRemark(e.target.value)}
+            placeholder={actionType === 'approve' ? 'Add comment (optional)' : 'Please provide a reason'}
+            required={actionType === 'reject'}
+            rows={4}
+          />
+          
+          {actionType === 'approve' ? (
+            <div className="bg-green-50 text-green-800 text-sm border border-green-200 rounded-md p-3 mb-4">
+              <strong>Approval Confirmation:</strong> By approving this claim, you confirm the request is valid and processed.
+            </div>
+          ) : (
+            <div className="bg-yellow-50 text-yellow-800 text-sm border border-yellow-300 rounded-md p-3 mb-4">
+              <strong>Important Note:</strong> This action cannot be undone. The employee will be notified.
+            </div>
+          )}
+          
+          <div className="flex justify-end gap-3">
+            <button 
+              className="btn btn-ghost" 
+              onClick={() => setShowActionModal(false)}
+            >
+              Cancel
+            </button>
+            <button
+              className={`btn ${actionType === 'approve' ? 'btn-success' : 'btn-error'}`}
+              onClick={actionType === 'approve' ? handleApprove : handleReject}
+              disabled={actionType === 'reject' && actionRemark.trim() === ''}
+            >
+              {actionType === 'approve' ? 'Approve Claim' : 'Reject Claim'}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
       {/* Main Dashboard Content */}
       <div className="flex justify-between items-center mb-6">
@@ -1188,40 +1586,42 @@ const checkApproverStatus = async () => {
                           {claim.status}
                         </span>
                       </td>
-                      <td>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => openViewModal(claim)}
-                            className="btn btn-sm btn-ghost"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          </button>
-                          {/* Conditional rendering for Edit and Delete buttons */}
-                          {claim.status !== 'Approved' && claim.status !== 'Rejected' && (
-                            <>
-                              <button
-                                onClick={() => openEditModal(claim)}
-                                className="btn btn-sm btn-ghost"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </button>
-                              <button
-                                onClick={() => openDeleteModal(claim)}
-                                className="btn btn-sm btn-ghost text-error"
-                              >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </td>
+<td>
+  <div className="flex gap-2">
+    <button
+      onClick={() => openViewModal(claim)}
+      className="btn btn-sm btn-ghost"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+      </svg>
+    </button>
+    {/* Conditional rendering for Edit and Delete buttons - Hide when Under Review */}
+    {claim.status === 'Pending' && (
+      <>
+        <button
+          onClick={() => openEditModal(claim)}
+          className="btn btn-sm btn-ghost"
+          title="Edit Claim"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+        </button>
+        <button
+          onClick={() => openDeleteModal(claim)}
+          className="btn btn-sm btn-ghost text-error"
+          title="Delete Claim"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
+      </>
+    )}
+  </div>
+</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1233,107 +1633,54 @@ const checkApproverStatus = async () => {
 
       
        {/* Pending Approvals Table - Only show for approvers */}
-      {shouldShowApprovalTables && (
-        <div className="mt-8">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Pending Approvals</h2>
-            <span className="badge badge-warning badge-lg">
-              {pendingApprovals.length} Pending
-            </span>
-          </div>
+{/* Pending Approvals Table - Only show for approvers */}
+{shouldShowApprovalTables && (
+  <div className="mt-8">
+    <div className="flex justify-between items-center mb-4">
+      <h2 className="text-xl font-semibold">Pending Approvals</h2>
+      <span className="badge badge-warning badge-lg">
+        {pendingApprovals.length} Pending
+      </span>
+    </div>
 
-          {approvalsLoading ? (
-            <div className="flex justify-center">
-              <span className="loading loading-spinner loading-lg"></span>
-            </div>
-          ) : pendingApprovals.length === 0 ? (
-            <div className="alert alert-info shadow-lg">
-              <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-              <span>No pending approvals requiring your action.</span>
-            </div>
-          ) : (
-            <div className="bg-base-100 rounded-lg shadow overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="table">
-                  <thead className="bg-base-200">
-                    <tr>
-                      <th>Employee</th>
-                      <th>Benefit</th>
-                      <th>Amount</th>
-                      <th>Company</th>
-                      <th>Level</th>
-                      <th>Remarks</th>
-                      <th>Date</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-base-300">
-                    {pendingApprovals.map((approval) => (
-                      <tr key={approval.id} className="hover:bg-base-200">
-                        <td>{approval.employee_name}</td>
-                        <td>{approval.benefit_type_name}</td>
-                        <td>RM {parseFloat(approval.amount.toString()).toFixed(2)}</td>
-                        <td>{approval.company_name}</td>
-                        <td>
-                          <span className="badge badge-info">Level {approval.approval_level}</span>
-                        </td>
-                        <td>
-                          <div className="max-w-xs">
-                            <div className="text-sm">{approval.employee_remark}</div>
-                          </div>
-                        </td>
-                        <td>{new Date(approval.claim_date).toLocaleDateString()}</td>
-                        <td>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleApprove(approval.claim_id, approval.approval_level)}
-                              className="btn btn-success btn-sm"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                              </svg>
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => handleReject(approval.claim_id, approval.approval_level)}
-                              className="btn btn-error btn-sm"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                              Reject
-                            </button>
-                            <button
-                              onClick={() => {
-                                // Find the claim in existing claims or open view modal directly
-                                const claim = claims.find(c => c.id === approval.claim_id);
-                                if (claim) {
-                                  openViewModal(claim);
-                                } else {
-                                  // If claim not in local state, you might want to fetch it or show a message
-                                  toast.error('Please view this claim from the main claims table');
-                                }
-                              }}
-                              className="btn btn-ghost btn-sm"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+    {approvalsLoading ? (
+      <div className="flex justify-center">
+        <span className="loading loading-spinner loading-lg"></span>
+      </div>
+    ) : pendingApprovals.length === 0 ? (
+      <div className="alert alert-info shadow-lg">
+        <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <span>No pending approvals requiring your action.</span>
+      </div>
+    ) : (
+      <div className="bg-base-100 rounded-lg shadow overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="table">
+            <thead className="bg-base-200">
+              <tr>
+                <th>Employee</th>
+                <th>Benefit</th>
+                <th>Amount</th>
+                <th>Company</th>
+                <th>Level</th>
+                <th>Remarks</th>
+                <th>Date</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-base-300">
+              {pendingApprovals.map((approval) => (
+                <PendingApprovalRow key={approval.id} approval={approval} />
+              ))}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
+    )}
+  </div>
+)}
 
       {/* Approval History Table - Only show for approvers */}
       {shouldShowApprovalTables && (
@@ -1397,22 +1744,15 @@ const checkApproverStatus = async () => {
                         </td>
                         <td>{new Date(history.action_date).toLocaleDateString()}</td>
                         <td>
-                          <button
-                            onClick={() => {
-                              const claim = claims.find(c => c.id === history.claim_id);
-                              if (claim) {
-                                openViewModal(claim);
-                              } else {
-                                toast.error('Please view this claim from the main claims table');
-                              }
-                            }}
-                            className="btn btn-ghost btn-sm"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          </button>
+<button
+  onClick={() => handleViewPendingClaim(history.claim_id)}
+  className="btn btn-ghost btn-sm"
+>
+  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+  </svg>
+</button>
                         </td>
                       </tr>
                     ))}
