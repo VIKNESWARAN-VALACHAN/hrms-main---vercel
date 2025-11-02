@@ -35,7 +35,7 @@ import {
 interface PayslipItem {
   label: string;
   amount: number;
-  type: 'Earning' | 'Deduction' | 'Statutory';
+  type: 'Earning' | 'Deduction' | 'Statutory' | 'Claim';
 }
 
 interface EmployerContribution {
@@ -222,7 +222,6 @@ const [pendingUpdates, setPendingUpdates] = useState<{
   comments: PendingComment[];
 }>({ adjustments: [], comments: [] });
 
-// Updated baseColumns with fixed order
 const baseColumns = useMemo(() => {
   const columns: ColumnType[] = [
     // Fixed order columns
@@ -249,92 +248,136 @@ const baseColumns = useMemo(() => {
     { key: 'bank_account_name', label: 'Account Name', width: 150, editable: false, filterable: true },
   ];
 
-   // Dynamic payslip items columns
-  const payslipItems = new Set<string>();
+  // DEBUG: Log payroll data to see what we're working with
+  console.log('🔍 Payroll Data for columns:', payrollData);
+  if (payrollData.length > 0) {
+    console.log('🔍 First row payslip_items:', payrollData[0].payslip_items);
+    console.log('🔍 First row employer_contributions:', payrollData[0].employer_contributions);
+  }
+
+    // Dynamic payslip items columns - UPDATED LOGIC
+  const earningItems = new Set<string>();
+  const claimItems = new Set<string>(); // Separate set for claims
   const statutoryItems = new Set<string>();
   const deductionItems = new Set<string>();
   const employerItems = new Set<string>();
 
   if (payrollData.length > 0) {
-    payrollData.forEach(row => {
-      row.payslip_items?.forEach(item => {
-        if (item.type === 'Earning') payslipItems.add(item.label);
-        else if (item.type === 'Statutory') statutoryItems.add(item.label);
-        else if (item.type === 'Deduction') deductionItems.add(item.label);
-      });
+    payrollData.forEach((row) => {
+      console.log(`🔍 Processing row for ${row.employee_name}`);
       
-      row.employer_contributions?.forEach(item => {
+      // Process payslip items
+      row.payslip_items?.forEach((item) => {
+        console.log(`🔍 Processing item: ${item.label} (${item.type})`);
+        
+        if (item.type === 'Earning') {
+          earningItems.add(item.label);
+          console.log(`✅ Added to earnings: ${item.label}`);
+        } else if (item.type === 'Claim') { // NEW: Handle Claim type
+          claimItems.add(item.label);
+          console.log(`✅ Added to claims: ${item.label}`);
+        } else if (item.type === 'Statutory') {
+          statutoryItems.add(item.label);
+          console.log(`✅ Added to statutory: ${item.label}`);
+        } else if (item.type === 'Deduction') {
+          deductionItems.add(item.label);
+          console.log(`✅ Added to deductions: ${item.label}`);
+        }
+      });
+
+      // Process employer contributions
+      row.employer_contributions?.forEach((item) => {
         employerItems.add(item.label);
+        console.log(`✅ Added to employer: ${item.label}`);
       });
     });
 
-    // Add earning items
-    Array.from(payslipItems).forEach(label => {
+    console.log('🔍 Final column sets:', {
+      earningItems: Array.from(earningItems),
+      claimItems: Array.from(claimItems),
+      statutoryItems: Array.from(statutoryItems),
+      deductionItems: Array.from(deductionItems),
+      employerItems: Array.from(employerItems)
+    });
+
+    // Add earning items (regular earnings, not claims)
+    Array.from(earningItems).forEach((label) => {
       const key = `payslip_earning_${label.toLowerCase().replace(/\s+/g, '_')}`;
-      columns.push({ 
+      columns.push({
         key,
         label: `Earning: ${label}`,
         width: 120,
         editable: true,
         type: 'currency',
-        filterable: true
+        filterable: true,
+      });
+    });
+
+    // Add claim items (separate section) - UPDATED
+    Array.from(claimItems).forEach((label) => {
+      const key = `payslip_claim_${label.toLowerCase().replace(/\s+/g, '_')}`;
+      columns.push({
+        key,
+        label: `Claim: ${label}`,
+        width: 120,
+        editable: true,
+        type: 'currency',
+        filterable: true,
       });
     });
 
     // Add statutory items
-    Array.from(statutoryItems).forEach(label => {
+    Array.from(statutoryItems).forEach((label) => {
       const key = `payslip_statutory_${label.toLowerCase().replace(/\s+/g, '_')}`;
-      columns.push({ 
+      columns.push({
         key,
         label: `Statutory: ${label}`,
         width: 120,
         editable: true,
         type: 'currency',
-        filterable: true
+        filterable: true,
       });
     });
 
     // Add deduction items
-    Array.from(deductionItems).forEach(label => {
+    Array.from(deductionItems).forEach((label) => {
       const key = `payslip_deduction_${label.toLowerCase().replace(/\s+/g, '_')}`;
-      columns.push({ 
+      columns.push({
         key,
         label: `Deduction: ${label}`,
         width: 120,
         editable: true,
         type: 'currency',
-        filterable: true
+        filterable: true,
       });
     });
 
     // Add employer contributions
-    Array.from(employerItems).forEach(label => {
+    Array.from(employerItems).forEach((label) => {
       const key = `employer_${label.toLowerCase().replace(/\s+/g, '_')}`;
-      columns.push({ 
+      columns.push({
         key,
         label: `Employer: ${label}`,
         width: 120,
         editable: true,
         type: 'currency',
-        filterable: true
+        filterable: true,
       });
     });
   }
 
+  console.log('🔍 Final columns:', columns.map(col => ({ key: col.key, label: col.label })));
   return columns;
 }, [payrollData]);
-
-
-
-
   useEffect(() => {
   if (baseColumns.length > 0) {
     setColumnOrder(baseColumns.map(col => col.key));
   }
 }, [baseColumns]);//}, [baseColumns]);, columnOrder.length
 
-
 const transformedPayrollData = useMemo(() => {
+  console.log('🔄 Transforming payroll data...');
+  
   return payrollData.map((row, index) => {
     const payrollId = row.payroll_id || (row as any).id || null;
 
@@ -348,7 +391,6 @@ const transformedPayrollData = useMemo(() => {
       position: row.position || '',
       employee_no: row.employee_no || '',
       employee_name: row.employee_name || '',
-      // Add all the missing fields from the API response
       ic_passport_no: row.ic_passport_no || '',
       work_location: row.work_location || '',
       joined_date: row.joined_date ? new Date(row.joined_date).toLocaleDateString() : '',
@@ -366,21 +408,125 @@ const transformedPayrollData = useMemo(() => {
       bank_account_name: row.bank_account_name || '',
     };
 
-    // just populate values; no setState here
-    row.payslip_items?.forEach(item => {
-      const prefix = item.type.toLowerCase();
-      const key = `payslip_${prefix}_${item.label.toLowerCase().replace(/\s+/g, '_')}`;
-      transformed[key] = item.amount || 0;
+    console.log(`🔍 Transforming row ${index}:`, {
+      employee: row.employee_name,
+      payslip_items: row.payslip_items,
+      employer_contributions: row.employer_contributions
     });
 
-    row.employer_contributions?.forEach(item => {
+    // Transform payslip items - FIXED LOGIC
+    row.payslip_items?.forEach((item) => {
+      let key = '';
+      const safeAmount = parseFloat((item.amount || 0).toFixed(2));
+      
+      if (item.type === 'Earning') {
+        // Regular earning (not a claim)
+        key = `payslip_earning_${item.label.toLowerCase().replace(/\s+/g, '_')}`;
+        console.log(`✅ Mapping earning: ${item.label} -> ${key} = ${safeAmount}`);
+      } else if (item.type === 'Claim') { // NEW: Handle Claim type
+        // This is a claim
+        key = `payslip_claim_${item.label.toLowerCase().replace(/\s+/g, '_')}`;
+        console.log(`✅ Mapping claim: ${item.label} -> ${key} = ${safeAmount}`);
+      } else if (item.type === 'Statutory') {
+        key = `payslip_statutory_${item.label.toLowerCase().replace(/\s+/g, '_')}`;
+        console.log(`✅ Mapping statutory: ${item.label} -> ${key} = ${safeAmount}`);
+      } else if (item.type === 'Deduction') {
+        key = `payslip_deduction_${item.label.toLowerCase().replace(/\s+/g, '_')}`;
+        console.log(`✅ Mapping deduction: ${item.label} -> ${key} = ${safeAmount}`);
+      }
+      
+      if (key) {
+        transformed[key] = safeAmount;
+      }
+    });
+
+    // Transform employer contributions
+    row.employer_contributions?.forEach((item) => {
       const key = `employer_${item.label.toLowerCase().replace(/\s+/g, '_')}`;
       transformed[key] = item.amount || 0;
+      console.log(`✅ Set employer ${key} = ${item.amount}`);
     });
 
+    console.log(`✅ Final transformed row ${index}:`, Object.keys(transformed).filter(k => k.includes('payslip_') || k.includes('employer_')));
     return transformed;
   });
 }, [payrollData]);
+
+
+// const transformedPayrollData = useMemo(() => {
+//   return payrollData.map((row, index) => {
+//     const payrollId = row.payroll_id || (row as any).id || null;
+
+//     const transformed: any = {
+//       id: payrollId,
+//       payroll_id: payrollId,
+//       employee_id: row.employee_id,
+//       auto_no: index + 1,
+//       company_name: row.company_name || '',
+//       department_name: row.department_name || '',
+//       position: row.position || '',
+//       employee_no: row.employee_no || '',
+//       employee_name: row.employee_name || '',
+//       ic_passport_no: row.ic_passport_no || '',
+//       work_location: row.work_location || '',
+//       joined_date: row.joined_date ? new Date(row.joined_date).toLocaleDateString() : '',
+//       confirmation_date: row.confirmation_date ? new Date(row.confirmation_date).toLocaleDateString() : '',
+//       resigned_date: row.resigned_date ? new Date(row.resigned_date).toLocaleDateString() : '',
+//       nationality: row.nationality || '',
+//       tax_no: row.tax_no || '',
+//       dependents: row.dependents || 0,
+//       marital_status: row.marital_status || '',
+//       currency: row.currency || 'MYR',
+//       gross_salary: row.gross_salary || 0,
+//       net_salary: row.net_salary || 0,
+//       bank_name: row.bank_name || '',
+//       bank_account_no: row.bank_account_no || '',
+//       bank_account_name: row.bank_account_name || '',
+//     };
+
+//     // just populate values; no setState here
+//     // row.payslip_items?.forEach(item => {
+//     //   const prefix = item.type.toLowerCase();
+//     //   const key = `payslip_${prefix}_${item.label.toLowerCase().replace(/\s+/g, '_')}`;
+//     //   transformed[key] = item.amount || 0;
+//     // });
+
+//     // row.employer_contributions?.forEach(item => {
+//     //   const key = `employer_${item.label.toLowerCase().replace(/\s+/g, '_')}`;
+//     //   transformed[key] = item.amount || 0;
+//     // });
+
+//     // return transformed;
+
+//      row.payslip_items?.forEach(item => {
+//       let key = '';
+      
+//       if (item.type === 'Earning') {
+//         // Check if it's a claim
+//         if (item.label === 'Claim Reimbursement' || item.label.includes('Claim')) {
+//           key = `payslip_claim_${item.label.toLowerCase().replace(/\s+/g, '_')}`;
+//         } else {
+//           key = `payslip_earning_${item.label.toLowerCase().replace(/\s+/g, '_')}`;
+//         }
+//       } else if (item.type === 'Statutory') {
+//         key = `payslip_statutory_${item.label.toLowerCase().replace(/\s+/g, '_')}`;
+//       } else if (item.type === 'Deduction') {
+//         key = `payslip_deduction_${item.label.toLowerCase().replace(/\s+/g, '_')}`;
+//       }
+      
+//       if (key) {
+//         transformed[key] = item.amount || 0;
+//       }
+//     });
+
+//     row.employer_contributions?.forEach(item => {
+//       const key = `employer_${item.label.toLowerCase().replace(/\s+/g, '_')}`;
+//       transformed[key] = item.amount || 0;
+//     });
+
+//     return transformed;
+//   });
+// }, [payrollData]);
 
 // 2) INITIALIZE editedCells when payrollData changes (once per dataset)
 useEffect(() => {
@@ -513,6 +659,8 @@ const filteredData = useMemo(() => {
     fetchAssignments();
   }, []);
 
+  
+
   // Handle payroll generation
   const handleGeneratePayroll = useCallback(async () => {//async () => {
     if (!selectedPolicyId || !selectedMonth) {
@@ -527,7 +675,7 @@ const filteredData = useMemo(() => {
     const [year, month] = selectedMonth.split('-');
     const periodFrom = `${year}-${month}-01`;
     const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
-    const periodTo = `${year}-${month}-${lastDay.toString().padStart(2, '0')}`;
+  const periodTo = `${year}-${month}-${lastDay.toString().padStart(2, '0')}`;
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/payroll/generate`, {
@@ -855,7 +1003,7 @@ const getStableCellKey = (row: any, columnKey: string) => {
   return `${stableId}-${columnKey}`;
 };
 
-const handleCellEdit = useCallback(
+const handleCellEdit2610 = useCallback(
   (rowKey: number | string, columnKey: string, newValue: any) => {
     // Try to resolve the actual row index using known identifiers
     const tryIdMatch = (rk: number | string) => {
@@ -967,7 +1115,143 @@ const handleCellEdit = useCallback(
   [payrollData, comments, requireCommentOnEdit]
 );
 
+const handleCellEdit = useCallback(
+  (rowKey: number | string, columnKey: string, newValue: any) => {
+    console.log(`✏️ Cell edit: ${rowKey}, ${columnKey}, ${newValue}`);
+    
+    // Try to resolve the actual row index using known identifiers
+    const tryIdMatch = (rk: number | string) => {
+      const rkStr = String(rk);
+      for (let i = 0; i < payrollData.length; i++) {
+        const r: any = payrollData[i];
+        const candidates = [
+          r?.payroll_id,
+          r?.id,
+          r?.employee_id,
+          r?.employee_no,
+        ].filter(v => v !== null && v !== undefined);
+        if (candidates.some(v => String(v) === rkStr)) return i;
+      }
+      return -1;
+    };
 
+    let actualRowIndex = tryIdMatch(rowKey);
+
+    // If not found by ID, treat numeric rowKey as a zero-based index fallback
+    if (actualRowIndex === -1 && typeof rowKey === 'number') {
+      if (rowKey >= 0 && rowKey < payrollData.length) {
+        actualRowIndex = rowKey;
+      }
+    }
+
+    if (actualRowIndex === -1) {
+      console.error("Could not find row with ID or index:", rowKey);
+      setError("An error occurred while saving the cell. Could not find the employee record.");
+      return;
+    }
+
+    // Compute a stable ID for logging/unsaved tracking
+    const row: any = payrollData[actualRowIndex];
+    const stableId = row?.payroll_id ?? row?.id ?? row?.employee_id ?? actualRowIndex;
+
+    const cellKey = `${row.employee_id || row.payroll_id || row.id}-${columnKey}`;
+
+    if (requireCommentOnEdit && !comments.has(cellKey)) {
+      setCurrentCell({ rowIndex: actualRowIndex, columnKey, newValue, rowId: stableId });
+      setShowCommentModal(true);
+      return;
+    }
+
+    const oldValue = (payrollData[actualRowIndex] as any)[columnKey];
+
+    setPayrollData(prevData => {
+      const newData = [...prevData];
+      const targetRow: any = { ...newData[actualRowIndex] };
+
+      console.log(`🔄 Updating payroll data for row ${actualRowIndex}, column ${columnKey}`);
+
+      if (columnKey.startsWith('payslip_') || columnKey.startsWith('employer_')) {
+      const [prefix, type, ...labelParts] = columnKey.split('_');
+      const rawLabel = labelParts.join('_');
+      const normalizedLabel = rawLabel.replace(/_/g, ' ').trim();
+      const amount = Number.parseFloat(newValue) || 0;
+
+      if (prefix === 'payslip') {
+        const items = [...(targetRow.payslip_items || [])];
+        let itemType = '';
+        let searchLabel = normalizedLabel;
+
+        // Determine the actual item type based on column prefix
+        if (type === 'claim') {
+          itemType = 'Claim'; // NEW: Use 'Claim' type
+          searchLabel = normalizedLabel;
+        } else if (type === 'earning') {
+          itemType = 'Earning';
+          searchLabel = normalizedLabel;
+        } else if (type === 'statutory') {
+          itemType = 'Statutory';
+          searchLabel = normalizedLabel;
+        } else if (type === 'deduction') {
+          itemType = 'Deduction';
+          searchLabel = normalizedLabel;
+        }
+
+        console.log(`🔍 Looking for item: type=${itemType}, label=${searchLabel}`);
+
+        const idx = items.findIndex(
+          (it: any) => {
+            const typeMatch = it?.type?.toLowerCase?.() === itemType.toLowerCase();
+            const labelMatch = it?.label?.toLowerCase?.() === searchLabel.toLowerCase();
+            return typeMatch && labelMatch;
+          }
+        );
+
+        if (idx > -1) {
+          console.log(`✅ Updating existing item at index ${idx}`);
+          items[idx] = { ...items[idx], amount };
+        } else {
+          console.log(`✅ Creating new item: ${searchLabel} (${itemType})`);
+          items.push({
+            label: searchLabel,
+            amount,
+            type: itemType as any,
+          });
+        }
+        targetRow.payslip_items = items;
+          
+        } else if (prefix === 'employer') {
+          const contributions = [...(targetRow.employer_contributions || [])];
+          const idx = contributions.findIndex(
+            (c: any) => c?.label?.toLowerCase?.() === normalizedLabel.toLowerCase()
+          );
+          if (idx > -1) {
+            contributions[idx] = { ...contributions[idx], amount };
+          } else {
+            contributions.push({
+              label: normalizedLabel,
+              amount,
+              type: 'Employer Contribution',
+            });
+          }
+          targetRow.employer_contributions = contributions;
+        }
+      } else {
+        // Handle flat fields
+        targetRow[columnKey] = newValue;
+      }
+
+      newData[actualRowIndex] = targetRow;
+      console.log(`✅ Updated row data:`, targetRow);
+      return newData;
+    });
+
+    setUndoStack(prev => [...prev, { type: 'edit', rowIndex: actualRowIndex, columnKey, oldValue, newValue }]);
+    setRedoStack([]);
+    setEditedCells(prev => new Map(prev).set(cellKey, { oldValue, newValue }));
+    setUnsavedChanges(prev => new Set(prev).add(stableId));
+  },
+  [payrollData, comments, requireCommentOnEdit]
+);
 
   // Undo/Redo Functions
   const handleUndo = useCallback(() => {
@@ -1207,47 +1491,6 @@ employer_contributions: (item.employer_contributions || []).map((i: any) => ({
   }
 }, [API_BASE_URL, comments, payrollData, selectedRows, unsavedChanges, selectedMonth, editedCells,selectedCompanyId]);
 
-
-  const handleAdjustPayslipItem1 = async (adjustment: PayslipAdjustment) => {
-  setLoading(true);
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/payroll/adjustments`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(adjustment)
-    });
-
-    const data = await response.json();
-    
-    if (!response.ok || !data.success) {
-      throw new Error(data.error || 'Failed to adjust payslip item');
-    }
-
-    // Update local state with the returned data
-    setPayrollData(prev => {
-      return prev.map(row => {
-        if (row.payroll_id === adjustment.payroll_id) {
-          return {
-            ...row,
-            payslip_items: data.payslip_items || row.payslip_items,
-            employer_contributions: data.employer_contributions || row.employer_contributions,
-            gross_salary: data.gross_salary || row.gross_salary,
-            net_salary: data.net_salary || row.net_salary
-          };
-        }
-        return row;
-      });
-    });
-
-    setSuccessMessage(`Payslip item ${adjustment.operation}d successfully`);
-    setShowAdjustmentModal(false);
-    setCurrentAdjustment(null);
-  } catch (err) {
-    setError(err instanceof Error ? err.message : 'Failed to adjust payslip item');
-  } finally {
-    setLoading(false);
-  }
-};
 
 // ✅ Fix: handler uses proper spread and pulls totals from data.payroll
 const handleAdjustPayslipItem = async (adjustment: PayslipAdjustment) => {
@@ -1528,68 +1771,6 @@ employer_contributions: (item.employer_contributions || []).map((i: any) => ({
     
     return true;
   }, [payrollData.length, publishWarnings.length, unsavedChanges.size]);
-
-  // Step Navigation
-  const renderStepNavigation1 = useCallback(() => (
-    <div className="bg-white border-b border-gray-200 px-6 py-4">
-      <div className="flex items-center justify-center space-x-8">
-        {steps.map((step, index) => {
-          const Icon = step.icon;
-          const isActive = currentStep === step.id;
-          const isCompleted = currentStep > step.id;
-          const isDisabled = currentStep < step.id;
-
-          return (
-            <div key={step.id} className="flex items-center">
-              <div 
-                className={`flex flex-col items-center px-4 py-2 rounded-lg transition-all duration-200 ${
-                  isActive 
-                    ? 'bg-blue-50 text-blue-700 border-2 border-blue-200' 
-                    : isCompleted 
-                      ? 'bg-green-50 text-green-700' 
-                      : isDisabled 
-                        ? 'text-gray-400' 
-                        : 'text-gray-600'
-                }`}
-                onClick={() => {
-                  if (isDisabled) return;
-                  if (step.id > 1 && currentStep < step.id - 1) {
-                    setError(`Please complete step ${step.id - 1} first`);
-                    return;
-                  }
-                  if (step.id === 2 && payrollData.length === 0) {
-                    setError('Please generate payroll data first');
-                    return;
-                  }
-                  if (step.id === 3 && unsavedChanges.size > 0) {
-                    setError('Please save all changes before proceeding');
-                    return;
-                  }
-                  setCurrentStep(step.id);
-                }}
-              >
-                <div className={`flex items-center justify-center w-8 h-8 rounded-full ${
-                  isActive 
-                    ? 'bg-blue-100 text-blue-600' 
-                    : isCompleted 
-                      ? 'bg-green-100 text-green-600' 
-                      : isDisabled 
-                        ? 'bg-gray-100 text-gray-400' 
-                        : 'bg-gray-100 text-gray-600'
-                }`}>
-                  {isCompleted ? <Check className="w-4 h-4" /> : <span>{step.id}</span>}
-                </div>
-                <div className="mt-1 font-medium">{step.title}</div>
-              </div>
-              {index < steps.length - 1 && (
-                <ChevronRight className="w-5 h-5 text-gray-400 mx-4" />
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  ), [currentStep, payrollData, steps, unsavedChanges]);//), [currentStep, payrollData.length, steps, unsavedChanges.size]);
 
 // Step Navigation (responsive + sticky + scrollable on mobile)
 const renderStepNavigation = useCallback(() => (
@@ -1925,17 +2106,29 @@ const renderStepNavigation = useCallback(() => (
           </div>
         </div>
 
-        {/* Color Legend for Column Types */}
-        <div className="mb-3 text-sm text-gray-600 flex items-center space-x-4">
-          <span className="flex items-center">
-            <span className="inline-block w-3 h-3 bg-green-100 rounded mr-1"></span>
-            <span>Payslip Items</span>
-          </span>
-          <span className="flex items-center">
-            <span className="inline-block w-3 h-3 bg-blue-100 rounded mr-1"></span>
-            <span>Employer Contributions</span>
-          </span>
-        </div>
+{/* Color Legend for Column Types */}
+<div className="mb-3 text-sm text-gray-600 flex items-center space-x-4">
+  <span className="flex items-center">
+    <span className="inline-block w-3 h-3 bg-green-100 rounded mr-1"></span>
+    <span>Earnings</span>
+  </span>
+  <span className="flex items-center">
+    <span className="inline-block w-3 h-3 bg-purple-100 rounded mr-1"></span>
+    <span>Claims</span>
+  </span>
+  <span className="flex items-center">
+    <span className="inline-block w-3 h-3 bg-orange-100 rounded mr-1"></span>
+    <span>Statutory</span>
+  </span>
+  <span className="flex items-center">
+    <span className="inline-block w-3 h-3 bg-red-100 rounded mr-1"></span>
+    <span>Deductions</span>
+  </span>
+  <span className="flex items-center">
+    <span className="inline-block w-3 h-3 bg-blue-100 rounded mr-1"></span>
+    <span>Employer Contributions</span>
+  </span>
+</div>
 
         {/* Excel-like Grid */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -2107,17 +2300,34 @@ const cellKey = `${rowId}-${column.key}`;
 
 
                         return (
-                          <td
+//                           <td
+//   key={column.key}
+//   className={`px-3 py-2 text-sm ${
+//     column.editable ? 'cursor-text' : 'cursor-default'
+//   } ${
+//     isEdited ? 'bg-yellow-50' : '' // Highlight edited cells in yellow
+//   } ${
+//     hasComment ? 'relative' : ''
+//   } ${
+//     column.key.startsWith('payslip_') ? 'bg-green-50' : ''
+//   } ${
+//     column.key.startsWith('employer_') ? 'bg-blue-50' : ''
+//   }`}
+//   onClick={() => column.editable && setCurrentCell({ rowIndex: actualRowIndex, columnKey: column.key, value })}
+// >
+<td
   key={column.key}
   className={`px-3 py-2 text-sm ${
     column.editable ? 'cursor-text' : 'cursor-default'
   } ${
-    isEdited ? 'bg-yellow-50' : '' // Highlight edited cells in yellow
+    isEdited ? 'bg-yellow-50' : ''
   } ${
     hasComment ? 'relative' : ''
   } ${
-    column.key.startsWith('payslip_') ? 'bg-green-50' : ''
-  } ${
+    column.key.startsWith('payslip_earning_') ? 'bg-green-50' :
+    column.key.startsWith('payslip_claim_') ? 'bg-purple-50' : // Claims in purple
+    column.key.startsWith('payslip_statutory_') ? 'bg-orange-50' :
+    column.key.startsWith('payslip_deduction_') ? 'bg-red-50' :
     column.key.startsWith('employer_') ? 'bg-blue-50' : ''
   }`}
   onClick={() => column.editable && setCurrentCell({ rowIndex: actualRowIndex, columnKey: column.key, value })}
@@ -2253,154 +2463,6 @@ const cellKey = `${rowId}-${column.key}`;
   };
   // Render Step 3: Import/Export
   const renderStep3 = () => {
-    const exportExcelWithComments1 = async () => {
-      setLoading(true);
-      try {
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Payroll Data');
-
-        if (!filteredData || filteredData.length === 0) {
-          throw new Error('No payroll data available to export');
-        }
-
-        // Add headers
-        const headers = baseColumns.map(col => col.label);
-        worksheet.addRow(headers);
-
-        // Style headers
-        const headerRow = worksheet.getRow(1);
-        headerRow.eachCell((cell) => {
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: 'FFD3D3D3' }
-          };
-          cell.font = { bold: true };
-          cell.border = {
-            top: { style: 'thin' },
-            left: { style: 'thin' },
-            bottom: { style: 'thin' },
-            right: { style: 'thin' }
-          };
-        });
-
-        // Add data rows
-//         filteredData.forEach((employee, rowIndex) => {
-//           const rowData = baseColumns.map(col => {
-//             const value = (employee as any)[col.key];
-            
-//             if (value === null || value === undefined) return '';
-            
-//             if (col.type === 'currency') {
-//               const numValue = Number(value);
-//               return isNaN(numValue) ? 0 : numValue;
-//             }
-            
-//             return value;
-//           });
-
-//           const dataRow = worksheet.addRow(rowData);
-
-//           // Add comments
-//           // baseColumns.forEach((col, colIndex) => {
-//           //   const row = payrollData[rowIndex];
-//           //   const cellKey = `${row.employee_id || row.payroll_id || row.id}-${col.key}`;
-//           //   //const cellKey = `${rowIndex}-${col.key}`;
-//           //   if (comments.has(cellKey)) {
-//           //     const commentText = comments.get(cellKey);
-//           //     dataRow.getCell(colIndex + 1).note = {
-//           //       texts: [
-//           //         { text: `${author}: `, font: { bold: true } },
-//           //         { text: commentText || '' }
-//           //       ]
-//           //     };
-//           //   }
-//           // });
-
-//           // Add comments - FIXED VERSION
-//           // Create a column position mapping
-//           const columnPositionMap: Record<string, number> = {};
-//           columnOrder.forEach((columnKey, index) => {
-//             columnPositionMap[columnKey] = index + 2; // +2 because of checkbox column and 1-indexed Excel
-//           });
-
-// // Then in the comment loop:
-// baseColumns.forEach((col) => {
-//   const row = payrollData[rowIndex];
-//   const rowId = row.employee_id || row.payroll_id || row.id || row.employee_no;
-//   const cellKey = `${rowId}-${col.key}`;
-  
-//   if (comments.has(cellKey)) {
-//     const excelColumnIndex = columnPositionMap[col.key];
-//     if (excelColumnIndex) {
-//       const commentText = comments.get(cellKey);
-//       dataRow.getCell(excelColumnIndex).note = {
-//         texts: [
-//           { text: `${author}: `, font: { bold: true } },
-//           { text: commentText || '' }
-//         ]
-//       };
-//     }
-//   }
-// });
-//         });
-const columnPositionMap: Record<string, number> = {};
-columnOrder.forEach((columnKey, index) => {
-  columnPositionMap[columnKey] = index + 2; // +2 because of checkbox column and 1-indexed Excel
-});
-
-
-filteredData.forEach((employee, rowIndex) => {
-  const row = payrollData[rowIndex];
-  const rowId = row.employee_id || row.payroll_id || row.id || row.employee_no;
-  
-  baseColumns.forEach(col => {
-    const cellKey = `${rowId}-${col.key}`;
-    
-    if (comments.has(cellKey)) {
-      const excelColumnIndex = columnPositionMap[col.key];
-      if (excelColumnIndex) {
-        const commentText = comments.get(cellKey);
-        const dataRow = worksheet.getRow(rowIndex + 2); // +2 for header row and 1-indexed Excel
-        dataRow.getCell(excelColumnIndex).note = {
-          texts: [
-            { text: `${author}: `, font: { bold: true } },
-            { text: commentText || '' }
-          ]
-        };
-      }
-    }
-  });
-});
-
-        // Auto-size columns
-        worksheet.columns.forEach(column => {
-          const columnNumber = column.number ?? 1;
-          const header = worksheet.getRow(1).getCell(columnNumber);
-          const headerLength = header.text?.length ?? 0;
-          const valueLengths = (column.values || [])
-            .slice(1)
-            .map(v => v?.toString().length ?? 0);
-          const calculatedWidth = Math.max(headerLength, ...valueLengths) + 2;
-          column.width = Math.min(Math.max(calculatedWidth, 10), 30);
-        });
-
-        // Generate and download
-        const buffer = await workbook.xlsx.writeBuffer();
-        const blob = new Blob([buffer], { 
-          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
-        });
-        
-        saveAs(blob, `Payroll_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
-
-      } catch (error) {
-        console.error('Export failed:', error);
-        setError(`Export failed: ${error instanceof Error ? error.message : String(error)}`);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     const exportExcelWithComments = async () => {
       setLoading(true);
       try {
@@ -3229,234 +3291,6 @@ const renderChangesDetected = () => {
     );
   };
 
-//   // Comment Modal Component
-// const CommentModalold = () => {
-//   const [comment, setComment] = useState<string>("");
-//   const panelRef = useRef<HTMLDivElement | null>(null);
-//   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-//   const MAX_LEN = 1000; // adjust if needed
-
-//   // Prefill comment when opening for current cell
-//   useEffect(() => {
-//     if (currentCell) {
-//       //const row = transformedPayrollData[currentCell.rowIndex];
-//       const row = payrollData[currentCell.rowIndex];
-//       const cellKey = `${row.employee_id || row.payroll_id || row.id}-${currentCell.columnKey}`;
-//       //const cellKey = `${currentCell.rowIndex}-${currentCell.columnKey}`;
-//       setComment(comments.get(cellKey) || "");
-//     }
-//   }, [currentCell, comments]);
-
-//   if (!showCommentModal || !currentCell) return null;
-
-//   // const closeModal1 = useCallback(() => {
-//   //   setShowCommentModal(false);
-//   //   setCurrentCell(null);
-//   //   setComment("");
-//   // }, []);
-
-//   // top of PayrollGenerationWizard component, with other state
-// const closeModal = useCallback(() => {
-//   setShowCommentModal(false);
-//   setCurrentCell(null);
-//   setComment('');
-//   }, []);
-
-
-
-//   const handleSaveComment = useCallback(() => {
-//     const row = transformedPayrollData[currentCell.rowIndex];//const row = payrollData[currentCell.rowIndex];
-//     const cellKey = `${row.employee_id || row.payroll_id || row.id}-${currentCell.columnKey}`;
-//     //const cellKey = `${currentCell.rowIndex}-${currentCell.columnKey}`;
-//     setComments((prev) => new Map(prev).set(cellKey, comment.trim()));
-
-//     if (currentCell.newValue !== undefined) {
-//        const rowIndex = payrollData.findIndex(row => 
-//         (row.employee_id || row.payroll_id || row.id || row.employee_no) === currentCell.rowId
-//       );
-      
-//       //applyCellEdit(currentCell.rowIndex, currentCell.columnKey, currentCell.newValue);
-//      if (rowIndex !== -1) {
-//         applyCellEdit(rowIndex, currentCell.columnKey, currentCell.newValue);
-//       }
-//     }
-//     closeModal();
-//   }, [applyCellEdit, currentCell, payrollData, setComments]);//}, [comment, currentCell, setComments, applyCellEdit, closeModal,payrollData]);
-
-// const handleSaveComment12 = () => {
-//   if (!currentCell?.rowId || !currentCell.columnKey) return;
-
-//   // store the comment
-//   setComments(prev => {
-//     const m = new Map(prev);
-//     m.set(`${currentCell.rowId}-${currentCell.columnKey}`, comment);
-//     return m;
-//   });
-
-//   // apply edit if there’s a pending value
-//   if (typeof currentCell.newValue !== 'undefined') {
-//     const idx = payrollData.findIndex(r =>
-//       [r?.payroll_id, r?.id, r?.employee_id, r?.employee_no]
-//         .filter(v => v !== null && v !== undefined)
-//         .some(v => String(v) === String(currentCell.rowId))
-//     );
-//     if (idx !== -1) applyCellEdit(idx, currentCell.columnKey, currentCell.newValue);
-//   }
-
-//   // reset
-//   setShowCommentModal(false);
-//   setCurrentCell(null);
-//   setComment('');
-// };
-
-
-//   // Focus textarea on open + lock body scroll
-//   useEffect(() => {
-//     const prevOverflow = document.body.style.overflow;
-//     document.body.style.overflow = "hidden";
-//     textareaRef.current?.focus();
-//     return () => {
-//       document.body.style.overflow = prevOverflow;
-//     };
-//   }, []);
-
-//   // // Keyboard: ESC to close, Ctrl/Cmd+Enter to save
-//   useEffect(() => {
-//     const onKey = (e: KeyboardEvent) => {
-//       if (e.key === "Escape") {
-//         e.preventDefault();
-//         closeModal();
-//       }
-//       const cmdOrCtrl = e.metaKey || e.ctrlKey;
-//       if (cmdOrCtrl && e.key.toLowerCase() === "enter") {
-//         e.preventDefault();
-//         if (!requireCommentOnEdit || comment.trim()) handleSaveComment();
-//       }
-//     };
-//     window.addEventListener("keydown", onKey);
-//     return () => window.removeEventListener("keydown", onKey);
-//   }, [comment, handleSaveComment, closeModal]);
-  
-// // useEffect(() => {
-// //   if (!showCommentModal) return;
-
-// //   const onKey = (e: KeyboardEvent) => {
-// //     if (e.key === 'Escape') {
-// //       e.preventDefault();
-// //       closeModal();
-// //     }
-// //     const cmdOrCtrl = e.metaKey || e.ctrlKey;
-// //     if (cmdOrCtrl && e.key.toLowerCase() === 'enter') {
-// //       e.preventDefault();
-// //       if (!requireCommentOnEdit || comment.trim()) handleSaveComment();
-// //     }
-// //   };
-
-// //   window.addEventListener('keydown', onKey);
-// //   return () => window.removeEventListener('keydown', onKey);
-// // }, [showCommentModal, requireCommentOnEdit, comment, handleSaveComment, closeModal]);
-
-//   // Close on outside click
-//   const handleBackdropMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-//     if (e.target === e.currentTarget) closeModal();
-//   };
-
-//   const savingDisabled = requireCommentOnEdit && !comment.trim();
-
-//   return (
-//     <div
-//       className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
-//       onMouseDown={handleBackdropMouseDown}
-//       aria-modal="true"
-//       role="dialog"
-//       aria-labelledby="comment-modal-title"
-//     >
-//       <div
-//         ref={panelRef}
-//         className="w-full max-w-lg rounded-2xl bg-white text-gray-900 shadow-xl ring-1 ring-black/10"
-//       >
-//         {/* Header */}
-//         <div className="flex items-start justify-between px-6 pt-6">
-//           <div>
-//             <h3 id="comment-modal-title" className="text-xl font-semibold tracking-tight">
-//               Add Comment
-//             </h3>
-//             <p className="mt-1 text-sm text-gray-600">
-//               Column: <span className="font-medium">{String(currentCell.columnKey)}</span> &middot; Row{" "}
-//               <span className="font-medium">{currentCell.rowIndex + 1}</span>
-//             </p>
-//           </div>
-//           <button
-//             type="button"
-//             onClick={closeModal}
-//             className="inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-gray-100"
-//             aria-label="Close"
-//           >
-//             <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
-//               <path
-//                 d="M6 6l12 12M18 6L6 18"
-//                 stroke="currentColor"
-//                 strokeWidth="1.5"
-//                 strokeLinecap="round"
-//               />
-//             </svg>
-//           </button>
-//         </div>
-
-//         {/* Body */}
-//         <div className="px-6 pt-4">
-//           <label htmlFor="comment-textarea" className="sr-only">
-//             Comment
-//           </label>
-//           <textarea
-//             id="comment-textarea"
-//             ref={textareaRef}
-//             value={comment}
-//             onChange={(e) => setComment(e.target.value)}
-//             maxLength={MAX_LEN}
-//             rows={6}
-//             placeholder="Enter your comment..."
-//             className="block w-full resize-y rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm leading-6 outline-none transition
-//                        placeholder:text-gray-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-//           />
-//           <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
-//             {requireCommentOnEdit ? (
-//               <span>Comment is required to save this edit.</span>
-//             ) : (
-//               <span>&nbsp;</span>
-//             )}
-//             <span>
-//               {comment.length}/{MAX_LEN}
-//             </span>
-//           </div>
-//         </div>
-
-//         {/* Footer */}
-//         <div className="mt-6 flex items-center justify-end gap-3 border-t border-gray-100 px-6 py-4">
-//           <button
-//             type="button"
-//             onClick={closeModal}
-//             className="inline-flex items-center justify-center rounded-xl border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50 active:bg-gray-100"
-//           >
-//             Cancel
-//           </button>
-//           <button
-//             type="button"
-//             onClick={handleSaveComment}
-//             disabled={savingDisabled}
-//             className={`inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold text-white
-//                        ${savingDisabled ? "bg-blue-400 cursor-not-allowed opacity-70" : "bg-blue-600 hover:bg-blue-700 active:bg-blue-800"}
-//                        focus:outline-none focus:ring-4 focus:ring-blue-100`}
-//             title="Ctrl/Cmd + Enter"
-//           >
-//             Save Comment
-//           </button>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// };
-
 // Comment Modal Component
 const CommentModal = () => {
   const [comment, setComment] = useState<string>("");
@@ -3636,35 +3470,6 @@ const CommentModal = () => {
 };
 
 
-// function CommentModal({
-//   isOpen,
-//   requireCommentOnEdit,
-//   onSave,
-//   onClose,
-// }: {
-//   isOpen: boolean;
-//   requireCommentOnEdit: boolean;
-//   onSave: () => void;
-//   onClose: () => void;
-// }) {
-//   useEffect(() => {
-//     if (!isOpen) return;
-//     const onKey = (e: KeyboardEvent) => {
-//       if (e.key === 'Escape') { e.preventDefault(); onClose(); }
-//       const cmdOrCtrl = e.metaKey || e.ctrlKey;
-//       if (cmdOrCtrl && e.key.toLowerCase() === 'enter') {
-//         e.preventDefault();
-//         if (!requireCommentOnEdit /* or check local comment state here */) onSave();
-//       }
-//     };
-//     window.addEventListener('keydown', onKey);
-//     return () => window.removeEventListener('keydown', onKey);
-//   }, [isOpen, requireCommentOnEdit, onSave, onClose]);
-
-//   if (!isOpen) return null;
-//   return /* modal JSX */;
-// }
-
   // Error display
   const ErrorAlert = useCallback(() => {
     if (!error) return null;
@@ -3691,15 +3496,6 @@ const CommentModal = () => {
   const AdjustmentModal = () => {
   if (!showAdjustmentModal || !selectedRowForAdjustment) return null;
 
-  const handleSubmit1 = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!currentAdjustment) return;
-    
-    handleAdjustPayslipItem({
-      ...currentAdjustment,
-      payroll_id: selectedRowForAdjustment.payroll_id || selectedRowForAdjustment.id
-    });
-  };
 
   // ✅ Fix: modal submit builds a clean object (no ".currentAdjustment")
 const handleSubmit = (e: React.FormEvent) => {
@@ -3807,14 +3603,6 @@ const handleSubmit = (e: React.FormEvent) => {
     </div>
   );
 };
-  function handleSaveComment(): void {
-    throw new Error('Function not implemented.');
-  }
-
-  function closeModal(): void {
-    throw new Error('Function not implemented.');
-  }
-
   
   // Main render
   return (
@@ -3829,17 +3617,6 @@ const handleSubmit = (e: React.FormEvent) => {
       </div>
 
       <CommentModal />
-      {/* <CommentModal
-  isOpen={showCommentModal}
-  requireCommentOnEdit={requireCommentOnEdit}
-  onSave={handleSaveComment}
-  onClose={closeModal}
-/> */}
-
-      {/* <AdjustmentModal /> 
-      <ErrorAlert /> */}
-
-       {/* {showCommentModal && <CommentModal />} */}
       {showAdjustmentModal && <AdjustmentModal />}
       {error && <ErrorAlert />}
     </div>
