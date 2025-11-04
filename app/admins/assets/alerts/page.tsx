@@ -1,3 +1,426 @@
+// // 'use client';
+
+// // import { useEffect, useState } from 'react';
+// // import Link from 'next/link';
+// // import { API_BASE_URL } from '../../../config';
+
+// // type Tab = 'low-stock' | 'warranty-expiry' | 'configs';
+
+// // const ALERT_TYPE_OPTIONS = [
+// //   { value: 'low_stock', label: 'Low Stock' },
+// //   { value: 'expiry', label: 'Warranty Expiry' }
+// // ];
+
+// // export default function AlertsDashboardPage() {
+// //   const [tab, setTab] = useState<Tab>('low-stock');
+
+// //   // LOW STOCK ALERT
+// //   const [lowStock, setLowStock] = useState<any[]>([]);
+// //   const [lowStockLoading, setLowStockLoading] = useState(false);
+
+// //   // WARRANTY EXPIRY ALERT
+// //   const [warranty, setWarranty] = useState<any[]>([]);
+// //   const [warrantyLoading, setWarrantyLoading] = useState(false);
+
+// //   // ALERT CONFIGS
+// //   const [configs, setConfigs] = useState<any[]>([]);
+// //   const [configsLoading, setConfigsLoading] = useState(false);
+// //   const [showConfigModal, setShowConfigModal] = useState(false);
+// //   const [configEdit, setConfigEdit] = useState<any | null>(null);
+// //   const [form, setForm] = useState({
+// //     alert_type: '',
+// //     product_id: '',
+// //     category: '',
+// //     threshold: '',
+// //     is_active: true
+// //   });
+// //   const [formError, setFormError] = useState<string | null>(null);
+
+// //   // Master Data for dropdowns
+// //   const [products, setProducts] = useState<any[]>([]);
+// //   const [categories, setCategories] = useState<any[]>([]);
+// //   const [masterLoading, setMasterLoading] = useState(true);
+
+// //   // Load master data at startup
+// //   useEffect(() => {
+// //     setMasterLoading(true);
+// //     Promise.all([
+// //       fetch(`${API_BASE_URL}/api/inventory/products`).then(res => res.json()).catch(() => []),
+// //       fetch(`${API_BASE_URL}/api/inventory/categories`).then(res => res.json()).catch(() => [])
+// //     ]).then(([prods, cats]) => {
+// //       setProducts(prods || []);
+// //       setCategories(cats || []);
+// //       setMasterLoading(false);
+// //     });
+// //   }, []);
+
+// //   // Tab data loaders
+// //   useEffect(() => {
+// //     if (tab === 'low-stock') {
+// //       setLowStockLoading(true);
+// //       fetch(`${API_BASE_URL}/api/inventory/stock/low-alert`)
+// //         .then(res => res.json())
+// //         .then(setLowStock)
+// //         .finally(() => setLowStockLoading(false));
+// //     } else if (tab === 'warranty-expiry') {
+// //       setWarrantyLoading(true);
+// //       fetch(`${API_BASE_URL}/api/inventory/assets/warranty-expiry`)
+// //         .then(res => res.json())
+// //         .then(setWarranty)
+// //         .finally(() => setWarrantyLoading(false));
+// //     } else if (tab === 'configs') {
+// //       setConfigsLoading(true);
+// //       fetch(`${API_BASE_URL}/api/inventory/alert-configs`)
+// //         .then(res => res.json())
+// //         .then(setConfigs)
+// //         .finally(() => setConfigsLoading(false));
+// //     }
+// //   }, [tab]);
+
+// //   // Config CRUD Handlers
+// //   const openAddConfig = () => {
+// //     setConfigEdit(null);
+// //     setForm({
+// //       alert_type: '',
+// //       product_id: '',
+// //       category: '',
+// //       threshold: '',
+// //       is_active: true
+// //     });
+// //     setFormError(null);
+// //     setShowConfigModal(true);
+// //   };
+// //   const openEditConfig = (cfg: any) => {
+// //     setConfigEdit(cfg);
+// //     setForm({
+// //       alert_type: cfg.alert_type || '',
+// //       product_id: cfg.product_id ? String(cfg.product_id) : '',
+// //       category: cfg.category || '',
+// //       threshold: cfg.threshold?.toString() || '',
+// //       is_active: !!cfg.is_active
+// //     });
+// //     setFormError(null);
+// //     setShowConfigModal(true);
+// //   };
+// //   const handleConfigSave = async (e: any) => {
+// //     e.preventDefault();
+// //     setFormError(null);
+// //     if (!form.alert_type || !form.threshold) {
+// //       setFormError('Alert type and threshold are required.');
+// //       return;
+// //     }
+// //     const body = {
+// //       alert_type: form.alert_type,
+// //       product_id: form.product_id ? Number(form.product_id) : null,
+// //       category: form.category || null,
+// //       threshold: Number(form.threshold),
+// //       is_active: !!form.is_active,
+// //     };
+// //     const url = configEdit
+// //       ? `${API_BASE_URL}/api/inventory/alert-configs/${configEdit.id}`
+// //       : `${API_BASE_URL}/api/inventory/alert-configs`;
+// //     const method = configEdit ? 'PUT' : 'POST';
+
+// //     const res = await fetch(url, {
+// //       method,
+// //       headers: { 'Content-Type': 'application/json' },
+// //       body: JSON.stringify(body)
+// //     });
+// //     if (!res.ok) {
+// //       setFormError('Failed to save config');
+// //       return;
+// //     }
+// //     setShowConfigModal(false);
+// //     setTab('configs'); // reload
+// //   };
+// //   const handleConfigDelete = async (id: any) => {
+// //     if (!confirm('Delete this config?')) return;
+// //     await fetch(`${API_BASE_URL}/api/inventory/alert-configs/${id}`, { method: 'DELETE' });
+// //     setTab('configs'); // reload
+// //   };
+
+// //   // Render
+// //   return (
+// //     <div className="max-w-7xl mx-auto py-8 px-2">
+// //       <h1 className="text-2xl font-bold mb-6">Asset & Stock Alerts</h1>
+// //       <div className="tabs mb-4">
+// //         <button
+// //           className={`tab tab-lg ${tab === 'low-stock' ? 'tab-active' : ''}`}
+// //           onClick={() => setTab('low-stock')}
+// //         >Low Stock</button>
+// //         <button
+// //           className={`tab tab-lg ${tab === 'warranty-expiry' ? 'tab-active' : ''}`}
+// //           onClick={() => setTab('warranty-expiry')}
+// //         >Warranty Expiry</button>
+// //         <button
+// //           className={`tab tab-lg ${tab === 'configs' ? 'tab-active' : ''}`}
+// //           onClick={() => setTab('configs')}
+// //         >Alert Configs</button>
+// //       </div>
+
+// //       {/* LOW STOCK TAB */}
+// //       {tab === 'low-stock' && (
+// //         <div>
+// //           {lowStockLoading ? <div>Loading...</div> : (
+// //             <div className="overflow-x-auto rounded shadow">
+// //               <table className="table w-full">
+// //                 <thead>
+// //                   <tr>
+// //                     <th>SKU</th>
+// //                     <th>Product</th>
+// //                     <th>Brand</th>
+// //                     <th>Category</th>
+// //                     <th>Unit</th>
+// //                     <th>Location</th>
+// //                     <th className="text-center">Stock</th>
+// //                     <th className="text-center">Min</th>
+// //                     <th className="text-center">Max</th>
+// //                     <th>Status</th>
+// //                     <th>Actions</th>
+// //                   </tr>
+// //                 </thead>
+// //                 <tbody>
+// //                   {lowStock.length === 0 ? (
+// //                     <tr>
+// //                       <td colSpan={11} className="text-center py-8">No low stock products</td>
+// //                     </tr>
+// //                   ) : lowStock.map((item: any) => (
+// //                     <tr key={item.product_id}>
+// //                       <td>{item.sku}</td>
+// //                       <td>{item.product_name}</td>
+// //                       <td>{item.brand_name}</td>
+// //                       <td>{item.category_name}</td>
+// //                       <td>{item.unit_name}</td>
+// //                       <td>{item.location_name}</td>
+// //                       <td className={`text-center font-bold ${item.stock_balance <= 0 ? 'text-red-500' : item.stock_balance <= item.min_stock ? 'text-yellow-600' : 'text-black'}`}>
+// //                         {item.stock_balance}
+// //                       </td>
+// //                       <td className="text-center">{item.min_stock}</td>
+// //                       <td className="text-center">{item.max_stock}</td>
+// //                       <td>
+// //                         {item.stock_balance <= 0 ? (
+// //                           <span className="badge badge-error">Out of Stock</span>
+// //                         ) : item.stock_balance <= item.min_stock ? (
+// //                           <span className="badge badge-warning">Low</span>
+// //                         ) : (
+// //                           <span className="badge badge-ghost">OK</span>
+// //                         )}
+// //                       </td>
+// //                       <td>
+// //                         <Link href={`/admins/products/${item.product_id}`} className="btn btn-xs btn-info mr-2">Product</Link>
+// //                       </td>
+// //                     </tr>
+// //                   ))}
+// //                 </tbody>
+// //               </table>
+// //             </div>
+// //           )}
+// //         </div>
+// //       )}
+
+// //       {/* WARRANTY EXPIRY TAB */}
+// //       {tab === 'warranty-expiry' && (
+// //         <div>
+// //           {warrantyLoading ? <div>Loading...</div> : (
+// //             <div className="overflow-x-auto rounded shadow">
+// //               <table className="table w-full">
+// //                 <thead>
+// //                   <tr>
+// //                     <th>Serial No</th>
+// //                     <th>Product</th>
+// //                     <th>Brand</th>
+// //                     <th>Location</th>
+// //                     <th>Assigned To</th>
+// //                     <th>Expiry Date</th>
+// //                     <th>Days Left</th>
+// //                     <th>Status</th>
+// //                     <th>Actions</th>
+// //                   </tr>
+// //                 </thead>
+// //                 <tbody>
+// //                   {warranty.length === 0 ? (
+// //                     <tr>
+// //                       <td colSpan={9} className="text-center py-8">No assets nearing warranty expiry</td>
+// //                     </tr>
+// //                   ) : warranty.map((asset: any) => {
+// //                     const expiry = asset.warranty_expiry ? new Date(asset.warranty_expiry) : null;
+// //                     const now = new Date();
+// //                     const days = expiry ? Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 3600 * 24)) : null;
+// //                     return (
+// //                       <tr key={asset.id}>
+// //                         <td>{asset.serial_number}</td>
+// //                         <td>{asset.product_name}</td>
+// //                         <td>{asset.brand_name}</td>
+// //                         <td>{asset.location_name}</td>
+// //                         <td>{asset.assigned_to_name}</td>
+// //                         <td>{asset.warranty_expiry?.slice(0, 10)}</td>
+// //                         <td className={days !== null && days < 0 ? 'text-red-600 font-bold' : days !== null && days < 30 ? 'text-yellow-700 font-bold' : ''}>
+// //                           {days !== null ? days : '-'}
+// //                         </td>
+// //                         <td>
+// //                           {days !== null && days < 0 ? (
+// //                             <span className="badge badge-error">Expired</span>
+// //                           ) : days !== null && days < 30 ? (
+// //                             <span className="badge badge-warning">Expiring</span>
+// //                           ) : (
+// //                             <span className="badge badge-ghost">OK</span>
+// //                           )}
+// //                         </td>
+// //                         <td>
+// //                           <Link href={`/admins/assets/${asset.id}`} className="btn btn-xs btn-primary">View</Link>
+// //                         </td>
+// //                       </tr>
+// //                     )
+// //                   })}
+// //                 </tbody>
+// //               </table>
+// //             </div>
+// //           )}
+// //         </div>
+// //       )}
+
+// //       {/* ALERT CONFIGS TAB */}
+// //       {tab === 'configs' && (
+// //         <div>
+// //           <div className="mb-4 flex justify-between">
+// //             <h2 className="text-xl font-bold">Alert Configurations</h2>
+// //             <button className="btn btn-sm btn-info" onClick={openAddConfig}>+ Add Config</button>
+// //           </div>
+// //           {configsLoading ? <div>Loading...</div> : (
+// //             <div className="overflow-x-auto rounded shadow">
+// //               <table className="table w-full">
+// //                 <thead>
+// //                   <tr>
+// //                     <th>Alert Type</th>
+// //                     <th>Product</th>
+// //                     <th>Category</th>
+// //                     <th>Threshold</th>
+// //                     <th>Status</th>
+// //                     <th>Actions</th>
+// //                   </tr>
+// //                 </thead>
+// //                 <tbody>
+// //                   {configs.length === 0 ? (
+// //                     <tr>
+// //                       <td colSpan={6} className="text-center py-8">No alert configs found</td>
+// //                     </tr>
+// //                   ) : configs.map((cfg: any) => (
+// //                     <tr key={cfg.id}>
+// //                       <td>
+// //                         {ALERT_TYPE_OPTIONS.find(a => a.value === cfg.alert_type)?.label || cfg.alert_type}
+// //                       </td>
+// //                       <td>
+// //                         {products.find(p => String(p.id) === String(cfg.product_id))?.name ||
+// //                           (cfg.product_id ? cfg.product_id : <span className="text-gray-400">(All)</span>)}
+// //                       </td>
+// //                       <td>
+// //                         {categories.find(c => c.name === cfg.category)?.name ||
+// //                           (cfg.category ? cfg.category : <span className="text-gray-400">(All)</span>)}
+// //                       </td>
+// //                       <td>{cfg.threshold}</td>
+// //                       <td>
+// //                         {cfg.is_active ? <span className="badge badge-success">Enabled</span> : <span className="badge badge-ghost">Disabled</span>}
+// //                       </td>
+// //                       <td>
+// //                         <button className="btn btn-xs btn-info mr-1" onClick={() => openEditConfig(cfg)}>Edit</button>
+// //                         <button className="btn btn-xs btn-error" onClick={() => handleConfigDelete(cfg.id)}>Delete</button>
+// //                       </td>
+// //                     </tr>
+// //                   ))}
+// //                 </tbody>
+// //               </table>
+// //             </div>
+// //           )}
+
+// //           {/* Modal */}
+// //           {showConfigModal && (
+// //             <div className="fixed z-10 left-0 top-0 w-full h-full flex items-center justify-center bg-black bg-opacity-20">
+// //               <div className="bg-white p-6 rounded shadow-xl min-w-[350px] max-w-md">
+// //                 <h3 className="font-bold mb-4">{configEdit ? 'Edit Alert Config' : 'Add Alert Config'}</h3>
+// //                 {masterLoading ? (
+// //                   <div>Loading master data...</div>
+// //                 ) : (
+// //                   <form onSubmit={handleConfigSave} className="space-y-3">
+// //                     <div>
+// //                       <label className="block font-semibold">Alert Type</label>
+// //                       <select
+// //                         className="select select-bordered w-full"
+// //                         value={form.alert_type}
+// //                         onChange={e => setForm(f => ({ ...f, alert_type: e.target.value }))}
+// //                         required
+// //                       >
+// //                         <option value="">Select Alert Type</option>
+// //                         {ALERT_TYPE_OPTIONS.map(opt => (
+// //                           <option key={opt.value} value={opt.value}>{opt.label}</option>
+// //                         ))}
+// //                       </select>
+// //                     </div>
+// //                     <div>
+// //                       <label className="block font-semibold">Product</label>
+// //                       <select
+// //                         className="select select-bordered w-full"
+// //                         value={form.product_id}
+// //                         onChange={e => setForm(f => ({ ...f, product_id: e.target.value }))}
+// //                       >
+// //                         <option value="">(All Products)</option>
+// //                         {products.map((prod: any) => (
+// //                           <option key={prod.id} value={prod.id}>
+// //                             {prod.name} {prod.sku ? `(${prod.sku})` : ''}
+// //                           </option>
+// //                         ))}
+// //                       </select>
+// //                     </div>
+// //                     <div>
+// //                       <label className="block font-semibold">Category</label>
+// //                       <select
+// //                         className="select select-bordered w-full"
+// //                         value={form.category}
+// //                         onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+// //                       >
+// //                         <option value="">(All Categories)</option>
+// //                         {categories.map((cat: any) => (
+// //                           <option key={cat.id} value={cat.name}>{cat.name}</option>
+// //                         ))}
+// //                       </select>
+// //                     </div>
+// //                     <div>
+// //                       <label className="block font-semibold">Threshold</label>
+// //                       <input
+// //                         className="input input-bordered w-full"
+// //                         type="number"
+// //                         value={form.threshold}
+// //                         onChange={e => setForm(f => ({ ...f, threshold: e.target.value }))}
+// //                         required
+// //                         min={0}
+// //                         placeholder="E.g. 5"
+// //                       />
+// //                     </div>
+// //                     <div>
+// //                       <label className="block font-semibold">Active</label>
+// //                       <select
+// //                         className="select select-bordered w-full"
+// //                         value={form.is_active ? '1' : '0'}
+// //                         onChange={e => setForm(f => ({ ...f, is_active: e.target.value === '1' }))}
+// //                       >
+// //                         <option value="1">Yes</option>
+// //                         <option value="0">No</option>
+// //                       </select>
+// //                     </div>
+// //                     {formError && <div className="alert alert-error py-1">{formError}</div>}
+// //                     <div className="flex gap-2 justify-end">
+// //                       <button type="button" className="btn btn-secondary" onClick={() => setShowConfigModal(false)}>Cancel</button>
+// //                       <button type="submit" className="btn btn-primary">{configEdit ? 'Save' : 'Add'}</button>
+// //                     </div>
+// //                   </form>
+// //                 )}
+// //               </div>
+// //             </div>
+// //           )}
+// //         </div>
+// //       )}
+// //     </div>
+// //   );
+// // }
 // 'use client';
 
 // import { useEffect, useState } from 'react';
@@ -10,6 +433,34 @@
 //   { value: 'low_stock', label: 'Low Stock' },
 //   { value: 'expiry', label: 'Warranty Expiry' }
 // ];
+
+// /** Reusable responsive, non-wrapping badge */
+// function Pill({
+//   label,
+//   tone = 'ghost', // 'success' | 'error' | 'warning' | 'info' | 'ghost'
+//   className = '',
+// }: {
+//   label: string;
+//   tone?: 'success' | 'error' | 'warning' | 'info' | 'ghost';
+//   className?: string;
+// }) {
+//   const toneClass =
+//     tone === 'success'
+//       ? 'badge-success'
+//       : tone === 'error'
+//       ? 'badge-error'
+//       : tone === 'warning'
+//       ? 'badge-warning'
+//       : tone === 'info'
+//       ? 'badge-info'
+//       : 'badge-ghost';
+
+//   const base =
+//     'badge whitespace-nowrap inline-flex items-center justify-center rounded-full ' +
+//     'text-[11px] sm:text-xs px-2 py-1 sm:px-3';
+
+//   return <span className={`${base} ${toneClass} ${className}`}>{label}</span>;
+// }
 
 // export default function AlertsDashboardPage() {
 //   const [tab, setTab] = useState<Tab>('low-stock');
@@ -66,7 +517,7 @@
 //       setWarrantyLoading(true);
 //       fetch(`${API_BASE_URL}/api/inventory/assets/warranty-expiry`)
 //         .then(res => res.json())
-//         .then(setWarranty)
+//         .then(data => setWarranty(data.data || []))  // Extract the data array//.then(setWarranty)
 //         .finally(() => setWarrantyLoading(false));
 //     } else if (tab === 'configs') {
 //       setConfigsLoading(true);
@@ -102,37 +553,45 @@
 //     setFormError(null);
 //     setShowConfigModal(true);
 //   };
-//   const handleConfigSave = async (e: any) => {
-//     e.preventDefault();
-//     setFormError(null);
-//     if (!form.alert_type || !form.threshold) {
-//       setFormError('Alert type and threshold are required.');
-//       return;
-//     }
-//     const body = {
-//       alert_type: form.alert_type,
-//       product_id: form.product_id ? Number(form.product_id) : null,
-//       category: form.category || null,
-//       threshold: Number(form.threshold),
-//       is_active: !!form.is_active,
-//     };
-//     const url = configEdit
-//       ? `${API_BASE_URL}/api/inventory/alert-configs/${configEdit.id}`
-//       : `${API_BASE_URL}/api/inventory/alert-configs`;
-//     const method = configEdit ? 'PUT' : 'POST';
-
-//     const res = await fetch(url, {
-//       method,
-//       headers: { 'Content-Type': 'application/json' },
-//       body: JSON.stringify(body)
-//     });
-//     if (!res.ok) {
-//       setFormError('Failed to save config');
-//       return;
-//     }
-//     setShowConfigModal(false);
-//     setTab('configs'); // reload
+// const handleConfigSave = async (e: any) => {
+//   e.preventDefault();
+//   setFormError(null);
+//   if (!form.alert_type || !form.threshold) {
+//     setFormError('Alert type and threshold are required.');
+//     return;
+//   }
+//   const body = {
+//     alert_type: form.alert_type,
+//     product_id: form.product_id ? Number(form.product_id) : null,
+//     category: form.category || null,
+//     threshold: Number(form.threshold),
+//     is_active: !!form.is_active,
 //   };
+  
+//   // Always use POST to the same endpoint
+//   const url = `${API_BASE_URL}/api/inventory/alert-configs`;
+//   const method = 'POST';
+
+//   const res = await fetch(url, {
+//     method,
+//     headers: { 'Content-Type': 'application/json' },
+//     body: JSON.stringify(body)
+//   });
+  
+//   if (!res.ok) {
+//     const errorData = await res.json();
+//     setFormError(errorData.error || 'Failed to save config');
+//     return;
+//   }
+  
+//   setShowConfigModal(false);
+//   // Refresh the configs list
+//   setConfigsLoading(true);
+//   fetch(`${API_BASE_URL}/api/inventory/alert-configs`)
+//     .then(res => res.json())
+//     .then(setConfigs)
+//     .finally(() => setConfigsLoading(false));
+// };
 //   const handleConfigDelete = async (id: any) => {
 //     if (!confirm('Delete this config?')) return;
 //     await fetch(`${API_BASE_URL}/api/inventory/alert-configs/${id}`, { method: 'DELETE' });
@@ -172,11 +631,11 @@
 //                     <th>Category</th>
 //                     <th>Unit</th>
 //                     <th>Location</th>
-//                     <th className="text-center">Stock</th>
-//                     <th className="text-center">Min</th>
-//                     <th className="text-center">Max</th>
-//                     <th>Status</th>
-//                     <th>Actions</th>
+//                     <th className="text-center whitespace-nowrap">Stock</th>
+//                     <th className="text-center whitespace-nowrap">Min</th>
+//                     <th className="text-center whitespace-nowrap">Max</th>
+//                     <th className="w-28 md:w-36">Status</th>
+//                     <th className="w-28">Actions</th>
 //                   </tr>
 //                 </thead>
 //                 <tbody>
@@ -186,28 +645,36 @@
 //                     </tr>
 //                   ) : lowStock.map((item: any) => (
 //                     <tr key={item.product_id}>
-//                       <td>{item.sku}</td>
+//                       <td className="whitespace-nowrap">{item.sku}</td>
 //                       <td>{item.product_name}</td>
-//                       <td>{item.brand_name}</td>
-//                       <td>{item.category_name}</td>
-//                       <td>{item.unit_name}</td>
-//                       <td>{item.location_name}</td>
-//                       <td className={`text-center font-bold ${item.stock_balance <= 0 ? 'text-red-500' : item.stock_balance <= item.min_stock ? 'text-yellow-600' : 'text-black'}`}>
+//                       <td className="whitespace-nowrap">{item.brand_name}</td>
+//                       <td className="whitespace-nowrap">{item.category_name}</td>
+//                       <td className="whitespace-nowrap">{item.unit_name}</td>
+//                       <td className="whitespace-nowrap">{item.location_name}</td>
+//                       <td className={`text-center font-bold whitespace-nowrap ${
+//                         item.stock_balance <= 0
+//                           ? 'text-red-600'
+//                           : item.stock_balance <= item.min_stock
+//                           ? 'text-yellow-700'
+//                           : 'text-black'
+//                       }`}>
 //                         {item.stock_balance}
 //                       </td>
-//                       <td className="text-center">{item.min_stock}</td>
-//                       <td className="text-center">{item.max_stock}</td>
-//                       <td>
+//                       <td className="text-center whitespace-nowrap">{item.min_stock}</td>
+//                       <td className="text-center whitespace-nowrap">{item.max_stock}</td>
+//                       <td className="whitespace-nowrap">
 //                         {item.stock_balance <= 0 ? (
-//                           <span className="badge badge-error">Out of Stock</span>
+//                           <Pill tone="error" label="Out of Stock" />
 //                         ) : item.stock_balance <= item.min_stock ? (
-//                           <span className="badge badge-warning">Low</span>
+//                           <Pill tone="warning" label="Low" />
 //                         ) : (
-//                           <span className="badge badge-ghost">OK</span>
+//                           <Pill tone="ghost" label="OK" />
 //                         )}
 //                       </td>
-//                       <td>
-//                         <Link href={`/admins/products/${item.product_id}`} className="btn btn-xs btn-info mr-2">Product</Link>
+//                       <td className="whitespace-nowrap">
+//                         <Link href={`/admins/products/${item.product_id}`} className="btn btn-xs btn-info mr-2">
+//                           Product
+//                         </Link>
 //                       </td>
 //                     </tr>
 //                   ))}
@@ -219,65 +686,66 @@
 //       )}
 
 //       {/* WARRANTY EXPIRY TAB */}
-//       {tab === 'warranty-expiry' && (
-//         <div>
-//           {warrantyLoading ? <div>Loading...</div> : (
-//             <div className="overflow-x-auto rounded shadow">
-//               <table className="table w-full">
-//                 <thead>
-//                   <tr>
-//                     <th>Serial No</th>
-//                     <th>Product</th>
-//                     <th>Brand</th>
-//                     <th>Location</th>
-//                     <th>Assigned To</th>
-//                     <th>Expiry Date</th>
-//                     <th>Days Left</th>
-//                     <th>Status</th>
-//                     <th>Actions</th>
-//                   </tr>
-//                 </thead>
-//                 <tbody>
-//                   {warranty.length === 0 ? (
-//                     <tr>
-//                       <td colSpan={9} className="text-center py-8">No assets nearing warranty expiry</td>
-//                     </tr>
-//                   ) : warranty.map((asset: any) => {
-//                     const expiry = asset.warranty_expiry ? new Date(asset.warranty_expiry) : null;
-//                     const now = new Date();
-//                     const days = expiry ? Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 3600 * 24)) : null;
-//                     return (
-//                       <tr key={asset.id}>
-//                         <td>{asset.serial_number}</td>
-//                         <td>{asset.product_name}</td>
-//                         <td>{asset.brand_name}</td>
-//                         <td>{asset.location_name}</td>
-//                         <td>{asset.assigned_to_name}</td>
-//                         <td>{asset.warranty_expiry?.slice(0, 10)}</td>
-//                         <td className={days !== null && days < 0 ? 'text-red-600 font-bold' : days !== null && days < 30 ? 'text-yellow-700 font-bold' : ''}>
-//                           {days !== null ? days : '-'}
-//                         </td>
-//                         <td>
-//                           {days !== null && days < 0 ? (
-//                             <span className="badge badge-error">Expired</span>
-//                           ) : days !== null && days < 30 ? (
-//                             <span className="badge badge-warning">Expiring</span>
-//                           ) : (
-//                             <span className="badge badge-ghost">OK</span>
-//                           )}
-//                         </td>
-//                         <td>
-//                           <Link href={`/admins/assets/${asset.id}`} className="btn btn-xs btn-primary">View</Link>
-//                         </td>
-//                       </tr>
-//                     )
-//                   })}
-//                 </tbody>
-//               </table>
-//             </div>
-//           )}
-//         </div>
-//       )}
+// {/* WARRANTY EXPIRY TAB */}
+// {tab === 'warranty-expiry' && (
+//   <div>
+//     {warrantyLoading ? <div>Loading...</div> : (
+//       <div className="overflow-x-auto rounded shadow">
+//         <table className="table w-full">
+//           <thead>
+//             <tr>
+//               <th>Serial No</th>
+//               <th>Warranty Expiry</th>
+//               <th>Status</th>
+//               <th>Days Left</th>
+//               <th className="w-28">Actions</th>
+//             </tr>
+//           </thead>
+//           <tbody>
+//             {warranty.length === 0 ? (
+//               <tr>
+//                 <td colSpan={5} className="text-center py-8">No assets nearing warranty expiry</td>
+//               </tr>
+//             ) : warranty.map((asset: any) => {
+//               const expiry = asset.warranty_expiry ? new Date(asset.warranty_expiry) : null;
+//               const now = new Date();
+//               const days = expiry ? Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 3600 * 24)) : null;
+//               return (
+//                 <tr key={asset.id}>
+//                   <td className="whitespace-nowrap">{asset.serial_number}</td>
+//                   <td className="whitespace-nowrap">{asset.warranty_expiry}</td>
+//                   <td className="whitespace-nowrap">
+//                     {asset.status === 'expired' ? (
+//                       <Pill tone="error" label="Expired" />
+//                     ) : asset.status === 'expiring_soon' ? (
+//                       <Pill tone="warning" label="Expiring Soon" />
+//                     ) : (
+//                       <Pill tone="ghost" label="OK" />
+//                     )}
+//                   </td>
+//                   <td className={
+//                     days !== null && days < 0
+//                       ? 'text-red-600 font-bold whitespace-nowrap'
+//                       : days !== null && days < 30
+//                       ? 'text-yellow-700 font-bold whitespace-nowrap'
+//                       : 'whitespace-nowrap'
+//                   }>
+//                     {days !== null ? days : '-'}
+//                   </td>
+//                   <td className="whitespace-nowrap">
+//                     <Link href={`/admins/assets/${asset.id}`} className="btn btn-xs btn-primary">
+//                       View
+//                     </Link>
+//                   </td>
+//                 </tr>
+//               );
+//             })}
+//           </tbody>
+//         </table>
+//       </div>
+//     )}
+//   </div>
+// )}
 
 //       {/* ALERT CONFIGS TAB */}
 //       {tab === 'configs' && (
@@ -295,8 +763,8 @@
 //                     <th>Product</th>
 //                     <th>Category</th>
 //                     <th>Threshold</th>
-//                     <th>Status</th>
-//                     <th>Actions</th>
+//                     <th className="w-28 md:w-36">Status</th>
+//                     <th className="w-28">Actions</th>
 //                   </tr>
 //                 </thead>
 //                 <tbody>
@@ -306,24 +774,32 @@
 //                     </tr>
 //                   ) : configs.map((cfg: any) => (
 //                     <tr key={cfg.id}>
-//                       <td>
+//                       <td className="whitespace-nowrap">
 //                         {ALERT_TYPE_OPTIONS.find(a => a.value === cfg.alert_type)?.label || cfg.alert_type}
 //                       </td>
 //                       <td>
 //                         {products.find(p => String(p.id) === String(cfg.product_id))?.name ||
 //                           (cfg.product_id ? cfg.product_id : <span className="text-gray-400">(All)</span>)}
 //                       </td>
-//                       <td>
+//                       <td className="whitespace-nowrap">
 //                         {categories.find(c => c.name === cfg.category)?.name ||
 //                           (cfg.category ? cfg.category : <span className="text-gray-400">(All)</span>)}
 //                       </td>
-//                       <td>{cfg.threshold}</td>
-//                       <td>
-//                         {cfg.is_active ? <span className="badge badge-success">Enabled</span> : <span className="badge badge-ghost">Disabled</span>}
+//                       <td className="whitespace-nowrap">{cfg.threshold}</td>
+//                       <td className="whitespace-nowrap">
+//                         {cfg.is_active ? (
+//                           <Pill tone="success" label="Enabled" />
+//                         ) : (
+//                           <Pill tone="ghost" label="Disabled" />
+//                         )}
 //                       </td>
-//                       <td>
-//                         <button className="btn btn-xs btn-info mr-1" onClick={() => openEditConfig(cfg)}>Edit</button>
-//                         <button className="btn btn-xs btn-error" onClick={() => handleConfigDelete(cfg.id)}>Delete</button>
+//                       <td className="whitespace-nowrap">
+//                         <button className="btn btn-xs btn-info mr-1" onClick={() => openEditConfig(cfg)}>
+//                           Edit
+//                         </button>
+//                         <button className="btn btn-xs btn-error" onClick={() => handleConfigDelete(cfg.id)}>
+//                           Delete
+//                         </button>
 //                       </td>
 //                     </tr>
 //                   ))}
@@ -408,8 +884,12 @@
 //                     </div>
 //                     {formError && <div className="alert alert-error py-1">{formError}</div>}
 //                     <div className="flex gap-2 justify-end">
-//                       <button type="button" className="btn btn-secondary" onClick={() => setShowConfigModal(false)}>Cancel</button>
-//                       <button type="submit" className="btn btn-primary">{configEdit ? 'Save' : 'Add'}</button>
+//                       <button type="button" className="btn btn-secondary" onClick={() => setShowConfigModal(false)}>
+//                         Cancel
+//                       </button>
+//                       <button type="submit" className="btn btn-primary">
+//                         {configEdit ? 'Save' : 'Add'}
+//                       </button>
 //                     </div>
 //                   </form>
 //                 )}
@@ -421,6 +901,7 @@
 //     </div>
 //   );
 // }
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -437,7 +918,7 @@ const ALERT_TYPE_OPTIONS = [
 /** Reusable responsive, non-wrapping badge */
 function Pill({
   label,
-  tone = 'ghost', // 'success' | 'error' | 'warning' | 'info' | 'ghost'
+  tone = 'ghost',
   className = '',
 }: {
   label: string;
@@ -462,18 +943,66 @@ function Pill({
   return <span className={`${base} ${toneClass} ${className}`}>{label}</span>;
 }
 
+// Professional Modal Component
+function ProfessionalModal({ 
+  isOpen, 
+  onClose, 
+  title, 
+  children 
+}: { 
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+        {/* Backdrop */}
+        <div 
+          className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" 
+          onClick={onClose}
+        />
+        
+        {/* Modal panel */}
+        <div className="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg">
+          {/* Header */}
+          <div className="bg-white px-6 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold leading-6 text-gray-900">
+                {title}
+              </h3>
+              <button
+                type="button"
+                className="rounded-md bg-white text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                onClick={onClose}
+              >
+                <span className="sr-only">Close</span>
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          
+          {/* Content */}
+          <div className="bg-white px-6 py-4">
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AlertsDashboardPage() {
   const [tab, setTab] = useState<Tab>('low-stock');
-
-  // LOW STOCK ALERT
   const [lowStock, setLowStock] = useState<any[]>([]);
   const [lowStockLoading, setLowStockLoading] = useState(false);
-
-  // WARRANTY EXPIRY ALERT
   const [warranty, setWarranty] = useState<any[]>([]);
   const [warrantyLoading, setWarrantyLoading] = useState(false);
-
-  // ALERT CONFIGS
   const [configs, setConfigs] = useState<any[]>([]);
   const [configsLoading, setConfigsLoading] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
@@ -486,8 +1015,9 @@ export default function AlertsDashboardPage() {
     is_active: true
   });
   const [formError, setFormError] = useState<string | null>(null);
+  const [formSuccess, setFormSuccess] = useState<string | null>(null);
+  const [saveLoading, setSaveLoading] = useState(false);
 
-  // Master Data for dropdowns
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [masterLoading, setMasterLoading] = useState(true);
@@ -517,16 +1047,20 @@ export default function AlertsDashboardPage() {
       setWarrantyLoading(true);
       fetch(`${API_BASE_URL}/api/inventory/assets/warranty-expiry`)
         .then(res => res.json())
-        .then(setWarranty)
+        .then(data => setWarranty(data.data || []))
         .finally(() => setWarrantyLoading(false));
     } else if (tab === 'configs') {
-      setConfigsLoading(true);
-      fetch(`${API_BASE_URL}/api/inventory/alert-configs`)
-        .then(res => res.json())
-        .then(setConfigs)
-        .finally(() => setConfigsLoading(false));
+      loadConfigs();
     }
   }, [tab]);
+
+  const loadConfigs = () => {
+    setConfigsLoading(true);
+    fetch(`${API_BASE_URL}/api/inventory/alert-configs`)
+      .then(res => res.json())
+      .then(setConfigs)
+      .finally(() => setConfigsLoading(false));
+  };
 
   // Config CRUD Handlers
   const openAddConfig = () => {
@@ -539,8 +1073,10 @@ export default function AlertsDashboardPage() {
       is_active: true
     });
     setFormError(null);
+    setFormSuccess(null);
     setShowConfigModal(true);
   };
+
   const openEditConfig = (cfg: any) => {
     setConfigEdit(cfg);
     setForm({
@@ -551,15 +1087,22 @@ export default function AlertsDashboardPage() {
       is_active: !!cfg.is_active
     });
     setFormError(null);
+    setFormSuccess(null);
     setShowConfigModal(true);
   };
+
   const handleConfigSave = async (e: any) => {
     e.preventDefault();
     setFormError(null);
+    setFormSuccess(null);
+    setSaveLoading(true);
+
     if (!form.alert_type || !form.threshold) {
       setFormError('Alert type and threshold are required.');
+      setSaveLoading(false);
       return;
     }
+
     const body = {
       alert_type: form.alert_type,
       product_id: form.product_id ? Number(form.product_id) : null,
@@ -567,30 +1110,66 @@ export default function AlertsDashboardPage() {
       threshold: Number(form.threshold),
       is_active: !!form.is_active,
     };
-    const url = configEdit
-      ? `${API_BASE_URL}/api/inventory/alert-configs/${configEdit.id}`
-      : `${API_BASE_URL}/api/inventory/alert-configs`;
-    const method = configEdit ? 'PUT' : 'POST';
 
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    if (!res.ok) {
-      setFormError('Failed to save config');
-      return;
+    try {
+      const url = configEdit 
+        ? `${API_BASE_URL}/api/inventory/alert-configs/${configEdit.id}`
+        : `${API_BASE_URL}/api/inventory/alert-configs`;
+      
+      const method = 'POST';
+
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        throw new Error(result.error || 'Failed to save config');
+      }
+
+      setFormSuccess(configEdit ? 'Configuration updated successfully!' : 'Configuration created successfully!');
+      
+      // Close modal after success
+      setTimeout(() => {
+        setShowConfigModal(false);
+        loadConfigs(); // Refresh the list
+      }, 1500);
+
+    } catch (err: any) {
+      setFormError(err.message);
+    } finally {
+      setSaveLoading(false);
     }
-    setShowConfigModal(false);
-    setTab('configs'); // reload
-  };
-  const handleConfigDelete = async (id: any) => {
-    if (!confirm('Delete this config?')) return;
-    await fetch(`${API_BASE_URL}/api/inventory/alert-configs/${id}`, { method: 'DELETE' });
-    setTab('configs'); // reload
   };
 
-  // Render
+  const handleConfigDelete = async (id: any) => {
+    if (!confirm('Are you sure you want to delete this alert configuration?')) return;
+    
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/inventory/alert-configs/${id}`, { 
+        method: 'DELETE' 
+      });
+      
+      if (!res.ok) {
+        throw new Error('Failed to delete config');
+      }
+      
+      loadConfigs(); // Refresh the list
+    } catch (err) {
+      alert('Failed to delete configuration. Please try again.');
+    }
+  };
+
+  const closeModal = () => {
+    setShowConfigModal(false);
+    setFormError(null);
+    setFormSuccess(null);
+    setSaveLoading(false);
+  };
+
   return (
     <div className="max-w-7xl mx-auto py-8 px-2">
       <h1 className="text-2xl font-bold mb-6">Asset & Stock Alerts</h1>
@@ -686,53 +1265,42 @@ export default function AlertsDashboardPage() {
                 <thead>
                   <tr>
                     <th>Serial No</th>
-                    <th>Product</th>
-                    <th>Brand</th>
-                    <th>Location</th>
-                    <th>Assigned To</th>
-                    <th>Expiry Date</th>
+                    <th>Warranty Expiry</th>
+                    <th>Status</th>
                     <th>Days Left</th>
-                    <th className="w-28 md:w-36">Status</th>
                     <th className="w-28">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {warranty.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="text-center py-8">No assets nearing warranty expiry</td>
+                      <td colSpan={5} className="text-center py-8">No assets nearing warranty expiry</td>
                     </tr>
                   ) : warranty.map((asset: any) => {
                     const expiry = asset.warranty_expiry ? new Date(asset.warranty_expiry) : null;
                     const now = new Date();
-                    const days =
-                      expiry ? Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 3600 * 24)) : null;
+                    const days = expiry ? Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 3600 * 24)) : null;
                     return (
                       <tr key={asset.id}>
                         <td className="whitespace-nowrap">{asset.serial_number}</td>
-                        <td>{asset.product_name}</td>
-                        <td className="whitespace-nowrap">{asset.brand_name}</td>
-                        <td className="whitespace-nowrap">{asset.location_name}</td>
-                        <td className="whitespace-nowrap">{asset.assigned_to_name}</td>
-                        <td className="whitespace-nowrap">{asset.warranty_expiry?.slice(0, 10)}</td>
-                        <td
-                          className={
-                            days !== null && days < 0
-                              ? 'text-red-600 font-bold whitespace-nowrap'
-                              : days !== null && days < 30
-                              ? 'text-yellow-700 font-bold whitespace-nowrap'
-                              : 'whitespace-nowrap'
-                          }
-                        >
-                          {days !== null ? days : '-'}
-                        </td>
+                        <td className="whitespace-nowrap">{asset.warranty_expiry}</td>
                         <td className="whitespace-nowrap">
-                          {days !== null && days < 0 ? (
+                          {asset.status === 'expired' ? (
                             <Pill tone="error" label="Expired" />
-                          ) : days !== null && days < 30 ? (
-                            <Pill tone="warning" label="Expiring" />
+                          ) : asset.status === 'expiring_soon' ? (
+                            <Pill tone="warning" label="Expiring Soon" />
                           ) : (
                             <Pill tone="ghost" label="OK" />
                           )}
+                        </td>
+                        <td className={
+                          days !== null && days < 0
+                            ? 'text-red-600 font-bold whitespace-nowrap'
+                            : days !== null && days < 30
+                            ? 'text-yellow-700 font-bold whitespace-nowrap'
+                            : 'whitespace-nowrap'
+                        }>
+                          {days !== null ? days : '-'}
                         </td>
                         <td className="whitespace-nowrap">
                           <Link href={`/admins/assets/${asset.id}`} className="btn btn-xs btn-primary">
@@ -752,9 +1320,17 @@ export default function AlertsDashboardPage() {
       {/* ALERT CONFIGS TAB */}
       {tab === 'configs' && (
         <div>
-          <div className="mb-4 flex justify-between">
+          <div className="mb-4 flex justify-between items-center">
             <h2 className="text-xl font-bold">Alert Configurations</h2>
-            <button className="btn btn-sm btn-info" onClick={openAddConfig}>+ Add Config</button>
+            <button 
+              className="btn btn-primary btn-sm"
+              onClick={openAddConfig}
+            >
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Configuration
+            </button>
           </div>
           {configsLoading ? <div>Loading...</div> : (
             <div className="overflow-x-auto rounded shadow">
@@ -780,12 +1356,10 @@ export default function AlertsDashboardPage() {
                         {ALERT_TYPE_OPTIONS.find(a => a.value === cfg.alert_type)?.label || cfg.alert_type}
                       </td>
                       <td>
-                        {products.find(p => String(p.id) === String(cfg.product_id))?.name ||
-                          (cfg.product_id ? cfg.product_id : <span className="text-gray-400">(All)</span>)}
+                        {cfg.product_name || (cfg.product_id ? `Product ID: ${cfg.product_id}` : <span className="text-gray-400">(All Products)</span>)}
                       </td>
                       <td className="whitespace-nowrap">
-                        {categories.find(c => c.name === cfg.category)?.name ||
-                          (cfg.category ? cfg.category : <span className="text-gray-400">(All)</span>)}
+                        {cfg.category_name || (cfg.category ? cfg.category : <span className="text-gray-400">(All Categories)</span>)}
                       </td>
                       <td className="whitespace-nowrap">{cfg.threshold}</td>
                       <td className="whitespace-nowrap">
@@ -796,10 +1370,16 @@ export default function AlertsDashboardPage() {
                         )}
                       </td>
                       <td className="whitespace-nowrap">
-                        <button className="btn btn-xs btn-info mr-1" onClick={() => openEditConfig(cfg)}>
+                        <button 
+                          className="btn btn-xs btn-info mr-1" 
+                          onClick={() => openEditConfig(cfg)}
+                        >
                           Edit
                         </button>
-                        <button className="btn btn-xs btn-error" onClick={() => handleConfigDelete(cfg.id)}>
+                        <button 
+                          className="btn btn-xs btn-error" 
+                          onClick={() => handleConfigDelete(cfg.id)}
+                        >
                           Delete
                         </button>
                       </td>
@@ -809,97 +1389,153 @@ export default function AlertsDashboardPage() {
               </table>
             </div>
           )}
-
-          {/* Modal */}
-          {showConfigModal && (
-            <div className="fixed z-10 left-0 top-0 w-full h-full flex items-center justify-center bg-black bg-opacity-20">
-              <div className="bg-white p-6 rounded shadow-xl min-w-[350px] max-w-md">
-                <h3 className="font-bold mb-4">{configEdit ? 'Edit Alert Config' : 'Add Alert Config'}</h3>
-                {masterLoading ? (
-                  <div>Loading master data...</div>
-                ) : (
-                  <form onSubmit={handleConfigSave} className="space-y-3">
-                    <div>
-                      <label className="block font-semibold">Alert Type</label>
-                      <select
-                        className="select select-bordered w-full"
-                        value={form.alert_type}
-                        onChange={e => setForm(f => ({ ...f, alert_type: e.target.value }))}
-                        required
-                      >
-                        <option value="">Select Alert Type</option>
-                        {ALERT_TYPE_OPTIONS.map(opt => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block font-semibold">Product</label>
-                      <select
-                        className="select select-bordered w-full"
-                        value={form.product_id}
-                        onChange={e => setForm(f => ({ ...f, product_id: e.target.value }))}
-                      >
-                        <option value="">(All Products)</option>
-                        {products.map((prod: any) => (
-                          <option key={prod.id} value={prod.id}>
-                            {prod.name} {prod.sku ? `(${prod.sku})` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block font-semibold">Category</label>
-                      <select
-                        className="select select-bordered w-full"
-                        value={form.category}
-                        onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                      >
-                        <option value="">(All Categories)</option>
-                        {categories.map((cat: any) => (
-                          <option key={cat.id} value={cat.name}>{cat.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block font-semibold">Threshold</label>
-                      <input
-                        className="input input-bordered w-full"
-                        type="number"
-                        value={form.threshold}
-                        onChange={e => setForm(f => ({ ...f, threshold: e.target.value }))}
-                        required
-                        min={0}
-                        placeholder="E.g. 5"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold">Active</label>
-                      <select
-                        className="select select-bordered w-full"
-                        value={form.is_active ? '1' : '0'}
-                        onChange={e => setForm(f => ({ ...f, is_active: e.target.value === '1' }))}
-                      >
-                        <option value="1">Yes</option>
-                        <option value="0">No</option>
-                      </select>
-                    </div>
-                    {formError && <div className="alert alert-error py-1">{formError}</div>}
-                    <div className="flex gap-2 justify-end">
-                      <button type="button" className="btn btn-secondary" onClick={() => setShowConfigModal(false)}>
-                        Cancel
-                      </button>
-                      <button type="submit" className="btn btn-primary">
-                        {configEdit ? 'Save' : 'Add'}
-                      </button>
-                    </div>
-                  </form>
-                )}
-              </div>
-            </div>
-          )}
         </div>
       )}
+
+      {/* Professional Modal */}
+      <ProfessionalModal
+        isOpen={showConfigModal}
+        onClose={closeModal}
+        title={configEdit ? 'Edit Alert Configuration' : 'Add Alert Configuration'}
+      >
+        {masterLoading ? (
+          <div className="flex justify-center py-8">
+            <div className="loading loading-spinner loading-lg"></div>
+          </div>
+        ) : (
+          <form onSubmit={handleConfigSave} className="space-y-4">
+            {/* Alert Type */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Alert Type <span className="text-red-500">*</span>
+              </label>
+              <select
+                className="select select-bordered w-full"
+                value={form.alert_type}
+                onChange={e => setForm(f => ({ ...f, alert_type: e.target.value }))}
+                required
+              >
+                <option value="">Select Alert Type</option>
+                {ALERT_TYPE_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Product */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Product (Optional)
+              </label>
+              <select
+                className="select select-bordered w-full"
+                value={form.product_id}
+                onChange={e => setForm(f => ({ ...f, product_id: e.target.value }))}
+              >
+                <option value="">All Products</option>
+                {products.map((prod: any) => (
+                  <option key={prod.id} value={prod.id}>
+                    {prod.name} {prod.sku ? `(${prod.sku})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Category */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Category (Optional)
+              </label>
+              <select
+                className="select select-bordered w-full"
+                value={form.category}
+                onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+              >
+                <option value="">All Categories</option>
+                {categories.map((cat: any) => (
+                  <option key={cat.id} value={cat.name}>{cat.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Threshold */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Threshold <span className="text-red-500">*</span>
+              </label>
+              <input
+                className="input input-bordered w-full"
+                type="number"
+                value={form.threshold}
+                onChange={e => setForm(f => ({ ...f, threshold: e.target.value }))}
+                required
+                min={0}
+                placeholder="E.g., 5 for low stock, 30 for days before expiry"
+              />
+            </div>
+
+            {/* Active Status */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Status
+              </label>
+              <select
+                className="select select-bordered w-full"
+                value={form.is_active ? '1' : '0'}
+                onChange={e => setForm(f => ({ ...f, is_active: e.target.value === '1' }))}
+              >
+                <option value="1">Active</option>
+                <option value="0">Inactive</option>
+              </select>
+            </div>
+
+            {/* Messages */}
+            {formError && (
+              <div className="alert alert-error">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>{formError}</span>
+              </div>
+            )}
+
+            {formSuccess && (
+              <div className="alert alert-success">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>{formSuccess}</span>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3 justify-end pt-4 border-t border-gray-200">
+              <button 
+                type="button" 
+                className="btn btn-secondary"
+                onClick={closeModal}
+                disabled={saveLoading}
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                className="btn btn-primary"
+                disabled={saveLoading}
+              >
+                {saveLoading ? (
+                  <>
+                    <span className="loading loading-spinner loading-sm"></span>
+                    Saving...
+                  </>
+                ) : (
+                  configEdit ? 'Update Configuration' : 'Create Configuration'
+                )}
+              </button>
+            </div>
+          </form>
+        )}
+      </ProfessionalModal>
     </div>
   );
 }
