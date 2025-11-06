@@ -1666,7 +1666,7 @@ export default function Sidebar({ onCollapseChange }: SidebarProps) {
                     </Link>
                   </li>
                 )}
-                {((!hasCustomPermissions && role === "admin") || 
+                {/* {((!hasCustomPermissions && role === "admin") || 
                  (hasCustomPermissions && hasAccess('Admin.Settings'))) && (
                   <li>
                     <Link
@@ -1679,7 +1679,7 @@ export default function Sidebar({ onCollapseChange }: SidebarProps) {
                       <span>Admin Settings</span>
                     </Link>
                   </li>
-                )}
+                )} */}
               </ul>
             </li>
           )}
@@ -1719,4 +1719,3 @@ export default function Sidebar({ onCollapseChange }: SidebarProps) {
     </>
   );
 }
-
