@@ -180,7 +180,7 @@ export default function PermissionsPage() {
       <div className="max-w-7xl mx-auto space-y-4">
         <div className="breadcrumbs text-sm">
           <ul>
-            <li><a href="/admin" className="text-base-content/70 hover:text-primary">Admin</a></li>
+            <li><a href="/admins" className="text-base-content/70 hover:text-primary">Admin</a></li>
             <li className="text-primary">Permissions</li>
           </ul>
         </div>
