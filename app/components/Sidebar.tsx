@@ -1196,7 +1196,7 @@ export default function Sidebar({ onCollapseChange }: SidebarProps) {
                               }`}
                               onClick={handleMobileNavigation}
                             >
-                              Overtime Configuration
+                              Attendance Configuration
                             </Link>
                           </li>
                         ) : null}
