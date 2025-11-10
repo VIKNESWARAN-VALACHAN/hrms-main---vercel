@@ -189,7 +189,7 @@ export default function PermissionsPage() {
           <div className="card-body p-4 md:p-6">
             <div className="flex items-center justify-between gap-3 mb-4">
               <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-base-content">Permissions Management</h1>
+                <h1 className="text-2xl md:text-3xl font-bold text-base-content">User Permissions</h1>
                 <p className="text-base-content/60 mt-1">Manage user access and module permissions across the system</p>
               </div>
             </div>
