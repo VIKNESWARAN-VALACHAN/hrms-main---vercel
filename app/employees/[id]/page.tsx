@@ -3125,25 +3125,53 @@ const handleSubmit = async (e: React.FormEvent) => {
 const [emailSending, setEmailSending] = useState(false);
 const [showPw, setShowPw] = useState(false);
 
-async function handleSendTempPasswordEmail() {
-  if (!employee?.id) return showNotification('Missing employee ID', 'error');
-  if (!employee?.email) return showNotification('Employee has no email on file', 'warning');
+
+const handleSendTempPasswordEmail = async () => {
+  console.log('handleSendTempPasswordEmail called - single version');
+  
+  if (!employee?.id) {
+    showNotification('Missing employee ID', 'error');
+    return;
+  }
+  
+  if (!employee?.email) {
+    showNotification('Employee has no email on file', 'warning');
+    return;
+  }
+
+  if (!tempPassword) {
+    showNotification('No temporary password generated', 'error');
+    return;
+  }
 
   try {
     setEmailSending(true);
-    const res = await fetch(`${API_BASE_URL}/api/employees/${employee.id}/send-temp-password`, {
+    
+    const response = await fetch(`${API_BASE_URL}/api/notifications/password-reset`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tempPassword }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        to: employee.email,
+        employeeName: employee.name,
+        tempPassword: tempPassword,
+        companyName: employee.company_id
+      }),
     });
-    if (!res.ok) throw new Error(await res.text());
-    showNotification('Temporary password emailed to the employee', 'success');
-  } catch (err) {
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: Failed to send email`);
+    }
+    
+    showNotification('Temporary password sent to employee email', 'success');
+  } catch (error) {
+    console.error('Error sending email:', error);
     showNotification('Failed to send email', 'error');
   } finally {
     setEmailSending(false);
   }
-}
+};
 
 async function handleClose() {
   setShowTempPasswordModal(false);
@@ -7306,27 +7334,27 @@ const BondingErrorModal = () => {
                       Send to: <span className="font-medium text-indigo-700">{employee.email}</span>
                     </div>
                     
-                    <button
-                      type="button"
-                      className="btn btn-sm bg-indigo-600 hover:bg-indigo-700 text-white border-0"
-                      disabled={emailSending}
-                      onClick={handleSendTempPasswordEmail}
-                    >
-                      {emailSending ? (
-                        <>
-                          <span className="loading loading-spinner loading-xs mr-2"></span>
-                          Sending...
-                        </>
-                      ) : (
-                        <>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4"
-                              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M4 4h16v16H4z" /><path d="M22 6l-10 7L2 6" />
-                          </svg>
-                          Send Email
-                        </>
-                      )}
-                    </button>
+<button
+  type="button"
+  className="btn btn-sm bg-indigo-600 hover:bg-indigo-700 text-white border-0"
+  disabled={emailSending}
+  onClick={handleSendTempPasswordEmail} // No parameters needed
+>
+  {emailSending ? (
+    <>
+      <span className="loading loading-spinner loading-xs mr-2"></span>
+      Sending...
+    </>
+  ) : (
+    <>
+      <svg xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M4 4h16v16H4z" /><path d="M22 6l-10 7L2 6" />
+      </svg>
+      Send Email
+    </>
+  )}
+</button>
                   </div>
                 </div>
               ) : (
