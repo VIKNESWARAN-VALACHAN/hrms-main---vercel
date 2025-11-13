@@ -246,6 +246,25 @@ interface AmendAttendanceData {
   amend_date?: string;
   amend_by?: string;
   employee_timezone?: string | null;
+  worked_hours?: string;
+  check_in_ip?: string;
+  check_in_public_ip?: string;
+  check_in_ip_match_status?: string;
+  check_in_ip_policy_mode?: string;
+  check_out_ip?: string;
+  check_out_public_ip?: string;
+  check_out_ip_match_status?: string;
+  check_out_ip_policy_mode?: string;
+  office_name?: string;
+  whitelisted_cidr?: string;
+  
+  // Export-related fields
+  amended_status?: string;
+  amended_by?: string;
+  amended_date?: string;
+  
+  // Raw data for debugging
+  _raw?: any;
 }
 
 // Add Appeal interface
@@ -1041,8 +1060,15 @@ const displayRawDateOnly = (datetimeString: string) => {
   const applyAttendanceFilters = async (filter: Record<string, string>) => {
     const filtersQuery = filter || filters;
     // Get company name for logging if selected
-    const selectedCompany = filtersQuery?.company ?
-      companies.find(c => c.id === filtersQuery.company) : null;
+    // const selectedCompany = filtersQuery?.company ?
+    //   companies.find(c => c.id === filtersQuery.company) : null;
+      // Set default to today if no dates provided
+  const finalFilters = { ...filtersQuery };
+  if (!finalFilters.fromDate && !finalFilters.toDate && activeTab === 'attendance') {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    finalFilters.fromDate = today;
+    finalFilters.toDate = today;
+  }
 
     // Validate search term
     if (searchTerm && searchTerm.length === 1) {
@@ -1070,7 +1096,8 @@ const displayRawDateOnly = (datetimeString: string) => {
 
     // Clear any previous errors before fetching
     setError('');
-    await fetchAttendanceFilterData(activeTab, filtersQuery);
+    await fetchAttendanceFilterData(activeTab, finalFilters);
+    //await fetchAttendanceFilterData(activeTab, filtersQuery);
     // Fetch appeal data if on appeal tab
     if (activeTab === 'appeal') {
       await fetchAppealData(filtersQuery);
@@ -1148,13 +1175,14 @@ const displayRawDateOnly = (datetimeString: string) => {
     }
   };
 
-  const fetchAttendanceFilterData = async (currentTab = activeTab, filters: Record<string, string> | any) => {
+
+const fetchAttendanceFilterData = async (currentTab = activeTab, filters: Record<string, string> | any) => {
   if (role !== 'admin') {
     return;
   }
 
   try {
-    // Build query parameters similar to employee page
+    // Build query parameters
     let queryParams = new URLSearchParams();
 
     // Add search field for employee name if at least 2 characters
@@ -1162,7 +1190,7 @@ const displayRawDateOnly = (datetimeString: string) => {
       queryParams.append('employee_name', searchTerm);
     }
 
-    // Add company filter - ensure we're using the ID
+    // Add company filter
     if (filters.company && filters.company !== '') {
       queryParams.append('company_id', filters.company);
     }
@@ -1172,10 +1200,15 @@ const displayRawDateOnly = (datetimeString: string) => {
       queryParams.append('status', filters.status);
     }
 
-    // Only add date filters - as requested
+    // Add date filters (today by default)
     if (filters.fromDate && filters.toDate) {
       queryParams.append('start_date', filters.fromDate);
       queryParams.append('end_date', filters.toDate);
+    } else {
+      // Default to today if no dates provided
+      const today = new Date().toISOString().split('T')[0];
+      queryParams.append('start_date', today);
+      queryParams.append('end_date', today);
     }
 
     if(filters.department && filters.department !== ''){
@@ -1186,54 +1219,107 @@ const displayRawDateOnly = (datetimeString: string) => {
     const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
     const url = `${API_BASE_URL}${API_ROUTES.attendanceData}${queryString}`;
 
-   
     const response = await fetch(url);
-
-    console.log("URL - " +url );
+    console.log("URL - " + url);
     const data = await response.json();
 
-    console.log('Raw API response:', data);
+    console.log('Today\'s attendance data with IP:', data);
 
-    let amendedData = data.map((item: any) => {
-      // Always prefer the ISO times if available
-      const checkInTime = item.first_check_in_time_local_iso || item.check_in_time;
-      const checkOutTime = item.last_check_out_time_local_iso || item.check_out_time;
+    // let amendedData = data.map((item: any) => {
+    //   // Always prefer the ISO times if available
+    //   const checkInTime = item.first_check_in_time_local_iso || item.check_in_time;
+    //   const checkOutTime = item.last_check_out_time_local_iso || item.check_out_time;
       
-      console.log('Processing item:', {
-        employee: item.employee_name,
-        timezone: item.employee_timezone,
-        rawCheckIn: item.check_in_time,
-        isoCheckIn: item.first_check_in_time_local_iso,
-        rawCheckOut: item.check_out_time,
-        isoCheckOut: item.last_check_out_time_local_iso,
-        finalCheckIn: displayTimeTZ(checkInTime,item.employee_timezone),
-        finalCheckOut: displayTimeTZ(checkOutTime,item.employee_timezone),
-      });
+    //   console.log('Processing item with IP:', {
+    //     employee: item.employee_name,
+    //     date: item.attendance_date,
+    //     check_in_ip: item.check_in_ip,
+    //     check_in_public_ip: item.check_in_public_ip,
+    //     check_out_ip: item.check_out_ip,
+    //     check_out_public_ip: item.check_out_public_ip,
+    //     ip_match_status: item.check_in_ip_match_status,
+    //     ip_policy_mode: item.check_in_ip_policy_mode
+    //   });
 
-      return {
-        id: item.employee_no,
-        employee_name: item.employee_name,
-        company_name: item.company_name,
-        department_name: item.department,
-        date: item.attendance_date,
-        checkIn: checkInTime,
-        checkOut: checkOutTime,
-        status: item.status.toLowerCase(),
-        attendance_day_id: item.attendance_day_id,
-        employee_id: item.employee_id,
-        amend_date: item.amend_date,
-        amend_by: item.amend_by,
-        employee_timezone: item.employee_timezone || timeZone, // Add this line
-        // Keep raw data for debugging
-        _raw: {
-          check_in_time: item.check_in_time,
-          check_out_time: item.check_out_time,
-          first_check_in_time_local_iso: item.first_check_in_time_local_iso,
-          last_check_out_time_local_iso: item.last_check_out_time_local_iso,
-          employee_timezone: item.employee_timezone
-        }
-      };
-    });
+    //   return {
+    //     id: item.employee_no,
+    //     employee_name: item.employee_name,
+    //     company_name: item.company_name,
+    //     department_name: item.department,
+    //     date: item.attendance_date,
+    //     checkIn: checkInTime,
+    //     checkOut: checkOutTime,
+    //     status: item.status.toLowerCase(),
+    //     attendance_day_id: item.attendance_day_id,
+    //     employee_id: item.employee_id,
+    //     amend_date: item.amend_date,
+    //     amend_by: item.amend_by,
+    //     employee_timezone: item.employee_timezone || timeZone,
+    //     // Add amended status field for export
+    //     amended_status: item.amend_date ? 'Amended' : 'Original',
+    //     amended_by: item.amend_by || '',
+    //     amended_date: item.amend_date || '',
+    //     // Add IP fields - use public IP if available, fallback to internal IP
+    //     check_in_ip: item.check_in_public_ip || item.check_in_ip || '',
+    //     check_out_ip: item.check_out_public_ip || item.check_out_ip || '',
+    //     check_in_ip_match_status: item.check_in_ip_match_status || '',
+    //     check_in_ip_policy_mode: item.check_in_ip_policy_mode || '',
+    //     check_out_ip_match_status: item.check_out_ip_match_status || '',
+    //     check_out_ip_policy_mode: item.check_out_ip_policy_mode || '',
+    //     office_name: item.office_name || '',
+    //     // Keep raw data for debugging
+    //     _raw: item
+    //   };
+    // });
+
+let amendedData = data.map((item: any) => {
+  // Always prefer the ISO times if available
+  const checkInTime = item.first_check_in_time_local_iso || item.check_in_time;
+  const checkOutTime = item.last_check_out_time_local_iso || item.check_out_time;
+  
+console.log('Raw API response item with IP:', {
+  employee: item.employee_name,
+  date: item.attendance_date,
+  check_in_ip: item.check_in_ip, // This should show internal IP
+  check_in_public_ip: item.check_in_public_ip, // This should show public IP
+  check_out_ip: item.check_out_ip, // This should show internal IP
+  check_out_public_ip: item.check_out_public_ip, // This should show public IP
+});
+
+  return {
+    id: item.employee_no,
+    employee_name: item.employee_name,
+    company_name: item.company_name,
+    department_name: item.department,
+    date: item.attendance_date,
+    checkIn: checkInTime,
+    checkOut: checkOutTime,
+    status: item.status.toLowerCase(),
+    attendance_day_id: item.attendance_day_id,
+    employee_id: item.employee_id,
+    amend_date: item.amend_date,
+    amend_by: item.amend_by,
+    employee_timezone: item.employee_timezone || timeZone,
+    // Add worked hours
+    worked_hours: item.worked_hours || '0.00',
+    // Add amended status field for export
+    amended_status: item.amend_date ? 'Amended' : 'Original',
+    amended_by: item.amend_by || '',
+    amended_date: item.amend_date || '',
+    // FIX: Store internal and public IPs separately
+    check_in_ip: item.check_in_ip || '', // Internal IP
+    check_in_public_ip: item.check_in_public_ip || '', // Public IP
+    check_out_ip: item.check_out_ip || '', // Internal IP  
+    check_out_public_ip: item.check_out_public_ip || '', // Public IP
+    check_in_ip_match_status: item.check_in_ip_match_status || '',
+    check_in_ip_policy_mode: item.check_in_ip_policy_mode || '',
+    check_out_ip_match_status: item.check_out_ip_match_status || '',
+    check_out_ip_policy_mode: item.check_out_ip_policy_mode || '',
+    office_name: item.office_name || '',
+    // Keep raw data for debugging
+    _raw: item
+  };
+});
 
     if(currentTab === 'amend'){
       amendedData = amendedData.filter((item: any) => item.status.toLowerCase() === 'absent' || item.status.toLowerCase() === 'offday');
@@ -2919,7 +3005,7 @@ function append(qs: URLSearchParams, k: string, v?: string | number | null) {
   if (v !== undefined && v !== null && v !== '' && v !== 'undefined' && v !== 'null') qs.append(k, String(v));
 }
 
-async function handleExportWithLeaves() {
+async function handleExportWithLeaves1211() {
   try {
     setIsExporting(true);
     const API = `${API_BASE_URL}/api/v1`;
@@ -2968,6 +3054,61 @@ async function handleExportWithLeaves() {
   } catch (e) {
     console.error('Export with leaves failed:', e);
     downloadAttendanceReport(amendAttendanceData); // fallback
+    showNotification('Failed to fetch leave data. Exported attendance only.', 'error');
+  } finally {
+    setIsExporting(false);
+  }
+}
+
+async function handleExportWithLeaves(exportData = amendAttendanceData) {
+  try {
+    setIsExporting(true);
+    const API = `${API_BASE_URL}/api/v1`;
+
+    // date range
+    const range = (() => {
+      if (filters?.fromDate && filters?.toDate) {
+        return { startDate: fmtLocal(filters.fromDate), endDate: fmtLocal(filters.toDate) };
+      }
+      const dates = (exportData ?? []).map((r: any) => r.date).filter(Boolean).sort();
+      if (dates.length) return { startDate: dates[0], endDate: dates[dates.length - 1] };
+      const n = new Date(), y = n.getFullYear(), m = n.getMonth();
+      const last = new Date(y, m + 1, 0).getDate();
+      return { startDate: `${y}-${String(m+1).padStart(2,'0')}-01`, endDate: `${y}-${String(m+1).padStart(2,'0')}-${last}` };
+    })();
+
+    // employee IDs from current table
+    const empIds = Array.from(new Set(
+      (exportData || []).map((r: any) => r.employee_id).filter((x: any) => Number.isFinite(x))
+    ));
+
+    const qs = new URLSearchParams();
+    append(qs, 'startDate', range.startDate);
+    append(qs, 'endDate', range.endDate);
+    if (empIds.length) append(qs, 'employeeIds', empIds.join(','));
+    append(qs, 'departmentId', filters?.department);
+    append(qs, 'companyId', filters?.company);
+    append(qs, 'status', filters?.status);
+
+    const url = `${API}/leaves/history/range?${qs.toString()}`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem('hrms_token')}`
+      }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const leaves: LeaveRow[] = await res.json();
+
+    downloadAttendanceReport(exportData, {
+      includeLeaves: true,
+      leaves,
+      fileName: `Attendance_with_Leaves_${range.startDate}_${range.endDate}.xlsx`,
+    });
+  } catch (e) {
+    console.error('Export with leaves failed:', e);
+    downloadAttendanceReport(exportData); // fallback
     showNotification('Failed to fetch leave data. Exported attendance only.', 'error');
   } finally {
     setIsExporting(false);
@@ -3493,12 +3634,6 @@ const processOvertimeApproval = async (approvalData: {
   return response.json();
 };
 
-
-
-
-// Remove submitOvertimeRequest function since it seems overtime is auto-calculated
-// If you need manual overtime submission, we'll need to adjust based on your requirements
-
 // Add function to calculate display values
 const calculateDisplayTimes = (totalMinutes: number) => {
   const hours = Math.floor(totalMinutes / 60);
@@ -3626,6 +3761,27 @@ const handleOvertimeApproval = async (action: 'approve' | 'reject') => {
   }
 };
 
+// Helper function to format IP status display
+const formatIPStatus = (status: string) => {
+  return status?.replace(/_/g, ' ').toLowerCase() || 'unknown';
+};
+
+// Helper function to get IP status display text
+const getIPStatusDisplay = (status: string) => {
+  if (!status) return 'Unknown';
+  
+  const normalizedStatus = status.toLowerCase();
+  switch (normalizedStatus) {
+    case 'in_whitelist':
+      return 'Matched';
+    case 'not_in_whitelist':
+      return 'Not Matched';
+    case 'pending':
+      return 'Pending';
+    default:
+      return 'Unknown';
+  }
+};
 
 // Add to your useEffect to fetch overtime data
 useEffect(() => {
@@ -5137,7 +5293,7 @@ useEffect(() => {
               <button
                 type="button"
                 className={`btn w-full ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0 ${isExporting ? 'loading' : ''}`}
-                onClick={handleExportWithLeaves}
+                 onClick={() => handleExportWithLeaves(amendAttendanceData)}//onClick={handleExportWithLeaves}
                 disabled={isExporting}
               >
                 {isExporting ? 'Exporting...' : 'Export Excel with Leaves'}
@@ -5148,59 +5304,143 @@ useEffect(() => {
             </div>
           </div>
 
-          {/* Results table */}
-          <div className={`overflow-x-auto ${theme === 'light' ? 'bg-white' : 'bg-slate-800'} rounded-lg shadow`}>
-            <table className="table w-full">
-              <thead>
-                <tr className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-700'}`}>
-                  <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Employee</th>
-                  <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Company</th>
-                  <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Department</th>
-                  <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Date</th>
-                  <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Check In</th>
-                  <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Check Out</th>
-                  <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {currentAmendItems.map((item, idx) => (
-                  <tr
-                    key={`${item.id}-${idx}`}
-                    className={`${theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-700'} ${idx !== currentAmendItems.length - 1 ? `${theme === 'light' ? 'border-b border-slate-200' : 'border-b border-slate-600'}` : ''} ${item._justAmended ? `${theme === 'light' ? 'bg-green-100' : 'bg-green-900'} animate-pulse` : ''}`}
-                  >
-                    {/*Employee */}
-                    <td>
-                      <div className="flex items-center gap-3">
-                        <div>
-                          <div className={`font-bold ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{item.employee_name ?? ''}</div>
-                        </div>
-                      </div>
-                    </td>
-                    {/*Company */}
-                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{item.company_name}</td>
-                    {/*Department */}
-                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{item.department_name}</td>
-                    {/*Date */}
-                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
-                      {displayDateOnly(item.date)}{/* {item.date ? new Date(item.date).toLocaleDateString() : ''} */}
-                    </td>
-                    {/*Check In */}
-                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
-                      {/* {item.checkIn && item.checkIn !== '--' ?
-                      new Date(item.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) :
-                      item.checkIn} */}
-                        {item.checkIn && item.checkIn !== '--' ? displayTimeTZ(item.checkIn, item.employee_timezone) : item.checkIn}
-                      {/* {item.checkIn && item.checkIn !== '--' ? displayTime(item.checkIn) : item.checkIn} */}
-                    </td>
-                    {/*Check Out */}
-                    <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
-                      {/* {item.checkOut && item.checkOut !== '--' ?
-                      new Date(item.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) :
-                      item.checkOut} */}
-                        {item.checkOut && item.checkOut !== '--' ? displayTimeTZ(item.checkOut, item.employee_timezone) : item.checkOut}
-                      {/* {item.checkOut && item.checkOut !== '--' ? displayTime(item.checkOut) : item.checkOut} */}
-                    </td>
-                    {/*Status */}
+{/* Results table */}
+{/* Results table */}
+<div className={`overflow-x-auto ${theme === 'light' ? 'bg-white' : 'bg-slate-800'} rounded-lg shadow`}>
+  <table className="table w-full">
+    <thead>
+      <tr className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-700'}`}>
+        <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Employee</th>
+        <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Company</th>
+        <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Department</th>
+        <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Date</th>
+        <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Check In</th>
+        <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Check Out</th>
+        <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Working Hours</th>
+        <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Check-in IP Details</th>
+        <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Check-out IP Details</th>
+        <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {currentAmendItems.map((item, idx) => (
+        <tr
+          key={`${item.id}-${idx}`}
+          className={`${theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-700'} ${idx !== currentAmendItems.length - 1 ? `${theme === 'light' ? 'border-b border-slate-200' : 'border-b border-slate-600'}` : ''} ${item._justAmended ? `${theme === 'light' ? 'bg-green-100' : 'bg-green-900'} animate-pulse` : ''}`}
+        >
+          {/* Employee */}
+          <td>
+            <div className="flex items-center gap-3">
+              <div>
+                <div className={`font-bold ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{item.employee_name ?? ''}</div>
+                <div className="text-xs opacity-70">{item.id}</div>
+              </div>
+            </div>
+          </td>
+          {/* Company */}
+          <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{item.company_name}</td>
+          {/* Department */}
+          <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{item.department_name}</td>
+          {/* Date */}
+          <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+            {displayDateOnly(item.date)}
+          </td>
+          {/* Check In */}
+          <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+            {item.checkIn && item.checkIn !== '--' ? displayTimeTZ(item.checkIn, item.employee_timezone) : '--:--'}
+          </td>
+          {/* Check Out */}
+          <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+            {item.checkOut && item.checkOut !== '--' ? displayTimeTZ(item.checkOut, item.employee_timezone) : '--:--'}
+          </td>
+          {/* Working Hours */}
+          <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+            {(item as any).worked_hours || '0.00'} hours
+          </td>
+ {/* Check-in IP Details */}
+<td>
+  {(item as any).check_in_ip || (item as any).check_in_public_ip ? (
+    <div className="text-xs space-y-1">
+      {/* Internal IP */}
+      {(item as any).check_in_ip && (
+        <div>
+          <span className="font-medium">Internal: </span>
+          <span className="font-mono">{(item as any).check_in_ip}</span>
+        </div>
+      )}
+      {/* Public IP */}
+      {(item as any).check_in_public_ip && (
+        <div>
+          <span className="font-medium">Public: </span>
+          <span className="font-mono">{(item as any).check_in_public_ip}</span>
+        </div>
+      )}
+{/* IP Status */}
+{(item as any).check_in_ip_match_status && (
+  <div className="flex items-center gap-1 mt-1">
+    <span className={`badge badge-xs ${
+      (item as any).check_in_ip_match_status === 'IN_WHITELIST' ? 'badge-success' : 
+      (item as any).check_in_ip_match_status === 'NOT_IN_WHITELIST' ? 'badge-error' : 
+      'badge-warning'
+    }`}>
+      {getIPStatusDisplay((item as any).check_in_ip_match_status)}
+    </span>
+  </div>
+)}
+      {/* Policy Mode */}
+      {(item as any).check_in_ip_policy_mode && (
+        <div className="text-xs opacity-70">
+          Policy: {(item as any).check_in_ip_policy_mode}
+        </div>
+      )}
+    </div>
+  ) : (
+    <span className="text-xs text-gray-500">No IP data</span>
+  )}
+</td>
+
+{/* Check-out IP Details */}
+<td>
+  {(item as any).check_out_ip || (item as any).check_out_public_ip ? (
+    <div className="text-xs space-y-1">
+      {/* Internal IP */}
+      {(item as any).check_out_ip && (
+        <div>
+          <span className="font-medium">Internal: </span>
+          <span className="font-mono">{(item as any).check_out_ip}</span>
+        </div>
+      )}
+      {/* Public IP */}
+      {(item as any).check_out_public_ip && (
+        <div>
+          <span className="font-medium">Public: </span>
+          <span className="font-mono">{(item as any).check_out_public_ip}</span>
+        </div>
+      )}
+{/* IP Status */}
+{(item as any).check_out_ip_match_status && (
+  <div className="flex items-center gap-1 mt-1">
+    <span className={`badge badge-xs ${
+      (item as any).check_out_ip_match_status === 'IN_WHITELIST' ? 'badge-success' : 
+      (item as any).check_out_ip_match_status === 'NOT_IN_WHITELIST' ? 'badge-error' : 
+      'badge-warning'
+    }`}>
+      {getIPStatusDisplay((item as any).check_out_ip_match_status)}
+    </span>
+  </div>
+)}
+      {/* Policy Mode */}
+      {(item as any).check_out_ip_policy_mode && (
+        <div className="text-xs opacity-70">
+          Policy: {(item as any).check_out_ip_policy_mode}
+        </div>
+      )}
+    </div>
+  ) : (
+    <span className="text-xs text-gray-500">No IP data</span>
+  )}
+</td>
+{/*Status */}
                     <td>
                       <span className={`badge ${item.status === 'present' ? 'badge-success' :
                           item.status === 'late' ? 'badge-warning' :
@@ -5211,11 +5451,11 @@ useEffect(() => {
                         {item.status.toUpperCase()}
                       </span>
                     </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
 
           {/* Pagination */}
           <div className="flex justify-center mt-6">
