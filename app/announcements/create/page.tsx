@@ -3105,7 +3105,6 @@ const CustomEditor = {
   },
 };
 
-
 // --------- Initial value ----------
 const initialValue: Descendant[] = [{ type: 'paragraph', children: [{ text: '' }] }];
 
@@ -3353,8 +3352,12 @@ export default function CreateAnnouncementPage() {
         forceAcknowledgeLogin,
         autoExpire,
         is_posted: scheduleEnabled ? false : postNow,
-        scheduled_at: scheduleEnabled && scheduledAt ? scheduledAt : null,
-      };
+      //   scheduled_at: scheduleEnabled && scheduledAt ? scheduledAt : null,
+      // };
+scheduled_at: scheduleEnabled && scheduledAt 
+  ? scheduledAt // Just use the value directly - backend will handle timezone
+  : null,
+    };
 
       const hasTargets = targetRows.some(
         (row) =>
