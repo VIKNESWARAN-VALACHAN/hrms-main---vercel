@@ -5641,8 +5641,26 @@ function getPlainTextFromContent(content: unknown): string {
 /* ======================= Utilities & types ======================= */
 
 // Singapore timezone
-const timeZone = 'Asia/Singapore';
-const toSingaporeTime = (date: Date): Date => toZonedTime(date, timeZone);
+// const timeZone = 'Asia/Singapore';
+// const toSingaporeTime = (date: Date): Date => toZonedTime(date, timeZone);
+const parseSingaporeTime = (dateString: string): Date => {
+  // Append Singapore timezone to the string
+  return new Date(dateString.replace(' ', 'T') + '+08:00');
+};
+
+const formatDateTime = (dateInput: string | Date) => {
+  let singaporeDate: Date;
+  
+  if (dateInput instanceof Date) {
+    // If it's already a Date object, use it directly
+    singaporeDate = dateInput;
+  } else {
+    // If it's a string, parse it as Singapore time
+    singaporeDate = parseSingaporeTime(dateInput);
+  }
+  
+  return format(singaporeDate, 'dd/MM/yyyy HH:mm:ss');
+};
 
 interface Announcement {
   id: string;
@@ -5667,7 +5685,28 @@ interface Announcement {
 }
 
 /* -------------------- Date classification helpers -------------------- */
-const toDate = (s?: string | null) => (s ? new Date(s) : null);
+// const toDate = (s?: string | null) => (s ? new Date(s) : null);
+// const PAST_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+// const isUpcoming = (a: Announcement, ref = new Date()) => {
+//   const sched = toDate(a.scheduled_at || undefined);
+//   return !!sched && sched > ref;
+// };
+
+// const publishedAt = (a: Announcement, ref = new Date()) => {
+//   const sched = toDate(a.scheduled_at || undefined);
+//   // If scheduled in the past, that's the publish time; otherwise created_at
+//   return (sched && sched <= ref ? sched : new Date(a.created_at));
+// };
+
+// // For non-admins: hide inactive and unscheduled drafts; show scheduled items
+// const visibleToNonAdmin = (a: Announcement, ref = new Date()) => {
+//   if (a.is_active === false) return false;
+//   if (isUpcoming(a, ref)) return true;       // show scheduled
+//   return a.is_posted !== false;              // otherwise must be posted/published
+// };
+/* -------------------- Date classification helpers -------------------- */
+const toDate = (s?: string | null) => (s ? parseSingaporeTime(s) : null);
 const PAST_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 const isUpcoming = (a: Announcement, ref = new Date()) => {
@@ -5678,7 +5717,13 @@ const isUpcoming = (a: Announcement, ref = new Date()) => {
 const publishedAt = (a: Announcement, ref = new Date()) => {
   const sched = toDate(a.scheduled_at || undefined);
   // If scheduled in the past, that's the publish time; otherwise created_at
-  return (sched && sched <= ref ? sched : new Date(a.created_at));
+  return (sched && sched <= ref ? sched : toDate(a.created_at)!);
+};
+
+const isScheduledForFuture = (dateString?: string | null): boolean => {
+  if (!dateString) return false;
+  const scheduledDate = parseSingaporeTime(dateString);
+  return scheduledDate > new Date();
 };
 
 // For non-admins: hide inactive and unscheduled drafts; show scheduled items
@@ -5856,18 +5901,19 @@ const AdminTableView = ({
     );
   };
 
-  const formatDateTime = (dateString: string) =>
-    new Date(dateString).toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    }) +
-    ' ' +
-    new Date(dateString).toLocaleTimeString('en-GB', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
+  // const formatDateTime = (dateString: string) =>
+  //   new Date(dateString).toLocaleDateString('en-GB', {
+  //     day: '2-digit',
+  //     month: '2-digit',
+  //     year: 'numeric',
+  //   }) +
+  //   ' ' +
+  //   new Date(dateString).toLocaleTimeString('en-GB', {
+  //     hour: '2-digit',
+  //     minute: '2-digit',
+  //     second: '2-digit',
+  //   });
+
 
   const resetFilters = () =>
     setFilters({
@@ -6233,7 +6279,7 @@ const AdminTableView = ({
                   {formatDateTime(announcement.created_at)}
                 </td>
                 <td className={`px-6 py-4 whitespace-nowrap text-sm ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>
-                  {formatDateTime(publishedAt(announcement).toISOString())}
+                  {formatDateTime(announcement.created_at)}{/* {formatDateTime(publishedAt(announcement).toISOString())} */}
                 </td>
                 <td className={`px-6 py-4 whitespace-nowrap text-sm ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>
                   <span
@@ -6356,11 +6402,12 @@ const CompactAnnouncementCard = ({
     return words.length > 25 ? words.slice(0, 25).join(' ') + '...' : words.join(' ');
   };
 
-  const isScheduledForFuture = (dateString?: string | null): boolean => {
-    if (!dateString) return false;
-    const scheduledDate = new Date(dateString);
-    return scheduledDate > new Date();
-  };
+  // const isScheduledForFuture = (dateString?: string | null): boolean => {
+  //   if (!dateString) return false;
+  //   const scheduledDate = new Date(dateString);
+  //   return scheduledDate > new Date();
+  // };
+
 
   const formatDate = (dateString: string): string =>
     new Date(dateString).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -6373,10 +6420,10 @@ const CompactAnnouncementCard = ({
 
   const targetInfo = getTargetInfo(announcement);
 
-  const headerDate = (): string => {
-    const ref = new Date();
-    return format(publishedAt(announcement, ref), 'MMM dd, yyyy');
-  };
+const headerDate = (): string => {
+  return format(publishedAt(announcement), 'MMM dd, yyyy');
+};
+
 
   return (
     <div
@@ -6491,7 +6538,10 @@ const CompactAnnouncementCard = ({
                 }`}
               >
                 <FaClock className="w-3 h-3" />
-                <span className="font-medium">{format(toSingaporeTime(new Date(announcement.scheduled_at)) as Date, 'dd/MM')}</span>
+                <span className="font-medium">
+                 {format(parseSingaporeTime(announcement.scheduled_at!), 'dd/MM')}</span> 
+                  {/* {format(toSingaporeTime(new Date(announcement.scheduled_at)), 'dd/MM')}</span> */}
+                {/* <span className="font-medium">{format(toSingaporeTime(new Date(announcement.scheduled_at)) as Date, 'dd/MM')}</span> */}
               </div>
             )}
             {announcement.is_active === false && (
@@ -6662,7 +6712,9 @@ const VerticalScrollableSection = ({
             {a.title}
           </div>
           <div className={`text-xs ${theme === 'light' ? 'text-gray-500' : 'text-gray-400'}`}>
-            {format(publishedAt(a).getTime(), 'MMM dd, yyyy')}
+           {format(publishedAt(a), 'MMM dd, yyyy')}
+           {/* {format(toSingaporeTime(publishedAt(a)), 'MMM dd, yyyy')} */}
+            {/* {format(publishedAt(a).getTime(), 'MMM dd, yyyy')} */}
           </div>
         </div>
       ))}
