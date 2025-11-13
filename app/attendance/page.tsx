@@ -21,6 +21,8 @@ import { formatInTimeZone } from 'date-fns-tz';
 
 const SG_TZ = 'Asia/Kuala_Lumpur';
 
+
+
 // Always produce a YYYY-MM-DD key in Singapore time
 const ymdSG = (d: Date | string) => {
   const dateObj = typeof d === 'string' ? new Date(d) : d;
@@ -356,6 +358,63 @@ type Employee = { time_zone: string };
 
 export default function AttendancePage() { 
 
+// Add these loading states
+const [isLoading, setIsLoading] = useState(false);
+const [isAttendanceLoading, setIsAttendanceLoading] = useState(false);
+const [isAppealLoading, setIsAppealLoading] = useState(false);
+const [isAmendLoading, setIsAmendLoading] = useState(false);
+const [isFilterLoading, setIsFilterLoading] = useState(false);
+const [isExportLoading, setIsExportLoading] = useState(false);
+// ==================== LOADING COMPONENTS ====================
+
+
+// Spinner Loading Component
+const LoadingSpinner = ({ 
+  size = 'md', 
+  text = 'Loading...',
+  theme = 'light'
+}: {
+  size?: 'sm' | 'md' | 'lg';
+  text?: string;
+  theme?: 'light' | 'dark';
+}) => {
+  const sizeClasses = {
+    sm: 'h-6 w-6',
+    md: 'h-12 w-12',
+    lg: 'h-16 w-16'
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center space-y-3 p-6">
+      <div className={`animate-spin rounded-full border-b-2 ${sizeClasses[size]} ${
+        theme === 'light' ? 'border-blue-600' : 'border-blue-400'
+      }`}></div>
+      {text && (
+        <p className={`text-sm ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`}>
+          {text}
+        </p>
+      )}
+    </div>
+  );
+};
+
+// Button Loading Component
+const LoadingButton = ({ 
+  loading, 
+  children, 
+  ...props 
+}: any) => (
+  <button {...props} disabled={loading}>
+    {loading ? (
+      <>
+        <span className="loading loading-spinner loading-sm mr-2"></span>
+        Loading...
+      </>
+    ) : (
+      children
+    )}
+  </button>
+);
 
 // Add these states to your existing useState declarations
 const [overtimeRequests, setOvertimeRequests] = useState<OvertimeRequest[]>([]);
@@ -463,7 +522,14 @@ const log = (...a: any[]) => DEBUG && console.log('[attHist]', ...a);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('active');
   const [applyFilters, setApplyFilters] = useState(false);
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [filters, setFilters] = useState<Record<string, string>>(() => {
+  const today = format(new Date(), 'yyyy-MM-dd');
+  return {
+    fromDate: today,
+    toDate: today
+  };
+});
+  //const [filters, setFilters] = useState<Record<string, string>>({});
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
   const [attendanceStatuses, setAttendanceStatuses] = useState<{ id: string; display_name: string }[]>([]);
@@ -1056,13 +1122,10 @@ const displayRawDateOnly = (datetimeString: string) => {
     }
   };
 
-  // Update applyAttendanceFilters to include company info in logs
-  const applyAttendanceFilters = async (filter: Record<string, string>) => {
+
+  const applyAttendanceFilters_1 = async (filter: Record<string, string>) => {
     const filtersQuery = filter || filters;
-    // Get company name for logging if selected
-    // const selectedCompany = filtersQuery?.company ?
-    //   companies.find(c => c.id === filtersQuery.company) : null;
-      // Set default to today if no dates provided
+
   const finalFilters = { ...filtersQuery };
   if (!finalFilters.fromDate && !finalFilters.toDate && activeTab === 'attendance') {
     const today = format(new Date(), 'yyyy-MM-dd');
@@ -1103,6 +1166,74 @@ const displayRawDateOnly = (datetimeString: string) => {
       await fetchAppealData(filtersQuery);
     }
   };
+
+  const applyAttendanceFilters = async (filter: Record<string, string>) => {
+  const filtersQuery = filter || filters;
+  
+  // Set default to today if no dates provided
+  const finalFilters = { ...filtersQuery };
+  if (!finalFilters.fromDate && !finalFilters.toDate && activeTab === 'attendance') {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    finalFilters.fromDate = today;
+    finalFilters.toDate = today;
+  }
+
+  // Validate search term
+  if (searchTerm && searchTerm.length === 1) {
+    setError('Please enter at least 2 characters for search');
+    return;
+  }
+
+  // Basic date validation
+  if (filtersQuery.fromDate && filtersQuery.toDate) {
+    const startDate = new Date(filtersQuery.fromDate);
+    const endDate = new Date(filtersQuery.toDate);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      setError('Please enter valid dates');
+      return;
+    }
+
+    if (startDate > endDate) {
+      setError('Start date cannot be after end date');
+      return;
+    }
+  }
+
+  // Set loading states
+  setIsFilterLoading(true);
+  setIsLoading(true);
+  
+  // Set specific tab loading state
+  if (activeTab === 'attendance') {
+    setIsAttendanceLoading(true);
+  } else if (activeTab === 'appeal') {
+    setIsAppealLoading(true);
+  } else if (activeTab === 'amend') {
+    setIsAmendLoading(true);
+  }
+
+  // Clear any previous errors before fetching
+  setError('');
+  
+  try {
+    await fetchAttendanceFilterData(activeTab, finalFilters);
+    
+    // Fetch appeal data if on appeal tab
+    if (activeTab === 'appeal') {
+      await fetchAppealData(filtersQuery);
+    }
+  } catch (error) {
+    console.error('Error applying filters:', error);
+    setError('Failed to apply filters');
+  } finally {
+    setIsFilterLoading(false);
+    setIsLoading(false);
+    setIsAttendanceLoading(false);
+    setIsAppealLoading(false);
+    setIsAmendLoading(false);
+  }
+};
 
   // Update the fetchAttendanceFilterData function to include company filter
   const fetchAttendanceFilterData1 = async (currentTab = activeTab, filters: Record<string, string> | any) => {
@@ -1161,6 +1292,7 @@ const displayRawDateOnly = (datetimeString: string) => {
         status: item.status.toLowerCase(),
         attendance_day_id: item.attendance_day_id,
         employee_id: item.employee_id,
+        amended_status: item.amend_by ? 'Amended' : 'Original',
         amend_date: item.amend_date,
         amend_by: item.amend_by
       }));
@@ -1182,7 +1314,13 @@ const fetchAttendanceFilterData = async (currentTab = activeTab, filters: Record
   }
 
   try {
-    // Build query parameters
+    setIsLoading(true);
+    if (currentTab === 'attendance') {
+      setIsAttendanceLoading(true);
+    } else if (currentTab === 'amend') {
+      setIsAmendLoading(true);
+    }
+
     let queryParams = new URLSearchParams();
 
     // Add search field for employee name if at least 2 characters
@@ -1225,101 +1363,55 @@ const fetchAttendanceFilterData = async (currentTab = activeTab, filters: Record
 
     console.log('Today\'s attendance data with IP:', data);
 
-    // let amendedData = data.map((item: any) => {
-    //   // Always prefer the ISO times if available
-    //   const checkInTime = item.first_check_in_time_local_iso || item.check_in_time;
-    //   const checkOutTime = item.last_check_out_time_local_iso || item.check_out_time;
+
+    let amendedData = data.map((item: any) => {
+      // Always prefer the ISO times if available
+      const checkInTime = item.first_check_in_time_local_iso || item.check_in_time;
+      const checkOutTime = item.last_check_out_time_local_iso || item.check_out_time;
       
-    //   console.log('Processing item with IP:', {
-    //     employee: item.employee_name,
-    //     date: item.attendance_date,
-    //     check_in_ip: item.check_in_ip,
-    //     check_in_public_ip: item.check_in_public_ip,
-    //     check_out_ip: item.check_out_ip,
-    //     check_out_public_ip: item.check_out_public_ip,
-    //     ip_match_status: item.check_in_ip_match_status,
-    //     ip_policy_mode: item.check_in_ip_policy_mode
-    //   });
+    console.log('Raw API response item with IP:', {
+      employee: item.employee_name,
+      date: item.attendance_date,
+      check_in_ip: item.check_in_ip, // This should show internal IP
+      check_in_public_ip: item.check_in_public_ip, // This should show public IP
+      check_out_ip: item.check_out_ip, // This should show internal IP
+      check_out_public_ip: item.check_out_public_ip, // This should show public IP
+    });
 
-    //   return {
-    //     id: item.employee_no,
-    //     employee_name: item.employee_name,
-    //     company_name: item.company_name,
-    //     department_name: item.department,
-    //     date: item.attendance_date,
-    //     checkIn: checkInTime,
-    //     checkOut: checkOutTime,
-    //     status: item.status.toLowerCase(),
-    //     attendance_day_id: item.attendance_day_id,
-    //     employee_id: item.employee_id,
-    //     amend_date: item.amend_date,
-    //     amend_by: item.amend_by,
-    //     employee_timezone: item.employee_timezone || timeZone,
-    //     // Add amended status field for export
-    //     amended_status: item.amend_date ? 'Amended' : 'Original',
-    //     amended_by: item.amend_by || '',
-    //     amended_date: item.amend_date || '',
-    //     // Add IP fields - use public IP if available, fallback to internal IP
-    //     check_in_ip: item.check_in_public_ip || item.check_in_ip || '',
-    //     check_out_ip: item.check_out_public_ip || item.check_out_ip || '',
-    //     check_in_ip_match_status: item.check_in_ip_match_status || '',
-    //     check_in_ip_policy_mode: item.check_in_ip_policy_mode || '',
-    //     check_out_ip_match_status: item.check_out_ip_match_status || '',
-    //     check_out_ip_policy_mode: item.check_out_ip_policy_mode || '',
-    //     office_name: item.office_name || '',
-    //     // Keep raw data for debugging
-    //     _raw: item
-    //   };
-    // });
-
-let amendedData = data.map((item: any) => {
-  // Always prefer the ISO times if available
-  const checkInTime = item.first_check_in_time_local_iso || item.check_in_time;
-  const checkOutTime = item.last_check_out_time_local_iso || item.check_out_time;
-  
-console.log('Raw API response item with IP:', {
-  employee: item.employee_name,
-  date: item.attendance_date,
-  check_in_ip: item.check_in_ip, // This should show internal IP
-  check_in_public_ip: item.check_in_public_ip, // This should show public IP
-  check_out_ip: item.check_out_ip, // This should show internal IP
-  check_out_public_ip: item.check_out_public_ip, // This should show public IP
-});
-
-  return {
-    id: item.employee_no,
-    employee_name: item.employee_name,
-    company_name: item.company_name,
-    department_name: item.department,
-    date: item.attendance_date,
-    checkIn: checkInTime,
-    checkOut: checkOutTime,
-    status: item.status.toLowerCase(),
-    attendance_day_id: item.attendance_day_id,
-    employee_id: item.employee_id,
-    amend_date: item.amend_date,
-    amend_by: item.amend_by,
-    employee_timezone: item.employee_timezone || timeZone,
-    // Add worked hours
-    worked_hours: item.worked_hours || '0.00',
-    // Add amended status field for export
-    amended_status: item.amend_date ? 'Amended' : 'Original',
-    amended_by: item.amend_by || '',
-    amended_date: item.amend_date || '',
-    // FIX: Store internal and public IPs separately
-    check_in_ip: item.check_in_ip || '', // Internal IP
-    check_in_public_ip: item.check_in_public_ip || '', // Public IP
-    check_out_ip: item.check_out_ip || '', // Internal IP  
-    check_out_public_ip: item.check_out_public_ip || '', // Public IP
-    check_in_ip_match_status: item.check_in_ip_match_status || '',
-    check_in_ip_policy_mode: item.check_in_ip_policy_mode || '',
-    check_out_ip_match_status: item.check_out_ip_match_status || '',
-    check_out_ip_policy_mode: item.check_out_ip_policy_mode || '',
-    office_name: item.office_name || '',
-    // Keep raw data for debugging
-    _raw: item
-  };
-});
+      return {
+        id: item.employee_no,
+        employee_name: item.employee_name,
+        company_name: item.company_name,
+        department_name: item.department,
+        date: item.attendance_date,
+        checkIn: checkInTime,
+        checkOut: checkOutTime,
+        status: item.status.toLowerCase(),
+        attendance_day_id: item.attendance_day_id,
+        employee_id: item.employee_id,
+        amend_date: item.amend_date,
+        amend_by: item.amend_by,
+        employee_timezone: item.employee_timezone || timeZone,
+        // Add worked hours
+        worked_hours: item.worked_hours || '0.00',
+        // Add amended status field for export
+        amended_status: item.amend_date ? 'Amended' : 'Original',
+        amended_by: item.amend_by || '',
+        amended_date: item.amend_date || '',
+        // FIX: Store internal and public IPs separately
+        check_in_ip: item.check_in_ip || '', // Internal IP
+        check_in_public_ip: item.check_in_public_ip || '', // Public IP
+        check_out_ip: item.check_out_ip || '', // Internal IP  
+        check_out_public_ip: item.check_out_public_ip || '', // Public IP
+        check_in_ip_match_status: item.check_in_ip_match_status || '',
+        check_in_ip_policy_mode: item.check_in_ip_policy_mode || '',
+        check_out_ip_match_status: item.check_out_ip_match_status || '',
+        check_out_ip_policy_mode: item.check_out_ip_policy_mode || '',
+        office_name: item.office_name || '',
+        // Keep raw data for debugging
+        _raw: item
+      };
+    });
 
     if(currentTab === 'amend'){
       amendedData = amendedData.filter((item: any) => item.status.toLowerCase() === 'absent' || item.status.toLowerCase() === 'offday');
@@ -1328,6 +1420,10 @@ console.log('Raw API response item with IP:', {
     setAmendAttendanceData(amendedData);
   } catch (err) {
     console.error('Error fetching attendance filter data:', err);
+  } finally {
+    setIsLoading(false);
+    setIsAttendanceLoading(false);
+    setIsAmendLoading(false);
   }
 };
 
@@ -1786,30 +1882,30 @@ useEffect(() => {
 }, [employeeId, activeTab, overtimeView, approvalHistoryType]);
 
 
-useEffect(() => {
-  if (employeeId) {
-    fetchTodayAttendance();
-    fetchAttendanceHistory();
-    fetchAppealData(filters);
-    fetchEmployeeOvertime();
-    fetchOvertimeData(); 
+// useEffect(() => {
+//   if (employeeId) {
+//     fetchTodayAttendance();
+//     fetchAttendanceHistory();
+//     fetchAppealData(filters);
+//     fetchEmployeeOvertime();
+//     fetchOvertimeData(); 
     
-    // Load approval data if user is an approver - UPDATED
-    if (role === 'admin' || role === 'manager' || role === 'supervisor') {
-      loadPendingApprovals();
-      loadApprovalHistory();
-    }
+//     // Load approval data if user is an approver - UPDATED
+//     if (role === 'admin' || role === 'manager' || role === 'supervisor') {
+//       loadPendingApprovals();
+//       loadApprovalHistory();
+//     }
     
-    // UPDATED: Include supervisors in analytics access
-    if (role === 'admin' || role === 'manager' || role === 'supervisor') {
-      fetchAttendanceStats();
-      if (role === 'admin') {
-        fetchCompanies();
-        applyAttendanceFilters(filters);
-      }
-    }
-  }
-}, [employeeId]);
+//     // UPDATED: Include supervisors in analytics access
+//     if (role === 'admin' || role === 'manager' || role === 'supervisor') {
+//       fetchAttendanceStats();
+//       if (role === 'admin') {
+//         fetchCompanies();
+//         applyAttendanceFilters(filters);
+//       }
+//     }
+//   }
+// }, [employeeId]);
 
   // Helper function for status badge
   const getStatusBadgeClass = (status: string) => {
@@ -2075,7 +2171,8 @@ useEffect(() => {
 
     const filtersQuery =  filter || filters;
     try {
-      // Build query parameters similar to employee page
+      setIsAppealLoading(true);
+      setIsLoading(true);
       let queryParams = new URLSearchParams();
 
       // Add search field for employee name if at least 2 characters
@@ -2133,6 +2230,9 @@ useEffect(() => {
       }
     } catch (err) {
       console.error('Error fetching appeal data:', err);
+     } finally {
+      setIsAppealLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -3063,6 +3163,7 @@ async function handleExportWithLeaves1211() {
 async function handleExportWithLeaves(exportData = amendAttendanceData) {
   try {
     setIsExporting(true);
+    setIsExportLoading(true);
     const API = `${API_BASE_URL}/api/v1`;
 
     // date range
@@ -3112,6 +3213,7 @@ async function handleExportWithLeaves(exportData = amendAttendanceData) {
     showNotification('Failed to fetch leave data. Exported attendance only.', 'error');
   } finally {
     setIsExporting(false);
+    setIsExportLoading(false);
   }
 }
 
@@ -3783,23 +3885,86 @@ const getIPStatusDisplay = (status: string) => {
   }
 };
 
-// Add to your useEffect to fetch overtime data
+// Only ONE main data loading effect
 useEffect(() => {
   if (employeeId) {
-    fetchTodayAttendance();
-    fetchAttendanceHistory();
-    fetchAppealData(filters);
-    fetchEmployeeOvertime(); // Add this line
-    
-    if (role === 'admin' || role === 'manager') {
-      fetchAttendanceStats();
-      if (role === 'admin') {
-        fetchCompanies();
-        applyAttendanceFilters(filters);
+    const fetchAllData = async () => {
+      try {
+        // Common data fetching for all users
+        await Promise.all([
+          fetchTodayAttendance(),
+          fetchAttendanceHistory(),
+          fetchAppealData(filters),
+          fetchEmployeeOvertime(),
+          fetchOvertimeData()
+        ]);
+        
+        // Role-based data fetching
+        if (role === 'admin' || role === 'manager' || role === 'supervisor') {
+          await Promise.all([
+            fetchAttendanceStats(),
+            loadPendingApprovals(),
+            loadApprovalHistory()
+          ]);
+          
+          // Admin-only functions
+          if (role === 'admin') {
+            await Promise.all([
+              fetchCompanies(),
+              applyAttendanceFilters(filters)
+            ]);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching initial data:', error);
       }
-    }
+    };
+
+    fetchAllData();
   }
 }, [employeeId]);
+
+// Separate effect for filter changes
+useEffect(() => {
+  if (employeeId && role === 'admin' && filters.fromDate && filters.toDate) {
+    applyAttendanceFilters(filters);
+  }
+}, [filters.fromDate, filters.toDate]);
+
+// Set default dates on component mount
+useEffect(() => {
+  const today = format(new Date(), 'yyyy-MM-dd');
+  
+  setFilters(prev => ({
+    ...prev,
+    fromDate: today,
+    toDate: today
+  }));
+}, []);
+
+// Apply default filters when tab changes
+useEffect(() => {
+  if ((activeTab === 'attendance' || activeTab === 'amend' || activeTab === 'appeal') && employeeId) {
+    applyAttendanceFilters(filters);
+  }
+}, [activeTab, employeeId]);
+// // Add to your useEffect to fetch overtime data
+// useEffect(() => {
+//   if (employeeId) {
+//     fetchTodayAttendance();
+//     fetchAttendanceHistory();
+//     fetchAppealData(filters);
+//     fetchEmployeeOvertime(); // Add this line
+    
+//     if (role === 'admin' || role === 'manager') {
+//       fetchAttendanceStats();
+//       if (role === 'admin') {
+//         fetchCompanies();
+//         applyAttendanceFilters(filters);
+//       }
+//     }
+//   }
+// }, [employeeId]);
   
   return (
     <div className={`container mx-auto p-6 max-w-7xl ${theme === 'light' ? 'bg-white' : 'bg-slate-900'}`}>
@@ -5165,12 +5330,12 @@ useEffect(() => {
           <div className={`${isFilterOpen ? 'block' : 'hidden'} lg:block p-4 rounded-lg mb-6 ${theme === 'light' ? 'bg-slate-100' : 'bg-slate-800'}`}>
             <div className="flex justify-between items-center mb-4">
               <h3 className={`text-lg font-semibold ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>Filter Attendance Records</h3>
-              <button 
-                className={`btn btn-sm btn-ghost lg:hidden ${theme === 'light' ? 'text-slate-600 hover:bg-slate-200' : 'text-slate-400 hover:bg-slate-700'}`}
-                onClick={toggleFilters}
-              >
-                ✕
-              </button>
+        <button 
+          className={`btn btn-sm btn-ghost lg:hidden ${theme === 'light' ? 'text-slate-600 hover:bg-slate-200' : 'text-slate-400 hover:bg-slate-700'}`}
+          onClick={toggleFilters}
+        >
+          ✕
+        </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="form-control">
@@ -5268,36 +5433,32 @@ useEffect(() => {
                   onChange={(e) => setFilters({ ...filters, toDate: e.target.value })}
                 />
               </div>
-              <div className="form-control">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    className={`btn w-full ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0`}
-                    onClick={() => applyAttendanceFilters(filters)}
-                  >
-                    Apply Filter
-                  </button>
+                <div className="form-control flex items-end">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              className={`btn ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0 ${isFilterLoading ? 'loading' : ''}`}
+              onClick={() => applyAttendanceFilters(filters)}
+              disabled={isFilterLoading || isAttendanceLoading}
+            >
+              {isFilterLoading ? 'Applying...' : 'Apply Filter'}
+            </button>
 
-                  <button
-                    type="button"
-                    className={`btn w-full btn-outline ${
-                      theme === 'light'
-                        ? 'border-slate-600 text-slate-600 hover:bg-slate-600'
-                        : 'border-slate-400 text-slate-400 hover:bg-slate-400'
-                    } hover:text-white`}
-                    onClick={resetAttendanceFilters}
-                  >
-                    Reset
-                  </button>
+            <button
+              className={`btn btn-outline ${theme === 'light' ? 'border-slate-600 text-slate-600 hover:bg-slate-600' : 'border-slate-400 text-slate-400 hover:bg-slate-400'} hover:text-white ${isFilterLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={resetAttendanceFilters}
+              disabled={isFilterLoading || isAttendanceLoading}
+            >
+              Reset
+            </button>
 
-              <button
-                type="button"
-                className={`btn w-full ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0 ${isExporting ? 'loading' : ''}`}
-                 onClick={() => handleExportWithLeaves(amendAttendanceData)}//onClick={handleExportWithLeaves}
-                disabled={isExporting}
-              >
-                {isExporting ? 'Exporting...' : 'Export Excel with Leaves'}
-              </button>
+            <button
+              type="button"
+              className={`btn w-full ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0 ${isExportLoading ? 'loading' : ''}`}
+              onClick={() => handleExportWithLeaves(amendAttendanceData)}
+              disabled={isExportLoading || isAttendanceLoading}
+            >
+              {isExportLoading ? 'Exporting...' : 'Export'}
+            </button>
                 </div>
               </div>
 
@@ -5305,8 +5466,27 @@ useEffect(() => {
           </div>
 
 {/* Results table */}
-{/* Results table */}
-<div className={`overflow-x-auto ${theme === 'light' ? 'bg-white' : 'bg-slate-800'} rounded-lg shadow`}>
+  <div className={`overflow-x-auto rounded-lg shadow ${theme === 'light' ? 'bg-white' : 'bg-slate-800'}`}>
+      {isAttendanceLoading || isFilterLoading ? (
+        // Show loading state
+        <div className="p-6">
+          <LoadingSpinner 
+            size="md" 
+            text="Loading attendance data..." 
+            theme={theme}
+          />
+          {/* Or use skeleton loader */}
+          {/* <TableLoadingSkeleton rows={8} columns={7} theme={theme} /> */}
+        </div>
+      ) : amendAttendanceData.length === 0 ? (
+        // Show empty state
+        <div className="text-center py-8">
+          <CiFaceFrown className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          <p className={`${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+            No attendance records found.
+          </p>
+        </div>
+      ) : (
   <table className="table w-full">
     <thead>
       <tr className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-700'}`}>
@@ -5323,11 +5503,11 @@ useEffect(() => {
       </tr>
     </thead>
     <tbody>
-      {currentAmendItems.map((item, idx) => (
-        <tr
-          key={`${item.id}-${idx}`}
-          className={`${theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-700'} ${idx !== currentAmendItems.length - 1 ? `${theme === 'light' ? 'border-b border-slate-200' : 'border-b border-slate-600'}` : ''} ${item._justAmended ? `${theme === 'light' ? 'bg-green-100' : 'bg-green-900'} animate-pulse` : ''}`}
-        >
+            {currentAmendItems.map((item, idx) => (
+              <tr
+                key={`${item.id}-${idx}`}
+                className={`${theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-700'} ${idx !== currentAmendItems.length - 1 ? `${theme === 'light' ? 'border-b border-slate-200' : 'border-b border-slate-600'}` : ''}`}
+              >
           {/* Employee */}
           <td>
             <div className="flex items-center gap-3">
@@ -5355,7 +5535,7 @@ useEffect(() => {
           </td>
           {/* Working Hours */}
           <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
-            {(item as any).worked_hours || '0.00'} hours
+            {(item as any).worked_hours || '0.00'}
           </td>
  {/* Check-in IP Details */}
 <td>
@@ -5455,9 +5635,11 @@ useEffect(() => {
       ))}
     </tbody>
   </table>
+      )}
 </div>
 
-          {/* Pagination */}
+           {/* Pagination - Updated with loading state */}
+    {!isAttendanceLoading && !isFilterLoading && totalItems > 0 && (
           <div className="flex justify-center mt-6">
             <div className="btn-group">
 
@@ -5505,6 +5687,7 @@ useEffect(() => {
               </button>
             </div>
           </div>
+           )}
         </div>
       )}
 
@@ -5552,19 +5735,20 @@ useEffect(() => {
                 </button>
               </div>
               {/* Filter toggle button - visible on smaller screens */}
-              <button
-                className={`btn btn-outline lg:hidden ${theme === 'light' ? 'border-slate-600 text-slate-600 hover:bg-slate-600' : 'border-slate-400 text-slate-400 hover:bg-slate-400'} hover:text-white`}
-                onClick={toggleFilters}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                </svg>
-                Filters
-              </button>
+        <button
+          className={`btn btn-outline lg:hidden ${theme === 'light' ? 'border-slate-600 text-slate-600 hover:bg-slate-600' : 'border-slate-400 text-slate-400 hover:bg-slate-400'} hover:text-white`}
+          onClick={toggleFilters}
+          disabled={isAppealLoading || isFilterLoading}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+          </svg>
+          Filters
+        </button>
             </div>
           </div>
 
-          {/* Filtering section - responsive with conditional rendering */}
+          {/* Filtering section  */}
           <div className={`${isFilterOpen ? 'block' : 'hidden'} lg:block p-4 rounded-lg mb-6 ${theme === 'light' ? 'bg-slate-100' : 'bg-slate-800'}`}>
             <div className="flex justify-between items-center mb-4">
               <h3 className={`text-lg font-semibold ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>Filter Amend Records</h3>
@@ -5671,25 +5855,43 @@ useEffect(() => {
 
               <div className="form-control flex items-end">
                 <div className="grid grid-cols-2 gap-2">
-                  <button
-                    className={`btn ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0`}
-                    onClick={() => applyAttendanceFilters(filters)}
-                  >
-                    Apply Filter
-                  </button>
-                  <button
-                    className={`btn btn-outline ${theme === 'light' ? 'border-slate-600 text-slate-600 hover:bg-slate-600' : 'border-slate-400 text-slate-400 hover:bg-slate-400'} hover:text-white`}
-                    onClick={resetAttendanceFilters}
-                  >
-                    Reset
-                  </button>
+<button
+              className={`btn ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0 ${isFilterLoading ? 'loading' : ''}`}
+              onClick={() => applyAttendanceFilters(filters)}
+              disabled={isFilterLoading || isAppealLoading}
+            >
+              {isFilterLoading ? 'Applying...' : 'Apply Filter'}
+            </button>
+            <button
+              className={`btn btn-outline ${theme === 'light' ? 'border-slate-600 text-slate-600 hover:bg-slate-600' : 'border-slate-400 text-slate-400 hover:bg-slate-400'} hover:text-white ${isFilterLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={resetAttendanceFilters}
+              disabled={isFilterLoading || isAppealLoading}
+            >
+              Reset
+            </button>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Results table */}
-          <div className={`overflow-x-auto ${theme === 'light' ? 'bg-white' : 'bg-slate-800'} rounded-lg shadow`}>
+    {/* Results Table with Loading State */}
+    <div className={`overflow-x-auto rounded-lg shadow ${theme === 'light' ? 'bg-white' : 'bg-slate-800'}`}>
+      {isAmendLoading || isFilterLoading ? (
+        <div className="p-6">
+          <LoadingSpinner 
+            size="md" 
+            text="Loading amendment data..." 
+            theme={theme}
+          />
+        </div>
+      ) : amendAttendanceData.length === 0 ? (
+        <div className="text-center py-8">
+          <CiFaceFrown className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          <p className={`${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+            No amendment records found.
+          </p>
+        </div>
+      ) : (
             <table className="table w-full">
               <thead>
                 <tr className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-700'}`}>
@@ -5766,7 +5968,9 @@ useEffect(() => {
                 ))}
               </tbody>
             </table>
+      )}
           </div>
+            
 
           {/* Pagination */}
           <div className="flex justify-center mt-6">
@@ -5860,10 +6064,11 @@ useEffect(() => {
                 </button>
               </div>
               {/* Filter toggle button - visible on smaller screens */}
-              <button
-                className={`btn btn-outline lg:hidden ${theme === 'light' ? 'border-slate-600 text-slate-600 hover:bg-slate-600' : 'border-slate-400 text-slate-400 hover:bg-slate-400'} hover:text-white`}
-                onClick={toggleFilters}
-              >
+        <button
+          className={`btn btn-outline lg:hidden ${theme === 'light' ? 'border-slate-600 text-slate-600 hover:bg-slate-600' : 'border-slate-400 text-slate-400 hover:bg-slate-400'} hover:text-white`}
+          onClick={toggleFilters}
+          disabled={isAppealLoading || isFilterLoading}
+        >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                 </svg>
@@ -5980,18 +6185,20 @@ useEffect(() => {
 
               <div className="form-control flex items-end">
                 <div className="grid grid-cols-2 gap-2">
-                  <button
-                    className={`btn ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0`}
-                    onClick={() => applyAttendanceFilters(filters)}
-                  > 
-                    Apply Filter
-                  </button>
-                  <button
-                    className={`btn btn-outline ${theme === 'light' ? 'border-slate-600 text-slate-600 hover:bg-slate-600' : 'border-slate-400 text-slate-400 hover:bg-slate-400'} hover:text-white`}
-                    onClick={resetAttendanceFilters}
-                  >
-                    Reset
-                  </button>
+                <button
+              className={`btn ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0 ${isFilterLoading ? 'loading' : ''}`}
+              onClick={() => applyAttendanceFilters(filters)}
+              disabled={isFilterLoading || isAppealLoading}
+            >
+              {isFilterLoading ? 'Applying...' : 'Apply Filter'}
+            </button>
+            <button
+              className={`btn btn-outline ${theme === 'light' ? 'border-slate-600 text-slate-600 hover:bg-slate-600' : 'border-slate-400 text-slate-400 hover:bg-slate-400'} hover:text-white ${isFilterLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+              onClick={resetAttendanceFilters}
+              disabled={isFilterLoading || isAppealLoading}
+            >
+              Reset
+            </button>
                 </div>
               </div>
             </div>
@@ -6000,74 +6207,91 @@ useEffect(() => {
           {/* Bulk edit controls */}
           <div className="flex justify-between items-center mb-4">
             <div className="flex items-center gap-4">
-              <button
-                className={`btn btn-outline ${isBulkMode ? 'btn-primary' : ''}`}
-                onClick={toggleBulkMode}
-              >
-                {isBulkMode ? (
-                  <>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                    Cancel
-                  </>
-                ) : (
-                  <>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                    Bulk Edit
-                  </>
-                )}
-              </button>
-              
-              {isBulkMode && (
-                <div className="text-sm text-gray-600">
-                  {selectedAppeals.length} appeal(s) selected
-                </div>
-              )}
-            </div>
+             <button
+          className={`btn btn-outline ${isBulkMode ? 'btn-primary' : ''} ${isAppealLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          onClick={toggleBulkMode}
+          disabled={isAppealLoading || isFilterLoading}
+        >
+          {isBulkMode ? (
+            <>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Cancel
+            </>
+          ) : (
+            <>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Bulk Edit
+            </>
+          )}
+        </button>
+        
+        {isBulkMode && (
+          <div className="text-sm text-gray-600">
+            {selectedAppeals.length} appeal(s) selected
+          </div>
+        )}
+      </div>
 
-            {isBulkMode && selectedAppeals.length > 0 && (
-              <div className="flex gap-2">
-                <button
-                  className={`btn btn-success btn-sm ${bulkLoading ? 'loading' : ''}`}
-                  onClick={() => handleBulkAction('approve')}
-                  disabled={bulkLoading}
-                >
-                  {bulkLoading ? (
-                    <span className="loading loading-spinner loading-sm"></span>
-                  ) : (
-                    <>
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      Approve Selected
-                    </>
-                  )}
-                </button>
-                <button
-                  className={`btn btn-error btn-sm ${bulkLoading ? 'loading' : ''}`}
-                  onClick={() => handleBulkAction('reject')}
-                  disabled={bulkLoading}
-                >
-                  {bulkLoading ? (
-                    <span className="loading loading-spinner loading-sm"></span>
-                  ) : (
-                    <>
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                      Reject Selected
-                    </>
-                  )}
-                </button>
+         {isBulkMode && selectedAppeals.length > 0 && (
+        <div className="flex gap-2">
+          <button
+            className={`btn btn-success btn-sm ${bulkLoading ? 'loading' : ''}`}
+            onClick={() => handleBulkAction('approve')}
+            disabled={bulkLoading || isAppealLoading}
+          >
+            {bulkLoading ? (
+              <span className="loading loading-spinner loading-sm"></span>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Approve Selected
+              </>
+            )}
+          </button>
+          <button
+            className={`btn btn-error btn-sm ${bulkLoading ? 'loading' : ''}`}
+            onClick={() => handleBulkAction('reject')}
+            disabled={bulkLoading || isAppealLoading}
+          >
+            {bulkLoading ? (
+              <span className="loading loading-spinner loading-sm"></span>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Reject Selected
+              </>
+            )}
+          </button>
               </div>
             )}
           </div>
 
           {/* Appeals table */}
           <div className={`overflow-x-auto ${theme === 'light' ? 'bg-white' : 'bg-slate-800'} rounded-lg shadow`}>
+             {isAppealLoading || isFilterLoading ? (
+        <div className="p-6">
+          <LoadingSpinner 
+            size="md" 
+            text="Loading appeal data..." 
+            theme={theme}
+          />
+        </div>
+      ) : appealData.length === 0 ? (
+        <div className="text-center py-8">
+          <CiFaceFrown className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          <p className={`${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+            No appeal records found.
+          </p>
+        </div>
+      ) : (
             <table className="table w-full">
               <thead>
                 <tr className={`${theme === 'light' ? 'bg-slate-100' : 'bg-slate-700'}`}>
@@ -6184,9 +6408,11 @@ useEffect(() => {
                 ))}
               </tbody>
             </table>
+      )}
           </div>
 
           {/* Pagination - same as in amend tab */}
+          {!isAppealLoading && !isFilterLoading && totalItems > 0 && (
           <div className="flex justify-center mt-6">
             <div className="btn-group">
             <button
@@ -6231,6 +6457,7 @@ useEffect(() => {
               </button>
             </div>
           </div>
+           )}
         </div>
       )}
 
