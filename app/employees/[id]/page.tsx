@@ -1,4 +1,3 @@
-
 // app/employees/[id]/page.tsx
 
 'use client';
@@ -398,7 +397,7 @@ const [policySaving, setPolicySaving] = useState(false);
 
 // NEW: fetch offices for a company
 
-const fetchOffices = async (companyId: string | number) => {
+const fetchOffices1711 = async (companyId: string | number) => {
   if (!companyId) {
     console.log('[fetchOffices] No companyId -> clearing offices');
     setOffices([]);
@@ -479,92 +478,51 @@ const fetchOffices = async (companyId: string | number) => {
 };
 
 
-const fetchOffices1 = async (companyId: string | number) => {
-  if (!companyId) {
-    console.log('[fetchOffices] No companyId -> clearing offices');
-    setOffices([]);
-    return;
-  }
 
-  const url = `${API_BASE_URL}/api/attendance/offices`;
+const fetchOffices = async (companyId: string | number): Promise<Office[]> => {
   const token = localStorage.getItem('hrms_token');
-  const companyIdNum = Number(companyId);
-
-  console.log(`[fetchOffices] START companyId=${companyId}`);
-  console.time('[fetchOffices] total');
 
   try {
     setOfficesLoading(true);
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    console.log('[fetchOffices] HTTP', res.status, res.statusText);
+    
+    // Fetch ALL offices
+    const url = `${API_BASE_URL}/api/attendance/offices`;
+    const res = await fetch(url, { 
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      } 
+    });
 
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      console.warn('[fetchOffices] Non-OK body:', body.slice(0, 400));
-      throw new Error(`Failed to load offices (${res.status})`);
-    }
+    if (!res.ok) throw new Error(`Failed to load offices (${res.status})`);
 
     const payload = await res.json();
+    const allOffices = payload.data || [];
+    
+    // Filter by company_id on frontend
+    const filteredOffices = allOffices.filter((office: any) => 
+      Number(office.company_id) === Number(companyId)
+    );
 
-    // Accept either: [ ... ]  OR  { ok: true, data: [ ... ] }
-    const rawArray =
-      Array.isArray(payload) ? payload :
-      (payload && Array.isArray(payload.data)) ? payload.data :
-      [];
+    // Map office_id to id for consistent usage
+    const officesWithId = filteredOffices.map((office: any) => ({
+      ...office,
+      id: office.office_id || office.id,
+    }));
 
-    if (payload && payload.ok === false) {
-      console.warn('[fetchOffices] Server ok=false, payload:', payload);
-    }
-
-    console.log('[fetchOffices] rawArray length:', rawArray.length);
-    if (rawArray.length) console.log('[fetchOffices] sample:', rawArray.slice(0, 3));
-
-    const distinctCompanyIds = [...new Set(rawArray.map((d: any) => String(d?.company_id)))];
-    console.log('[fetchOffices] distinct company_ids:', distinctCompanyIds);
-
-    const filtered = rawArray.filter((o: any) => Number(o?.company_id) === companyIdNum);
-
-    console.log('[fetchOffices] filtered length:', filtered.length);
-    if (filtered.length) {
-      console.table(filtered.map((o: any) => ({ id: o.id, name: o.name, company_id: o.company_id })));
-    } else {
-      console.warn(`[fetchOffices] No matches for companyId=${companyIdNum}. Payload company_ids: ${distinctCompanyIds.join(', ')}`);
-    }
-
-    setOffices(filtered);
-
-    // // Optional: log current selection to explain “Unassigned”
-    // try {
-    //   // @ts-ignore debug only – adjust to your state
-    //   const selected = formData?.office_id ?? employee?.office_id ?? null;
-    //   console.log('[fetchOffices] current selected office_id:', selected);
-    //   if (selected != null) {
-    //     const found = filtered.find((o: any) => String(o.id) === String(selected));
-    //     console.log('[fetchOffices] selected exists in filtered?', Boolean(found), found || null);
-    //   }
-    // } catch {}
-
-    try {
-
-  const selected = formData?.office_id ?? employee?.office_id ?? null;
-
-  console.log('[fetchOffices] current selected office_id:', selected);
-  if (selected != null) {
-    const found = filtered.find((o: any) => String(o.id) === String(selected));
-    console.log('[fetchOffices] selected exists in filtered?', Boolean(found), found || null);
-  }
-} catch {}
-
-
+    console.log(`[fetchOffices] Filtered to ${officesWithId.length} offices for company ${companyId}`);
+    setOffices(officesWithId);
+    return officesWithId;
+    
   } catch (err) {
     console.error('[fetchOffices] ERROR:', err);
     setOffices([]);
+    return [];
   } finally {
     setOfficesLoading(false);
-    console.timeEnd('[fetchOffices] total');
-    console.log('[fetchOffices] END');
   }
 };
+
 
 
 const fetchPolicy = async () => {
@@ -603,7 +561,79 @@ const fetchIpOverrides = async () => {
   }
 };
 
-const fetchOfficeRangesForEmployee = async () => {
+const fetchOfficeRangesForEmployee = async (officeId?: string | number | null) => {
+  // Always prioritize employee's office_id over formData
+  const oid = officeId || employee?.office_id;
+  console.log('🔍 fetchOfficeRangesForEmployee called with officeId:', oid, 'Employee office:', employee?.office);
+  
+  if (!oid) { 
+    console.warn('❌ No office ID provided for fetching IP ranges');
+    setOfficeRanges([]); 
+    return; 
+  }
+
+  try {
+    console.log('🌐 Fetching office IP ranges for office ID:', oid);
+    const url = `${API_BASE_URL}/api/attendance/office-ip-whitelists?office_id=${oid}`;
+    
+    const res = await fetch(
+      url,
+      { 
+        headers: { 
+          Authorization: `Bearer ${localStorage.getItem('hrms_token')}` 
+        } 
+      }
+    );
+
+    console.log('📡 API Response status:', res.status, res.statusText);
+
+    if (!res.ok) {
+      console.error('❌ Failed to load office IP ranges:', res.status, res.statusText);
+      throw new Error(`Failed to load office IP ranges (${res.status})`);
+    }
+
+    const payload = await res.json();
+    console.log('📦 API Response payload:', payload);
+
+    const rows = Array.isArray(payload?.data) ? payload.data : 
+                (Array.isArray(payload) ? payload : []);
+    
+    console.log('📊 Found IP ranges:', rows.length, 'for office:', oid);
+    setOfficeRanges(rows || []);
+    
+  } catch (e) {
+    console.error('💥 Error fetching office IP ranges:', e);
+    setOfficeRanges([]);
+  }
+};
+
+const fetchOfficeRangesForEmployee171125 = async (officeId?: string | number | null) => {
+  const oid = officeId || formData?.office_id || employee?.office_id;
+  if (!oid) { 
+    setOfficeRanges([]); 
+    return; 
+  }
+
+  try {
+    const res = await fetch(
+      `${API_BASE_URL}/api/attendance/office-ip-whitelists?office_id=${oid}`,
+      { headers: { Authorization: `Bearer ${localStorage.getItem('hrms_token')}` } }
+    );
+
+    if (!res.ok) throw new Error(`Failed to load office IP ranges (${res.status})`);
+    const payload = await res.json().catch(() => ({} as any));
+
+    const rows = Array.isArray(payload?.data) ? payload.data : (Array.isArray(payload) ? payload : []);
+    setOfficeRanges(rows || []);
+  } catch (e) {
+    console.error(e);
+    setOfficeRanges([]);
+  }
+};
+
+
+
+const fetchOfficeRangesForEmployee1711 = async () => {
   const oid = formData?.office_id ?? employee?.office_id;
   if (!oid) { setOfficeRanges([]); return; }
 
@@ -976,6 +1006,35 @@ const fmtDateTime = (iso?: string) => {
   return isNaN(d.getTime()) ? '-' : d.toLocaleString();
 };
 
+
+// Update this useEffect to properly handle company changes
+useEffect(() => {
+  const currentCompanyId = isEditing ? formData?.company_id : employee?.company_id;
+  
+  if (currentCompanyId) {
+    console.log(`[useEffect] Fetching offices for company: ${currentCompanyId}`);
+    fetchOffices(currentCompanyId).then((offices) => {
+      // After offices are loaded, verify the employee's office assignment
+      if (isEditing && employee?.office_id && employee?.office) {
+        const officeExists = offices.some(o => String(o.id) === String(employee.office_id));
+        if (!officeExists) {
+          console.log(`Office ID ${employee.office_id} not found, attempting to match by name: ${employee.office}`);
+          const matchedOffice = offices.find(o => o.name === employee.office);
+          if (matchedOffice) {
+            console.log(`Matched office by name: ${employee.office} -> ${matchedOffice.id}`);
+            setFormData(prev => prev ? {
+              ...prev,
+              office_id: String(matchedOffice.id),
+              office: matchedOffice.name
+            } : prev);
+          }
+        }
+      }
+    });
+  } else {
+    setOffices([]);
+  }
+}, [isEditing, formData?.company_id, employee?.company_id, employee?.office_id, employee?.office]);
 
 /* ================== IPv4 Helpers ================== */
 const isIPv4 = (s: string) =>
@@ -2483,21 +2542,6 @@ useEffect(() => {
     }
   }, [formData?.department_id, departments]);
 
-  // Add this useEffect to sync office_id when offices are loaded
-useEffect(() => {
-  if (isEditing && employee?.office && !formData?.office_id && offices.length > 0) {
-    const matchedOffice = offices.find(o => o.name === employee.office);
-    if (matchedOffice) {
-      console.log('Auto-matching office:', employee.office, '-> ID:', matchedOffice.id);
-      setFormData(prev => prev ? {
-        ...prev,
-        office_id: String(matchedOffice.id),
-        office: matchedOffice.name
-      } : prev);
-    }
-  }
-}, [offices, isEditing, employee?.office, formData?.office_id]);
-
   useEffect(() => {
   if (!formData?.position_id) return;
   const selected = positions.find(p => p.id === formData.position_id);
@@ -3184,180 +3228,60 @@ const [showTempPasswordModal, setShowTempPasswordModal] = useState(false);
 const [tempPassword, setTempPassword] = useState('');
 
 
-  const toggleEditMode1 = () => {
-  if (isEditing) {
-    
-    //setFormData(employee);
-    //setFormData(employee as EmployeeData & { dependents: Dependent[] });
-
-    setFormData(prev => ({
-  ...(employee as EmployeeData),
-  dependents: originalDependents, // source of truth from last fetch
-}));
-
-    
-    setTrainingRecords([...originalTrainingRecords]);
-    setDeletedTrainingRecords([]);
-
-    // Reset disciplinary records state to original
-    setDisciplinaryRecords([...originalDisciplinaryRecords]);
-    setDeletedDisciplinaryRecords([]);
-
-    // Reset dependents state to original
-    setDependents([...originalDependents]);
-    setDeletedDependents([]);
-  }
-  else
-  {
-     setFormData(prev => prev ? { ...prev, dependents: dependents } : prev);
-  }
-  setIsEditing(!isEditing);
-};
-
+// In your toggleEditMode function or office resolution logic:
 const toggleEditMode = () => {
   const next = !isEditing;
 
   if (next) {
     // ENTER edit mode
-    const employeeData = employee as EmployeeData & { dependents: Dependent[] };
-    
-    // Find the correct office_id by matching the office name
-    let resolvedOfficeId = employeeData.office_id;
-    
-    if ((!resolvedOfficeId || resolvedOfficeId === 'null') && employeeData.office && offices.length > 0) {
-      const matchedOffice = offices.find(o => o.name === employeeData.office);
+    console.log('=== ENTERING EDIT MODE ===');
+    console.log('Current employee office data:', {
+      office_id: employee?.office_id,
+      office: employee?.office
+    });
+
+    // IMPORTANT: Preserve the employee's actual office_id
+    // Don't try to re-match by name if we already have a valid office_id
+    let resolvedOfficeId = employee?.office_id;
+    let resolvedOfficeName = employee?.office;
+
+    // Only try to match if we have an office name but no office_id
+    if ((!resolvedOfficeId || resolvedOfficeId === 'null') && employee?.office && offices.length > 0) {
+      const matchedOffice = offices.find(o => o.name === employee.office);
       if (matchedOffice) {
-        resolvedOfficeId = matchedOffice.id; // Use the mapped id field
-        console.log('Matched office by name:', employeeData.office, '-> ID:', resolvedOfficeId);
+        resolvedOfficeId = matchedOffice.id;
+        resolvedOfficeName = matchedOffice.name;
+        console.log('Matched office by name:', employee.office, '-> ID:', resolvedOfficeId);
       }
     }
 
-    setFormData({
-      ...employeeData,
-      office_id: resolvedOfficeId ?? null,
-      office: employeeData.office ?? '',
-      dependents,
-    });
-    
-    if (employee?.company_id) {
-      fetchOffices(employee.company_id);
-    }
-  } else {
-    // EXIT edit mode
-    setFormData(prev => ({
+    // Create the form data with properly resolved office info
+    const formDataWithOffice = {
       ...(employee as EmployeeData & { dependents: Dependent[] }),
-      dependents: originalDependents,
-    }));
+      office_id: resolvedOfficeId ?? null,
+      office: resolvedOfficeName ?? '',
+      dependents,
+    };
 
-    // Reset other states
-    setTrainingRecords([...originalTrainingRecords]);
-    setDeletedTrainingRecords([]);
-    setDisciplinaryRecords([...originalDisciplinaryRecords]);
-    setDeletedDisciplinaryRecords([]);
-    setDependents([...originalDependents]);
-    setDeletedDependents([]);
-  }
-
-  setIsEditing(next);
-};
-
-const toggleEditMode2 = () => {
-  const next = !isEditing;
-
-  console.log('=== DEBUG OFFICE DATA ===');
-  console.log('Employee office_id:', employee?.office_id);
-  console.log('Employee office:', employee?.office);
-  console.log('Current formData office_id:', formData?.office_id);
-  console.log('Current formData office:', formData?.office);
-
-  if (next) {
-    // ENTER edit mode
-    setFormData(prev => {
-      const newFormData = {
-        ...(employee as EmployeeData & { dependents: Dependent[] }),
-        office_id: employee?.office_id ?? prev?.office_id ?? null,
-        office: employee?.office ?? prev?.office ?? '',
-        dependents,
-      };
-      
-      console.log('New formData after edit:', newFormData.office_id, newFormData.office);
-      return newFormData;
+    console.log('Setting formData with office:', {
+      office_id: formDataWithOffice.office_id,
+      office: formDataWithOffice.office,
+      'Original employee office_id': employee?.office_id
     });
-    // Load offices for the company (this is working correctly)
-   if (employee?.company_id) {
-      fetchOffices(employee.company_id);
-    }
+
+    setFormData(formDataWithOffice);
+    
   } else {
     // EXIT edit mode - restore original data
+    console.log('=== EXITING EDIT MODE ===');
     setFormData(prev => ({
       ...(employee as EmployeeData & { dependents: Dependent[] }),
       dependents: originalDependents,
     }));
-
-    // Reset other states
-    setTrainingRecords([...originalTrainingRecords]);
-    setDeletedTrainingRecords([]);
-    setDisciplinaryRecords([...originalDisciplinaryRecords]);
-    setDeletedDisciplinaryRecords([]);
-    setDependents([...originalDependents]);
-    setDeletedDependents([]);
   }
 
   setIsEditing(next);
 };
-
-// const toggleEditMode3 = () => {
-//   const next = !isEditing;
-
-//   if (next) {
-//     // ENTER edit mode
-//     setFormData(prev => {
-//       const seededCompany: string =
-//         String(prev?.company_id ?? employee?.company_id ?? '');
-
-//       const seededOffice: string | null =
-//         (prev?.office_id ?? employee?.office_id ?? '') || null;
-
-//       // load offices for the seeded company so the office select is populated
-//       if (seededCompany) fetchOffices(seededCompany);
-
-//       if (prev) {
-//         return {
-//           ...prev,
-//           company_id: seededCompany,     // string ('' when none)
-//           office_id: seededOffice,       // string | null
-//           dependents,
-//         };
-//       }
-
-//       // when there was no prev formData, build from employee
-//       return {
-//         ...(employee as EmployeeData),
-//         company_id: seededCompany,       // coerce to string
-//         office_id: seededOffice,         // keep nullable
-//         dependents,
-//       };
-//     });
-//   } else {
-//     // EXIT edit mode -> restore snapshot
-//     setFormData(() => ({
-//       ...(employee as EmployeeData),
-//       company_id: String(employee?.company_id ?? ''),   // ensure string
-//       office_id: (employee?.office_id ?? '') || null,   // back to null if empty
-//       dependents: originalDependents,
-//     }));
-
-//     setTrainingRecords([...originalTrainingRecords]);
-//     setDeletedTrainingRecords([]);
-//     setDisciplinaryRecords([...originalDisciplinaryRecords]);
-//     setDeletedDisciplinaryRecords([]);
-//     setDependents([...originalDependents]);
-//     setDeletedDependents([]);
-//   }
-
-//   setIsEditing(next);
-// };
-
 
 const isPersisted = (d: Dependent) => {
   const idStr = String(d?.id ?? '');
@@ -4122,21 +4046,28 @@ const canAddIpOverride = hasOffice && hasActiveRanges;
 const canSavePolicy = hasActiveRanges;
 
 
-// when user opens IP Overrides tab, load overrides + policy
+// Fix 1: Always use employee's office_id for data fetching
 useEffect(() => {
   if (activeTab === 'ip-overrides') {
+    console.log('🔄 Loading IP overrides data...');
+    
     fetchIpOverrides();
     fetchPolicy();
-    fetchOfficeRangesForEmployee();
-  //fetchOfficeRanges();
+    
+    // ALWAYS use the employee's actual office_id for data fetching
+    // This ensures we're looking at the correct office's IP ranges
+    const officeId = employee?.office_id;
+    
+    console.log('🏢 Using employee office ID for IP ranges:', officeId, 'Office name:', employee?.office);
+    
+    if (officeId) {
+      fetchOfficeRangesForEmployee(officeId);
+    } else {
+      console.warn('❌ No office ID available for IP ranges');
+      setOfficeRanges([]);
+    }
   }
-}, [activeTab, formData?.office_id, employee?.office_id,, employeeId]);
-
-useEffect(() => {
-  // (re)load ranges whenever office changes
-  fetchOfficeRangesForEmployee();
-}, [formData?.office_id, employee?.office_id]);
-
+}, [activeTab, employee?.office_id, employeeId]); // Remove formData?.office_id and isEditing from dependencies
 
 //new 
 const [resignReason, setResignReason] = useState('');
@@ -5283,18 +5214,16 @@ const BondingErrorModal = () => {
       {officesLoading && (
         <div className="text-xs text-gray-500 mt-1">Loading offices…</div>
       )}
-      {formData?.office && !formData?.office_id && (
-        <div className="text-xs text-yellow-600 mt-1">
-          Note: Office name exists but no ID. Select from dropdown to fix.
+      {/* Debug info - remove in production */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="text-xs text-gray-400 mt-1">
+          Current: {formData?.office_id ? `ID: ${formData.office_id}` : 'Unassigned'}
         </div>
       )}
     </div>
   ) : (
     <div className="p-3 bg-base-200 rounded min-h-[42px]">
       {employee?.office || 'Unassigned'}
-      {employee?.office && !employee?.office_id && (
-        <span className="text-xs text-yellow-600 ml-2">(No ID relationship)</span>
-      )}
     </div>
   )}
 </div>
@@ -6777,260 +6706,326 @@ const BondingErrorModal = () => {
             </div>
           )}
 
-
-{/* IP Overrides Tab */}
 {activeTab === 'ip-overrides' && (
   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    {/* Left: overrides list & add form */}
+    {/* Left: overrides list & info */}
     <div className="lg:col-span-2 bg-base-100 rounded-lg shadow p-6">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold">Fixed IPs for {employee?.name}</h2>
+        {!isEditing && (
+          <span className="badge badge-info">Read Only View</span>
+        )}
+      </div>
+
+      {/* Office Info Banner */}
+      <div className="mb-6 p-4 bg-info/10 border border-info/20 rounded-lg">
+        <div className="flex items-center gap-2 mb-2">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-info" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+          </svg>
+          <span className="font-medium">Office Assignment</span>
+        </div>
+        {hasOffice ? (
+          <div className="text-sm">
+            <span className="font-medium">{employee?.office || 'Office'}</span>
+            {hasActiveRanges ? (
+              <span className="text-success ml-2">• Active IP Ranges Available</span>
+            ) : (
+              <span className="text-warning ml-2">• No Active IP Ranges</span>
+            )}
+          </div>
+        ) : (
+          <div className="text-sm text-warning">
+            Employee is not assigned to an office. Assign an office to enable IP overrides.
+          </div>
+        )}
       </div>
 
       <div className="rounded border p-4 mb-6">
         <div className="font-medium mb-2">Office IP Ranges</div>
         {officeRanges.length ? (
-          <ul className="list-disc pl-5 text-sm">
-            {officeRanges.map((r) => (
-              <li key={r.id} className="flex justify-between">
-                <span className="font-mono">{r.cidr}</span>
-                {(() => {
-                  const active = asActive(r.is_active);
-                  return (
-                    <span className={`badge ${active ? 'badge-success' : 'badge-ghost'}`}>
-                      {active ? 'Active' : 'Inactive'}
-                    </span>
-                  );
-                })()}
-              </li>
-            ))}
-          </ul>
+          <div className="space-y-2">
+            {officeRanges.map((r) => {
+              const active = asActive(r.is_active);
+              return (
+                <div key={r.id} className="flex items-center justify-between p-2 bg-base-200 rounded">
+                  <code className="font-mono text-sm">{r.cidr}</code>
+                  <span className={`badge ${active ? 'badge-success' : 'badge-ghost'}`}>
+                    {active ? 'Active' : 'Inactive'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         ) : (
-          <div className="text-sm text-gray-500">
-            No ranges for this office (or office not assigned).
+          <div className="text-sm text-gray-500 text-center py-2">
+            No IP ranges configured for this office
           </div>
         )}
       </div>
 
-    {/* Add form */}
-<div className="rounded border p-4 mb-6">
-  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-    <div>
-      <label className="label">
-        <span className="label-text">IP Address (IPv4/IPv6)</span>
-      </label>
-      <input
-        type="text"
-        className="input input-bordered w-full"
-        placeholder="e.g. 192.168.1.10"
-        disabled={!canAddIpOverride || user?.role !== 'admin'}
-        value={ipForm.ip_address}
-        onChange={(e) => setIpForm({ ...ipForm, ip_address: e.target.value })}
-      />
-    </div>
-    <div>
-      <label className="label">
-        <span className="label-text">Label (optional)</span>
-      </label>
-      <input
-        type="text"
-        className="input input-bordered w-full"
-        placeholder="Label (optional)"
-        disabled={!canAddIpOverride || user?.role !== 'admin'}
-        value={ipForm.label}
-        onChange={(e) => setIpForm({ ...ipForm, label: e.target.value })}
-      />
-    </div>
-    <div className="flex items-end">
-      {user?.role === 'admin' ? (
-        <button
-          type="button"
-          className="btn btn-primary w-full"
-          disabled={!canAddIpOverride || ipSaving}
-          onClick={async () => {
-            const ip = (ipForm.ip_address || '').trim();
-
-            // 1) Basic sanity: must be valid IPv4 or IPv6
-            const v4 = isIPv4(ip);
-            const v6 = isIPv6(ip);
-            if (!v4 && !v6) {
-              showNotification('Please enter a valid IPv4 or IPv6 address.', 'error');
-              return;
-            }
-
-            // 2) Enforce membership in ACTIVE Office IP Ranges
-            if (!ipMatchesAnyOfficeRange(ip, officeRanges)) {
-              const allowed = (officeRanges ?? [])
-                .filter(r => !!(r.is_active ?? true))
-                .map(r => r.cidr)
-                .join(', ');
-
-              showNotification(
-                allowed
-                  ? `IP must be inside an active Office IP Range. Allowed ranges: ${allowed}`
-                  : 'No active Office IP Ranges. Add one before adding fixed IPs.',
-                'error'
-              );
-              return;
-            }
-
-            // 3) Submit
-            try {
-              setIpSaving(true);
-              const res = await fetch(`${API_BASE_URL}/api/attendance/employee-ip-overrides`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${localStorage.getItem('hrms_token')}`,
-                },
-                body: JSON.stringify({
-                  employee_id: Number(employeeId),
-                  ip_address: ip,
-                  label: (ipForm.label ?? '').trim(),
-                }),
-              });
-
-              if (!res.ok) throw new Error('Failed to add IP override');
-
-              setIpForm({ ip_address: '', label: '' });
-              await fetchIpOverrides();
-              showNotification('IP override added', 'success');
-            } catch (e) {
-              console.error(e);
-              showNotification('Unable to add IP override', 'error');
-            } finally {
-              setIpSaving(false);
-            }
-          }}
-        >
-          {ipSaving ? (
-            <>
-              <span className="loading loading-spinner loading-sm"></span>
-              Saving…
-            </>
-          ) : 'Add'}
-        </button>
+      {/* Add form - Only show in edit mode for admins */}
+      {isEditing && user?.role === 'admin' ? (
+        <div className="rounded border p-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="label">
+                <span className="label-text">IP Address (IPv4/IPv6)</span>
+              </label>
+              <input
+                type="text"
+                className="input input-bordered w-full"
+                placeholder="e.g. 192.168.1.10 or 2001:db8::1"
+                disabled={!canAddIpOverride}
+                value={ipForm.ip_address}
+                onChange={(e) => setIpForm({ ...ipForm, ip_address: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="label">
+                <span className="label-text">Label (optional)</span>
+              </label>
+              <input
+                type="text"
+                className="input input-bordered w-full"
+                placeholder="e.g. Work Laptop, Mobile"
+                disabled={!canAddIpOverride}
+                value={ipForm.label}
+                onChange={(e) => setIpForm({ ...ipForm, label: e.target.value })}
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                type="button"
+                className="btn btn-primary w-full"
+                disabled={!canAddIpOverride || ipSaving}
+                onClick={async () => {
+                  const ip = (ipForm.ip_address || '').trim();
+                  const v4 = isIPv4(ip);
+                  const v6 = isIPv6(ip);
+                  if (!v4 && !v6) {
+                    showNotification('Please enter a valid IPv4 or IPv6 address.', 'error');
+                    return;
+                  }
+                  if (!ipMatchesAnyOfficeRange(ip, officeRanges)) {
+                    showNotification('IP must be inside an active Office IP Range.', 'error');
+                    return;
+                  }
+                  try {
+                    setIpSaving(true);
+                    const res = await fetch(`${API_BASE_URL}/api/attendance/employee-ip-overrides`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('hrms_token')}`,
+                      },
+                      body: JSON.stringify({
+                        employee_id: Number(employeeId),
+                        ip_address: ip,
+                        label: (ipForm.label ?? '').trim(),
+                      }),
+                    });
+                    if (!res.ok) throw new Error('Failed to add IP override');
+                    setIpForm({ ip_address: '', label: '' });
+                    await fetchIpOverrides();
+                    showNotification('IP override added successfully', 'success');
+                  } catch (e) {
+                    console.error(e);
+                    showNotification('Unable to add IP override', 'error');
+                  } finally {
+                    setIpSaving(false);
+                  }
+                }}
+              >
+                {ipSaving ? (
+                  <>
+                    <span className="loading loading-spinner loading-sm"></span>
+                    Saving…
+                  </>
+                ) : 'Add IP'}
+              </button>
+            </div>
+          </div>
+          {!hasOffice && (
+            <p className="mt-2 text-sm text-error">
+              ❌ Employee isn't assigned to an office. Assign an office to add fixed IPs.
+            </p>
+          )}
+          {hasOffice && !hasActiveRanges && (
+            <p className="mt-2 text-sm text-error">
+              ❌ No active IP ranges for this office. Add at least one active Office IP Range first.
+            </p>
+          )}
+        </div>
       ) : (
-        <div className="w-full text-center py-2 text-gray-500">
-          Admin only
+        // Show add IP instructions when not in edit mode or not admin
+        <div className="rounded border border-dashed border-gray-300 p-4 mb-6 bg-gray-50">
+          <div className="text-center text-gray-500">
+            {!isEditing ? (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                <p>Switch to edit mode to manage IP overrides</p>
+              </>
+            ) : (
+              <p>Admin access required to modify IP overrides</p>
+            )}
+          </div>
         </div>
       )}
-    </div>
-  </div>
 
-  {!hasOffice && (
-    <p className="mt-1 text-sm text-red-600">
-      Employee isn't assigned to an office. Assign an office to add fixed IPs.
-    </p>
-  )}
-  {hasOffice && !hasActiveRanges && (
-    <p className="mt-1 text-sm text-red-600">
-      No IP ranges for this office. Add at least one Office IP Range first.
-    </p>
-  )}
-  {user?.role !== 'admin' && (
-    <p className="mt-1 text-sm text-yellow-600">
-      IP override management is restricted to administrators only.
-    </p>
-  )}
-</div>
-
-      {/* List */}
-      {ipOverrides.length === 0 ? (
-        <div className="alert">
-          <svg xmlns="http://www.w3.org/2000/svg" className="stroke-info shrink-0 w-6 h-6" fill="none" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span>No IP overrides yet.</span>
+      {/* IP Overrides List - Show in both edit and view modes */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Current IP Overrides</h3>
+          <span className="badge badge-outline">{ipOverrides.length} IPs</span>
         </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="table w-full">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>IP Address</th>
-                <th>Label</th>
-                <th>Added</th>
-                <th className="text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ipOverrides.map((o, idx) => (
-                <tr key={o.id}>
-                  <td>{idx + 1}</td>
-                  <td className="font-mono">{o.ip_address}</td>
-                  <td>{o.label || '-'}</td>
-                  <td>{o.created_at ? new Date(o.created_at).toLocaleString() : '-'}</td>
-<td className="text-right">
-  {user?.role === 'admin' ? (
-    <button
-      type="button"
-      className="btn btn-error btn-sm"
-      onClick={async () => {
-        if (confirm(`Remove IP override ${o.ip_address}?`)) {
-          try {
-            const res = await fetch(
-              `${API_BASE_URL}/api/attendance/employee-ip-overrides/${o.id}`,
-              {
-                method: 'DELETE',
-                headers: {
-                  'Authorization': `Bearer ${localStorage.getItem('hrms_token')}`
-                }
-              }
-            );
-            if (res.ok) {
-              await fetchIpOverrides();
-              showNotification('IP override removed', 'success');
-            }
-          } catch {
-            showNotification('Failed to remove override', 'error');
-          }
-        }
-      }}
-    >
-      Delete
-    </button>
-  ) : (
-    <span className="text-gray-400 text-sm">Admin only</span>
-  )}
-</td>
+
+        {ipOverrides.length === 0 ? (
+          <div className="alert alert-info">
+            <svg xmlns="http://www.w3.org/2000/svg" className="stroke-info shrink-0 w-6 h-6" fill="none" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>No IP overrides configured yet.</span>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="table table-zebra w-full">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>IP Address</th>
+                  <th>Label</th>
+                  <th>Added</th>
+                  {isEditing && user?.role === 'admin' && <th className="text-right">Actions</th>}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {ipOverrides.map((o, idx) => (
+                  <tr key={o.id}>
+                    <td>{idx + 1}</td>
+                    <td className="font-mono text-sm">{o.ip_address}</td>
+                    <td>
+                      {o.label ? (
+                        <span className="badge badge-ghost">{o.label}</span>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="text-sm">
+                      {o.created_at ? new Date(o.created_at).toLocaleDateString() : '-'}
+                    </td>
+                    <td className="text-right">
+                      {isEditing && user?.role === 'admin' ? (
+                        <button
+                          type="button"
+                          className="btn btn-error btn-sm"
+                          onClick={async () => {
+                            if (confirm(`Remove IP override ${o.ip_address}?`)) {
+                              try {
+                                const res = await fetch(
+                                  `${API_BASE_URL}/api/attendance/employee-ip-overrides/${o.id}`,
+                                  {
+                                    method: 'DELETE',
+                                    headers: {
+                                      'Authorization': `Bearer ${localStorage.getItem('hrms_token')}`
+                                    }
+                                  }
+                                );
+                                if (res.ok) {
+                                  await fetchIpOverrides();
+                                  showNotification('IP override removed', 'success');
+                                } else {
+                                  throw new Error('Delete failed');
+                                }
+                              } catch {
+                                showNotification('Failed to remove override', 'error');
+                              }
+                            }
+                          }}
+                        >
+                          Delete
+                        </button>
+                      ) : (
+                        <span className="text-gray-400 text-sm">Read only</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
 
-    {/* Right: global policy panel */}
+    {/* Right: Policy Panel - Show in both edit and view modes */}
     <div className="bg-base-100 rounded-lg shadow p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold">Attendance IP Policy</h3>
+        <div className="badge badge-info">Employee Level</div>
       </div>
 
       {policy ? (
         <>
-          <div className="mb-4">
-            <label className="label">
-              <span className="label-text">Mode</span>
-            </label>
-            <select
-              className="select select-bordered w-full"
-              value={policy.mode}
-              onChange={(e) => setPolicy(p => ({ ...p, mode: toPolicyMode(e.target.value) }))}
-              disabled={user?.role !== 'admin'}
-            >
-              <option value="FLAG_ONLY">FLAG_ONLY (allow, but flag)</option>
-              <option value="ENFORCE">ENFORCE (block outside whitelist)</option>
-            </select>
+          <div className="space-y-4">
+            <div>
+              <label className="label">
+                <span className="label-text font-medium">Enforcement Mode</span>
+              </label>
+              {isEditing && user?.role === 'admin' ? (
+                <select
+                  className="select select-bordered w-full"
+                  value={policy.mode}
+                  onChange={(e) => setPolicy(p => ({ ...p, mode: toPolicyMode(e.target.value) }))}
+                >
+                  <option value="FLAG_ONLY">FLAG_ONLY (allow, but flag)</option>
+                  <option value="ENFORCE">ENFORCE (block outside whitelist)</option>
+                </select>
+              ) : (
+                <div className="p-3 bg-base-200 rounded">
+                  <div className="font-medium">{policy.mode}</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {policy.mode === 'FLAG_ONLY' 
+                      ? 'Out-of-office IPs will be allowed but flagged for review'
+                      : 'Only whitelisted IPs will be allowed for attendance'
+                    }
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="form-control">
+              <label className="label cursor-pointer justify-start gap-3">
+                {isEditing && user?.role === 'admin' ? (
+                  <input
+                    type="checkbox"
+                    className="checkbox"
+                    checked={policy.trust_proxy}
+                    onChange={(e) => setPolicy(p => ({ ...p, trust_proxy: e.target.checked }))}
+                  />
+                ) : (
+                  <input
+                    type="checkbox"
+                    className="checkbox"
+                    checked={policy.trust_proxy}
+                    disabled
+                  />
+                )}
+                <span className="label-text">Trust proxy headers</span>
+              </label>
+              <div className="text-xs text-gray-500 ml-8">
+                Enable if behind load balancer or reverse proxy
+              </div>
+            </div>
           </div>
 
-          {user?.role === 'admin' ? (
-            <>
+          {isEditing && user?.role === 'admin' ? (
+            <div className="mt-6">
               <button
-                className="btn btn-primary"
+                className="btn btn-primary w-full"
                 disabled={!canSavePolicy || policySaving}
                 onClick={async () => {
                   if (!canSavePolicy) {
@@ -7039,27 +7034,21 @@ const BondingErrorModal = () => {
                   }
                   setPolicySaving(true);
                   try {
-                      const body = {
-                        scope: 'EMPLOYEE',
-                        employee_id: Number(employeeId),
-                        mode: toPolicyMode(policy.mode),
-                        trust_proxy: !!policy.trust_proxy,
-                      };
+                    const body = {
+                      scope: 'EMPLOYEE',
+                      employee_id: Number(employeeId),
+                      mode: policy.mode,
+                      trust_proxy: policy.trust_proxy,
+                    };
 
-                      const res = await fetch(`${API_BASE_URL}/api/attendance/policy`, {
-                        method: 'PUT',
-                        headers: {
-                          'Content-Type': 'application/json',
-                          'Authorization': `Bearer ${localStorage.getItem('hrms_token')}`,
-                        },
-                        body: JSON.stringify({
-                          scope: 'EMPLOYEE',
-                          employee_id: Number(employeeId),
-                          mode: policy.mode,          // or toPolicyMode(policy.mode)
-                          trust_proxy: policy.trust_proxy,
-                        }),
-                      });
-
+                    const res = await fetch(`${API_BASE_URL}/api/attendance/policy`, {
+                      method: 'PUT',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('hrms_token')}`,
+                      },
+                      body: JSON.stringify(body),
+                    });
 
                     const payload = await res.json().catch(() => ({} as any));
                     if (!res.ok || payload?.ok === false) {
@@ -7067,17 +7056,7 @@ const BondingErrorModal = () => {
                       return;
                     }
 
-                    const saved = payload?.data ?? {};
-                    setPolicy(p => ({
-                      ...p,
-                      mode: toPolicyMode(saved?.mode ?? body.mode),
-                      trust_proxy:
-                        typeof saved?.trust_proxy === 'number'
-                          ? saved.trust_proxy === 1
-                          : !!(saved?.trust_proxy ?? body.trust_proxy),
-                    }));
-
-                    showNotification('Policy updated', 'success');
+                    showNotification('Policy updated successfully', 'success');
                   } catch (e) {
                     console.error(e);
                     showNotification('Failed to update policy', 'error');
@@ -7086,18 +7065,31 @@ const BondingErrorModal = () => {
                   }
                 }}
               >
-                Save Policy
+                {policySaving ? (
+                  <>
+                    <span className="loading loading-spinner loading-sm"></span>
+                    Saving Policy...
+                  </>
+                ) : (
+                  'Save Policy'
+                )}
               </button>
 
               {!canSavePolicy && (
-                <p className="mt-1 text-sm text-red-600">
-                  Attendance IP Policy is disabled until an Office IP Range exists.
+                <p className="mt-2 text-sm text-error text-center">
+                  Policy requires at least one active Office IP Range
                 </p>
               )}
-            </>
+            </div>
           ) : (
-            <div className="alert alert-info">
-              <span>Read-only: admin only</span>
+            <div className="mt-4 p-4 bg-base-200 rounded-lg">
+              <div className="text-center text-gray-600">
+                {!isEditing ? (
+                  <p>Switch to edit mode to modify policy settings</p>
+                ) : (
+                  <p>Admin access required to modify policy</p>
+                )}
+              </div>
             </div>
           )}
         </>
