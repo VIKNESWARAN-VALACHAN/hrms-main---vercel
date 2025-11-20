@@ -1138,6 +1138,25 @@ export default function BenefitGroupTab() {
             <input type="date" className="input input-bordered w-full" value={benefitForm.end_date} onChange={e => setBenefitForm({ ...benefitForm, end_date: e.target.value })} />
           </div>
         </div>
+        {/* Prorated Checkbox - Improved Layout */}
+        <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+          <div className="form-control">
+            <label className="flex items-center gap-3 cursor-pointer group">
+              <input 
+                type="checkbox" 
+                className="checkbox checkbox-primary focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all" 
+                checked={benefitForm.is_prorated || false}
+                onChange={e => setBenefitForm({ ...benefitForm, is_prorated: e.target.checked })}
+              />
+              <div className="flex flex-col">
+                <span className="font-medium text-gray-800 group-hover:text-gray-900 transition-colors">Prorated Benefit</span>
+                <span className="text-sm text-gray-500 mt-1">
+                  Calculate benefit amount based on actual duration
+                </span>
+              </div>
+            </label>
+          </div>
+        </div>
       </div>
 
       <div className="flex justify-end gap-3 border-t px-6 py-4 bg-gray-50">
