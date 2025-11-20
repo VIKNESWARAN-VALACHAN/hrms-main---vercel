@@ -109,22 +109,21 @@
 //   );
 // }
 
-// /* -------------------- Add Increment Modal (no <form>) -------------------- */
+// /* -------------------- Add Increment Modal: input NEW SALARY -------------------- */
 // interface IncrementModalProps {
 //   isOpen: boolean;
 //   onClose: () => void;
 //   currentBasic: number;
 //   currency: string;
 //   onSubmit: (increment: {
-//     type: IncrementKind;
-//     value: number;
+//     newBasic: number;            // absolute new salary
 //     reason: string;
-//     effectiveDate: string; // YYYY-MM-DD
+//     effectiveDate: string;       // YYYY-MM-DD
 //   }) => void;
 // }
+
 // function IncrementModal({ isOpen, onClose, currentBasic, currency, onSubmit }: IncrementModalProps) {
-//   const [type, setType] = useState<IncrementKind>('FIXED');
-//   const [value, setValue] = useState<number>(5);
+//   const [newBasic, setNewBasic] = useState<number>(currentBasic);
 //   const [reason, setReason] = useState<string>('');
 //   const [error, setError] = useState<string | null>(null);
 //   const [effectiveDate, setEffectiveDate] = useState<Date | null>(() => {
@@ -139,14 +138,19 @@
 //   const minDate = getFirstDayOfNextMonth();
 
 //   const preview = useMemo(() => {
-//     if (type === 'PERCENT') {
-//       const nb = Math.round(currentBasic * (1 + value / 100) * 100) / 100;
-//       return { newBasic: nb, delta: Math.round((nb - currentBasic) * 100) / 100 };
-//     } else {
-//       const nb = Math.round((currentBasic + value) * 100) / 100;
-//       return { newBasic: nb, delta: value };
-//     }
-//   }, [type, value, currentBasic]);
+//     const delta = Math.round((newBasic - currentBasic) * 100) / 100;
+//     const pct = currentBasic ? (delta / currentBasic) * 100 : 0;
+//     return {
+//       newBasic: Math.round(newBasic * 100) / 100,
+//       delta: Math.round(delta * 100) / 100,
+//       pct: Math.round(pct * 10) / 10,
+//     };
+//   }, [newBasic, currentBasic]);
+
+//   useEffect(() => {
+//     // Reset newBasic if modal reopens for a different currentBasic
+//     if (isOpen) setNewBasic(currentBasic);
+//   }, [isOpen, currentBasic]);
 
 //   if (!isOpen) return null;
 
@@ -164,50 +168,22 @@
 //         <div className="p-6 max-h-[70vh] overflow-y-auto pr-4 -mr-4 [scrollbar-gutter:stable] [scrollbar-width:thin]">
 //           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 //             <div className="md:col-span-2 space-y-6">
-// <div>
-//   <label className="block text-sm font-medium text-gray-700 mb-2">Increment Type</label>
-//   <div className="grid grid-cols-2 gap-2">
-//     {/* Fixed Amount on the left, auto-selected */}
-//     <button
-//       type="button"
-//       onClick={() => setType('FIXED')}
-//       className={`p-3 rounded-lg border text-sm font-medium ${
-//         type === 'FIXED'
-//           ? 'border-blue-500 bg-blue-50 text-blue-700'
-//           : 'border-gray-200 hover:border-gray-300 text-gray-700'
-//       }`}
-//     >
-//       Fixed Amount
-//     </button>
-//     {/* Percentage on the right */}
-//     <button
-//       type="button"
-//       onClick={() => setType('PERCENT')}
-//       className={`p-3 rounded-lg border text-sm font-medium ${
-//         type === 'PERCENT'
-//           ? 'border-blue-500 bg-blue-50 text-blue-700'
-//           : 'border-gray-200 hover:border-gray-300 text-gray-700'
-//       }`}
-//     >
-//       Percentage
-//     </button>
-//   </div>
-// </div>
-
 //               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 //                 <div>
 //                   <label className="block text-sm font-medium text-gray-700 mb-2">
-//                     {type === 'PERCENT' ? 'Percentage (%)' : `Amount (${currency})`}
+//                     New Salary ({currency})
 //                   </label>
 //                   <input
 //                     type="number"
-//                     value={value}
-//                     onChange={(e) => setValue(Number(e.target.value))}
-//                     min={0}
-//                     step={type === 'PERCENT' ? 0.1 : 1}
+//                     value={Number.isFinite(newBasic) ? newBasic : ''}
+//                     onChange={(e) => setNewBasic(Number(e.target.value))}
+//                     min={currentBasic}
+//                     step={0.01}
 //                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+//                     placeholder={`${currency} ${currentBasic.toLocaleString()}`}
 //                     required
 //                   />
+//                   <p className="mt-1 text-xs text-gray-500">Enter the final basic salary after increment.</p>
 //                 </div>
 
 //                 <div>
@@ -261,7 +237,7 @@
 //                     <div>
 //                       <p className="text-gray-500">% Change</p>
 //                       <p className="font-semibold">
-//                         {currentBasic ? ((preview.delta / currentBasic) * 100).toFixed(1) : '0.0'}%
+//                         {currentBasic ? preview.pct.toFixed(1) : '0.0'}%
 //                       </p>
 //                     </div>
 //                   </div>
@@ -276,60 +252,60 @@
 //                 Cancel
 //               </button>
 //               <button
-//   type="button"
-//   onClick={() => {
-//     if (!reason.trim() || !effectiveDate) {
-//       setError('Please provide a reason and select an effective date.');
-//       return;
-//     }
-//     onSubmit({
-//       type,
-//       value,
-//       reason: reason.trim(),
-//       effectiveDate: effectiveDate.toISOString().slice(0, 10),
-//     });
-//     // reset
-//     setType('FIXED');
-//     setValue(5);
-//     setReason('');
-//     setEffectiveDate(getFirstDayOfNextMonth());
-//     onClose();
-//   }}
-//   className="flex-1 px-4 py-2 text-sm font-medium text-white btn btn-primary rounded-lg"
-// >
-//   Apply Increment
-// </button>
+//                 type="button"
+//                 onClick={() => {
+//                   if (!reason.trim() || !effectiveDate) {
+//                     setError('Please provide a reason and select an effective date.');
+//                     return;
+//                   }
+//                   if (!(newBasic > currentBasic)) {
+//                     setError('New salary must be greater than current salary.');
+//                     return;
+//                   }
+//                   onSubmit({
+//                     newBasic: Math.round(newBasic * 100) / 100,
+//                     reason: reason.trim(),
+//                     effectiveDate: effectiveDate.toISOString().slice(0, 10),
+//                   });
+//                   // reset
+//                   setNewBasic(currentBasic);
+//                   setReason('');
+//                   setEffectiveDate(getFirstDayOfNextMonth());
+//                   onClose();
+//                 }}
+//                 className="flex-1 px-4 py-2 text-sm font-medium text-white btn btn-primary rounded-lg"
+//               >
+//                 Apply Increment
+//               </button>
 
-// {error && (
-//   <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-//     <div className="absolute inset-0 bg-black/40" onClick={() => setError(null)} />
-//     <div className="relative w-full max-w-md bg-white rounded-xl shadow-2xl">
-//       <div className="flex items-center justify-between p-4 border-b">
-//         <h4 className="text-sm font-semibold text-gray-900">Validation Required</h4>
-//         <button
-//           onClick={() => setError(null)}
-//           aria-label="Close"
-//           className="text-gray-400 hover:text-gray-600"
-//         >
-//           <X size={18} />
-//         </button>
-//       </div>
-//       <div className="p-5">
-//         <p className="text-sm text-gray-700">{error}</p>
-//       </div>
-//       <div className="flex justify-end gap-2 p-4 border-t">
-//         <button
-//           onClick={() => setError(null)}
-//           className="px-4 py-2 text-sm font-medium text-white btn btn-primary rounded-lg"
-//         >
-//           OK
-//         </button>
-//       </div>
-//     </div>
-//   </div>
-// )}
-
-
+//               {error && (
+//                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+//                   <div className="absolute inset-0 bg-black/40" onClick={() => setError(null)} />
+//                   <div className="relative w-full max-w-md bg-white rounded-xl shadow-2xl">
+//                     <div className="flex items-center justify-between p-4 border-b">
+//                       <h4 className="text-sm font-semibold text-gray-900">Validation Required</h4>
+//                       <button
+//                         onClick={() => setError(null)}
+//                         aria-label="Close"
+//                         className="text-gray-400 hover:text-gray-600"
+//                       >
+//                         <X size={18} />
+//                       </button>
+//                     </div>
+//                     <div className="p-5">
+//                       <p className="text-sm text-gray-700">{error}</p>
+//                     </div>
+//                     <div className="flex justify-end gap-2 p-4 border-t">
+//                       <button
+//                         onClick={() => setError(null)}
+//                         className="px-4 py-2 text-sm font-medium text-white btn btn-primary rounded-lg"
+//                       >
+//                         OK
+//                       </button>
+//                     </div>
+//                   </div>
+//                 </div>
+//               )}
 //             </div>
 //           </div>
 //         </div>
@@ -352,7 +328,7 @@
 //   const [isModalOpen, setIsModalOpen] = useState(false);
 //   const [confirmOpen, setConfirmOpen] = useState(false);
 //   const [deleteId, setDeleteId] = useState<number | null>(null);
-
+//   const [isProrated, setIsProrated] = useState(false);
 //   const [history, setHistory] = useState<IncrementHistory[]>(historyProp);
 //   const [loading, setLoading] = useState(false);
 //   const eid = Number(employeeId);
@@ -393,36 +369,33 @@
 //     }
 //   };
 
-//   // useEffect(() => {
-//   //   fetchHistory();
-//   //   onLoadHistory && onLoadHistory();
-//   //   // eslint-disable-next-line react-hooks/exhaustive-deps
-//   // }, [eid]);
-
 //   useEffect(() => {
 //     fetchHistory();
-//     // Corrected line to fix the ESLint error
 //     if (onLoadHistory) {
 //       onLoadHistory();
 //     }
 //     // eslint-disable-next-line react-hooks/exhaustive-deps
 //   }, [eid]);
 
-//   const handleModalSubmit = async (incrementData: {
-//     type: IncrementKind;
-//     value: number;
+//   // Receive absolute newBasic from modal, compute delta and persist with type='FIXED'
+//   const handleModalSubmit = async (payload: {
+//     newBasic: number;
 //     reason: string;
 //     effectiveDate: string; // YYYY-MM-DD
 //   }) => {
+//     const { newBasic, reason, effectiveDate } = payload;
+//     const delta = +(newBasic - currentBasic).toFixed(2);
+//     const pct = currentBasic ? +((delta / currentBasic) * 100).toFixed(1) : 0;
+
 //     if (onApply) {
-//       const { type, value } = incrementData;
-//       const nb =
-//         type === 'PERCENT'
-//           ? Math.round(currentBasic * (1 + value / 100) * 100) / 100
-//           : Math.round((currentBasic + value) * 100) / 100;
-//       const delta = +(nb - currentBasic).toFixed(2);
-//       const pct = currentBasic ? +((delta / currentBasic) * 100).toFixed(1) : 0;
-//       onApply({ newBasic: nb, delta, pct, type, reason: incrementData.reason, effectiveDate: incrementData.effectiveDate });
+//       onApply({
+//         newBasic,
+//         delta,
+//         pct,
+//         type: 'FIXED',
+//         reason,
+//         effectiveDate
+//       });
 //     }
 
 //     try {
@@ -430,10 +403,10 @@
 //         method: 'POST',
 //         headers: { 'Content-Type': 'application/json' },
 //         body: JSON.stringify({
-//           effective_date: incrementData.effectiveDate,
-//           type: incrementData.type,
-//           value: incrementData.value,
-//           reason: incrementData.reason,
+//           effective_date: effectiveDate,
+//           type: 'FIXED',
+//           value: delta,             // store the increment amount
+//           reason,
 //           created_by: 1
 //         })
 //       });
@@ -667,6 +640,7 @@ interface SingleIncrementProps {
     type: IncrementKind;
     reason: string;
     effectiveDate: string;
+    isProrated?: boolean;
   }) => void;
   onLoadHistory?: () => void;
   isEditing?: boolean;
@@ -753,6 +727,7 @@ interface IncrementModalProps {
     newBasic: number;            // absolute new salary
     reason: string;
     effectiveDate: string;       // YYYY-MM-DD
+    isProrated?: boolean;
   }) => void;
 }
 
@@ -764,6 +739,7 @@ function IncrementModal({ isOpen, onClose, currentBasic, currency, onSubmit }: I
     const today = new Date();
     return new Date(today.getFullYear(), today.getMonth() + 1, 1);
   });
+  const [isProrated, setIsProrated] = useState<boolean>(false);
 
   const getFirstDayOfNextMonth = () => {
     const today = new Date();
@@ -835,6 +811,26 @@ function IncrementModal({ isOpen, onClose, currentBasic, currency, onSubmit }: I
                 </div>
               </div>
 
+              {/* Prorated Checkbox */}
+              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <div className="form-control">
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <input 
+                      type="checkbox" 
+                      className="checkbox checkbox-primary focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all" 
+                      checked={isProrated}
+                      onChange={(e) => setIsProrated(e.target.checked)}
+                    />
+                    <div className="flex flex-col">
+                      <span className="font-medium text-gray-800 group-hover:text-gray-900 transition-colors">Prorated Increment</span>
+                      <span className="text-sm text-gray-500 mt-1">
+                        Calculate increment amount based on actual service duration for partial periods
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Reason <span className="text-red-500">*</span>
@@ -874,6 +870,12 @@ function IncrementModal({ isOpen, onClose, currentBasic, currency, onSubmit }: I
                         {currentBasic ? preview.pct.toFixed(1) : '0.0'}%
                       </p>
                     </div>
+                    {isProrated && (
+                      <div className="col-span-2 mt-2 pt-2 border-t border-gray-200">
+                        <p className="text-gray-500">Prorated</p>
+                        <p className="font-semibold text-blue-600 text-xs">Yes - Amount will be adjusted based on service duration</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -900,11 +902,13 @@ function IncrementModal({ isOpen, onClose, currentBasic, currency, onSubmit }: I
                     newBasic: Math.round(newBasic * 100) / 100,
                     reason: reason.trim(),
                     effectiveDate: effectiveDate.toISOString().slice(0, 10),
+                    isProrated,
                   });
                   // reset
                   setNewBasic(currentBasic);
                   setReason('');
                   setEffectiveDate(getFirstDayOfNextMonth());
+                  setIsProrated(false);
                   onClose();
                 }}
                 className="flex-1 px-4 py-2 text-sm font-medium text-white btn btn-primary rounded-lg"
@@ -962,7 +966,6 @@ export default function SingleIncrementTab({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
-
   const [history, setHistory] = useState<IncrementHistory[]>(historyProp);
   const [loading, setLoading] = useState(false);
   const eid = Number(employeeId);
@@ -1016,8 +1019,9 @@ export default function SingleIncrementTab({
     newBasic: number;
     reason: string;
     effectiveDate: string; // YYYY-MM-DD
+    isProrated?: boolean;
   }) => {
-    const { newBasic, reason, effectiveDate } = payload;
+    const { newBasic, reason, effectiveDate, isProrated } = payload;
     const delta = +(newBasic - currentBasic).toFixed(2);
     const pct = currentBasic ? +((delta / currentBasic) * 100).toFixed(1) : 0;
 
@@ -1028,7 +1032,8 @@ export default function SingleIncrementTab({
         pct,
         type: 'FIXED',
         reason,
-        effectiveDate
+        effectiveDate,
+        isProrated
       });
     }
 
@@ -1041,6 +1046,7 @@ export default function SingleIncrementTab({
           type: 'FIXED',
           value: delta,             // store the increment amount
           reason,
+          is_prorated: isProrated || false,
           created_by: 1
         })
       });
@@ -1238,6 +1244,3 @@ export default function SingleIncrementTab({
     </div>
   );
 }
-
-
-
