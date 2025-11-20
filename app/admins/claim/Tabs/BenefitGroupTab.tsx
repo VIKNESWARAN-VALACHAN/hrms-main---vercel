@@ -78,6 +78,7 @@ const approvalLevelDescription = (level: number) => {
     2: 'Level 1 → Manager → HR',
     3: 'Level 1 → Superior → HR',
     4: 'Level 1 → Superior → Manager → HR',
+    5: 'Level 1 → Manager',
   };
   return map[level] || 'Unknown';
 };
@@ -1545,6 +1546,7 @@ export default function BenefitGroupTab() {
                   <option value={2}>2 - Level 1 → Manager → HR</option>
                   <option value={3}>3 - Level 1 → Superior → HR</option>
                   <option value={4}>4 - Level 1 → Superior → Manager → HR</option>
+                  <option value={5}>5 - Level 1 → Manager</option>
                 </select>
               </div>
 
