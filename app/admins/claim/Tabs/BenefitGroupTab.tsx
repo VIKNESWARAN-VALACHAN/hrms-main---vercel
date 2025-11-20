@@ -279,6 +279,7 @@ export default function BenefitGroupTab() {
     start_date: '',
     end_date: '',
     is_active: '1',
+    is_prorated: false
   });
 
   const [assignForm, setAssignForm] = useState({
@@ -507,6 +508,7 @@ export default function BenefitGroupTab() {
       start_date: '',
       end_date: '',
       is_active: '1',
+      is_prorated: false
     });
     setShowBenefitModal(true);
   };
