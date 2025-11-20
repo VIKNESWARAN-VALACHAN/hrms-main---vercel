@@ -1547,7 +1547,7 @@ const shouldShow = (module: string, requiredPermission?: string) => {
     </button>
 
     <ul className={`menu menu-compact pl-8 ${lastOpenedMenu === "manage-admin" ? "block" : "hidden"}`}>
-      <li>
+      {/* <li>
         <Link
           href="/admins"
           className={`py-2 px-4 rounded-lg transition-all duration-300 ${
@@ -1568,7 +1568,7 @@ const shouldShow = (module: string, requiredPermission?: string) => {
         >
           Add New Admin
         </Link>
-      </li>
+      </li> */}
       <li>
         <Link
           href="/admins/permissions"
