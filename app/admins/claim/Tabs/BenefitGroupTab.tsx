@@ -1138,6 +1138,8 @@ export default function BenefitGroupTab() {
             <input type="date" className="input input-bordered w-full" value={benefitForm.end_date} onChange={e => setBenefitForm({ ...benefitForm, end_date: e.target.value })} />
           </div>
         </div>
+
+                {/* Prorated Checkbox */}
         {/* Prorated Checkbox - Improved Layout */}
         <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
           <div className="form-control">
