@@ -1114,7 +1114,7 @@ const shouldShow = (module: string, requiredPermission?: string) => {
               Deduction Mapping
             </Link>
           </li>
-          <li>
+          {/* <li>
             <Link
               href="/admins/payroll-config"
               className={`py-2 px-4 rounded-lg transition-all duration-300 ${
@@ -1124,7 +1124,7 @@ const shouldShow = (module: string, requiredPermission?: string) => {
             >
               Payroll Config
             </Link>
-          </li>
+          </li> */}
           <li>
             <Link
               href="/admins/payroll-policy-assignment"
