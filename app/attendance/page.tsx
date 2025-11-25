@@ -5669,12 +5669,12 @@ useEffect(() => {
   {(item as any).check_in_ip || (item as any).check_in_public_ip ? (
     <div className="text-xs space-y-1">
       {/* Internal IP */}
-      {(item as any).check_in_ip && (
+      {/*  {(item as any).check_in_ip && (
         <div>
           <span className="font-medium">Internal: </span>
           <span className="font-mono">{(item as any).check_in_ip}</span>
         </div>
-      )}
+      )} */}
       {/* Public IP */}
       {(item as any).check_in_public_ip && (
         <div>
@@ -5711,12 +5711,12 @@ useEffect(() => {
   {(item as any).check_out_ip || (item as any).check_out_public_ip ? (
     <div className="text-xs space-y-1">
       {/* Internal IP */}
-      {(item as any).check_out_ip && (
+      {/* {(item as any).check_out_ip && (
         <div>
           <span className="font-medium">Internal: </span>
           <span className="font-mono">{(item as any).check_out_ip}</span>
         </div>
-      )}
+      )} */}
       {/* Public IP */}
       {(item as any).check_out_public_ip && (
         <div>
