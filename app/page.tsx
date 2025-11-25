@@ -441,18 +441,25 @@ async function getPublicIpClientSide2511(opts?: { timeoutMs?: number }): Promise
   return null;
 }
 
-  async function postAttendanceWithIp(url: string, payload: any) {
+async function postAttendanceWithIp(url: string, payload: any) {
   const publicIp = await getPublicIpClientSide();
-   console.log('✅ Final IPv4 for attendance:', publicIp || 'Not available');
+  console.log('✅ Final IPv4 for attendance:', publicIp || 'Not available');
+  
+  // Send IP in BODY, not headers
+  const requestPayload = {
+    ...payload,
+    client_public_ip: publicIp // Add to payload
+  };
+
+  console.log('📤 Sending attendance request with IP in body:', requestPayload);
   
   return fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${localStorage.getItem('hrms_token') || ''}`,
-      ...(publicIp ? { 'x-client-public-ip': publicIp } : {})
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(requestPayload)
   });
 }
 
