@@ -961,12 +961,6 @@ const displayRawTime = (datetime: Date | string | null) => {
   }
 };
 
-const displayRawDateOnly = (datetimeString: string) => {
-  if (!datetimeString) return '';
-  // Extract just the date part from "YYYY-MM-DD HH:MM:SS"
-  return datetimeString.split(' ')[0] || '';
-};
-
   // Date display function
   const displayDateTime = (date: Date | string | null): string => {
     if (!date) return '--';
@@ -979,7 +973,7 @@ const displayRawDateOnly = (datetimeString: string) => {
   };
 
 
-  async function getPublicIpClientSide(opts?: { timeoutMs?: number }): Promise<string | null> {
+async function getPublicIpClientSideold(opts?: { timeoutMs?: number }): Promise<string | null> {
   const timeoutMs = opts?.timeoutMs ?? 3000;
 
   // ✅ IPv4-ONLY providers (no CORS proxies needed)
@@ -1104,89 +1098,7 @@ const displayRawDateOnly = (datetimeString: string) => {
   return null;
 }
 
-  
-
-  async function getPublicIpClientSide2511(opts?: { timeoutMs?: number }): Promise<string | null> {
-    const timeoutMs = opts?.timeoutMs ?? 3000;
-
-    // Use CORS proxies for the providers
-    const providers: Array<{
-      url: string;
-      parse: (r: any) => string | null;
-    }> = [
-      {
-        url: 'https://corsproxy.io/?https://api.ipify.org?format=json',
-        parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
-      },
-      {
-        url: 'https://api.allorigins.win/raw?url=' + encodeURIComponent('https://api.ipify.org?format=json'),
-        parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
-      },
-      {
-        url: 'https://corsproxy.io/?https://ifconfig.co/json',
-        parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
-      },
-    ];
-
-    const isValidIp = (ip: string) => {
-      const ipv4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
-      const ipv6 = /^(([0-9a-fA-F]{1,4}:){1,7}[0-9a-fA-F]{1,4}|::1|::)$/;
-      return ipv4.test(ip) || ipv6.test(ip);
-    };
-
-    const fetchWithTimeout = async (url: string): Promise<any | null> => {
-      const ctrl = new AbortController();
-      const tm = setTimeout(() => ctrl.abort(), timeoutMs);
-      try {
-        const res = await fetch(url, { 
-          signal: ctrl.signal, 
-          cache: 'no-store',
-          headers: {
-            'Accept': 'application/json',
-          }
-        });
-        if (!res.ok) return null;
-        const ct = res.headers.get('content-type') || '';
-        if (ct.includes('application/json')) {
-          return await res.json();
-        } else {
-          const txt = (await res.text()).trim();
-          try {
-            // Try to parse as JSON if it's JSON
-            return JSON.parse(txt);
-          } catch {
-            // If not JSON, assume it's just the IP
-            return { ip: txt };
-          }
-        }
-      } catch (err: any) {
-        console.warn('ERROR fetching IP from provider:', url, err.message);
-        return null;
-      } finally {
-        clearTimeout(tm);
-      }
-    };
-
-    for (const p of providers) {
-      try {
-        const payload = await fetchWithTimeout(p.url);
-        const ip = payload ? p.parse(payload) : null;
-        if (ip && isValidIp(ip.trim())) {
-          return ip.trim();
-        } else if (ip) {
-          console.warn('[public-ip] invalid format from provider:', p.url, ip);
-        }
-      } catch (err) {
-        console.warn('[public-ip] failed to fetch from provider:', p.url, err);
-      }
-    }
-
-    console.warn('[public-ip] unable to resolve public IP from all providers');
-    return null;
-  }
-
-
-  async function postAttendance(url: string, payload: any) {
+  async function postAttendanceold(url: string, payload: any) {
     console.log('[public-ip] fetched:', 'TEST');
     const publicIp = await getPublicIpClientSide();
     return fetch(url, {
@@ -1198,6 +1110,90 @@ const displayRawDateOnly = (datetimeString: string) => {
       body: JSON.stringify(payload)
     });
   }
+
+  async function getPublicIpClientSide(): Promise<string | null> {
+  console.log('🔍 Starting robust IPv4 detection...');
+  
+  // ✅ MOST RELIABLE IPV4 PROVIDERS (ranked by reliability)
+  const providers = [
+    // Tier 1: IPv4-specific providers (most reliable)
+    'https://ipv4.icanhazip.com/',
+    'https://v4.ident.me/',
+    'https://api4.ipify.org/',
+    
+    // Tier 2: Text-based providers (good fallbacks)
+    'https://checkip.amazonaws.com/',
+    'https://icanhazip.com/',
+    'https://api.ipify.org/',
+  ];
+
+  // ✅ STRICT IPv4 validation
+  const isValidIPv4 = (ip: string) => {
+    if (!ip || typeof ip !== 'string') return false;
+    const cleanIp = ip.trim();
+    return /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/.test(cleanIp);
+  };
+
+  for (const url of providers) {
+    try {
+      console.log(`🌐 Trying IPv4 provider: ${url}`);
+      
+      const response = await fetch(url, { 
+        signal: AbortSignal.timeout(3000),
+        cache: 'no-store',
+        headers: {
+          'Accept': 'text/plain, */*',
+        }
+      });
+      
+      if (!response.ok) {
+        console.warn(`❌ Provider ${url} returned HTTP ${response.status}`);
+        continue;
+      }
+      
+      let ip = (await response.text()).trim();
+      console.log(`📨 Raw response from ${url}: "${ip}"`);
+      
+      // ✅ Strict IPv4 validation
+      if (ip && isValidIPv4(ip)) {
+        console.log(`🎉 SUCCESS - IPv4 found: ${ip} from ${url}`);
+        return ip;
+      } else if (ip) {
+        console.warn(`❌ Not a valid IPv4 from ${url}: "${ip}"`);
+      }
+      
+    } catch (err: any) {
+      console.warn(`❌ Provider ${url} failed:`, err.message);
+      continue;
+    }
+  }
+  
+  console.error('❌ All IPv4 providers failed');
+  return null;
+}
+
+// ✅ REPLACE postAttendance WITH THIS VERSION
+async function postAttendanceWithIp(url: string, payload: any) {
+  const publicIp = await getPublicIpClientSide();
+  console.log('✅ Final IPv4 for attendance:', publicIp || 'Not available');
+  
+  // Send IP in BODY, not headers
+  const requestPayload = {
+    ...payload,
+    client_public_ip: publicIp // Add to payload
+  };
+
+  console.log('📤 Sending attendance request with IP in body:', requestPayload);
+  
+  return fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('hrms_token') || ''}`,
+    },
+    body: JSON.stringify(requestPayload)
+  });
+}
 
   const displayDateOnly = (date: Date | string | null): string => {
     if (!date) return '--';
@@ -1222,18 +1218,16 @@ const displayRawDateOnly = (datetimeString: string) => {
         API_ROUTES.checkOut :
         API_ROUTES.checkIn;
 
-      // const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      //   method: 'POST',
-      //   headers: {
-      //     'Content-Type': 'application/json'
-      //   },
-      //   // Include employee_id in request body
-      //   body: JSON.stringify({ employee_id: employeeId })
-      // });
-      const response = await postAttendance(
-        `${API_BASE_URL}${endpoint}`,
-        { employee_id: employeeId }
-      );
+
+      // const response = await postAttendance(
+      //   `${API_BASE_URL}${endpoint}`,
+      //   { employee_id: employeeId }
+      // );
+
+    const response = await postAttendanceWithIp(
+      `${API_BASE_URL}${endpoint}`,
+      { employee_id: employeeId }
+    );
 
 
       if (!response.ok) {
@@ -1246,51 +1240,6 @@ const displayRawDateOnly = (datetimeString: string) => {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Attendance action failed');
       console.error('Error with attendance action:', err);
-    }
-  };
-
-
-  const applyAttendanceFilters_1 = async (filter: Record<string, string>) => {
-    const filtersQuery = filter || filters;
-
-  const finalFilters = { ...filtersQuery };
-  if (!finalFilters.fromDate && !finalFilters.toDate && activeTab === 'attendance') {
-    const today = format(new Date(), 'yyyy-MM-dd');
-    finalFilters.fromDate = today;
-    finalFilters.toDate = today;
-  }
-
-    // Validate search term
-    if (searchTerm && searchTerm.length === 1) {
-      setError('Please enter at least 2 characters for search');
-      return;
-    }
-
-    // Basic date validation
-    if (filtersQuery.fromDate && filtersQuery.toDate) {
-      const startDate = new Date(filtersQuery.fromDate);
-      const endDate = new Date(filtersQuery.toDate);
-
-      // Check if dates are valid
-      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-        setError('Please enter valid dates');
-        return;
-      }
-
-      // Check if start date is after end date
-      if (startDate > endDate) {
-        setError('Start date cannot be after end date');
-        return;
-      }
-    }
-
-    // Clear any previous errors before fetching
-    setError('');
-    await fetchAttendanceFilterData(activeTab, finalFilters);
-    //await fetchAttendanceFilterData(activeTab, filtersQuery);
-    // Fetch appeal data if on appeal tab
-    if (activeTab === 'appeal') {
-      await fetchAppealData(filtersQuery);
     }
   };
 
@@ -1362,79 +1311,6 @@ const displayRawDateOnly = (datetimeString: string) => {
   }
 };
 
-  // Update the fetchAttendanceFilterData function to include company filter
-  const fetchAttendanceFilterData1 = async (currentTab = activeTab, filters: Record<string, string> | any) => {
-    if (role !== 'admin') {
-      return;
-    }
-    try {
-
-      // Build query parameters similar to employee page
-      let queryParams = new URLSearchParams();
-
-      // Add search field for employee name if at least 2 characters
-      if (searchTerm && searchTerm.length >= 2) {
-        queryParams.append('employee_name', searchTerm);
-      }
-
-      // Add company filter - ensure we're using the ID
-      if (filters.company && filters.company !== '') {
-        queryParams.append('company_id', filters.company);
-        // Log the company name for better readability
-        const companyName = companies.find(c => c.id === filters.company)?.name || filters.company;
-      }
-
-      // Add status filter if provided
-      if (filters.status && filters.status !== '') {
-        queryParams.append('status', filters.status);
-        // Log the status for better readability
-        const statusName = attendanceStatuses.find(s => s.id === filters.status)?.display_name || filters.status;
-      }
-
-      // Only add date filters - as requested
-      if (filters.fromDate && filters.toDate) {
-        queryParams.append('start_date', filters.fromDate);
-        queryParams.append('end_date', filters.toDate);
-      }
-
-      if(filters.department && filters.department !== ''){
-        queryParams.append('department_id', filters.department);
-      }
-
-      // Build URL with query parameters
-      const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
-      const url = `${API_BASE_URL}${API_ROUTES.attendanceData}${queryString}`;
-
-      const response = await fetch(url);
-      const data = await response.json();
-
-      let amendedData = data.map((item: any) => ({
-        id: item.employee_no,
-        employee_name: item.employee_name,
-        company_name: item.company_name,
-        department_name: item.department,
-        date: item.attendance_date,
-        checkIn: item.check_in_time,
-        checkOut: item.check_out_time,
-        status: item.status.toLowerCase(),
-        attendance_day_id: item.attendance_day_id,
-        employee_id: item.employee_id,
-        amended_status: item.amend_by ? 'Amended' : 'Original',
-        amend_date: item.amend_date,
-        amend_by: item.amend_by
-      }));
-
-      if(currentTab === 'amend'){
-        amendedData = amendedData.filter((item: any) => item.status.toLowerCase() === 'absent' || item.status.toLowerCase() === 'offday');
-      }
-
-      setAmendAttendanceData(amendedData);
-    } catch (err) {
-      console.error('Error fetching attendance filter data:', err);
-    }
-  };
-
-
 const fetchAttendanceFilterData = async (currentTab = activeTab, filters: Record<string, string> | any) => {
   if (role !== 'admin') {
     return;
@@ -1504,6 +1380,8 @@ const fetchAttendanceFilterData = async (currentTab = activeTab, filters: Record
       check_out_ip: item.check_out_ip, // This should show internal IP
       check_out_public_ip: item.check_out_public_ip, // This should show public IP
     });
+
+    console.log('Admin View - Raw API Data:', data);
 
       return {
         id: item.employee_no,
@@ -1878,49 +1756,12 @@ const fetchAttendanceHistory = async (start?: Date, end?: Date) => {
     log('rows:', data.length);
     if (data.length) log('first row keys:', Object.keys(data[0]));
 
-    // 5) Map records (keep logic same, just tidy)
-    // const formatted: AttendanceRecord[] = data.map((rec: any) => {
-    //   let date: Date;
-    //   let checkIn: Date | undefined;
-    //   let checkOut: Date | undefined;
-
-    //   if (rec.attendance_date || rec.first_check_in_time) {
-    //     // new format
-    //     date = new Date(rec.attendance_date || rec.first_check_in_time);
-    //     checkIn = rec.first_check_in_time ? new Date(rec.first_check_in_time) : undefined;
-    //     checkOut = rec.last_check_out_time ? new Date(rec.last_check_out_time) : undefined;
-    //   } else {
-    //     // old format
-    //     const ci = rec.clock_in ? new Date(rec.clock_in) : undefined;
-    //     const dayStr = ci ? formatInTimeZone(ci, tz, 'yyyy-MM-dd') : undefined;
-    //     date = dayStr ? new Date(dayStr) : new Date();
-    //     checkIn = ci;
-    //     checkOut = rec.clock_out ? new Date(rec.clock_out) : undefined;
-    //   }
-
-    //   const status =
-    //     rec.status_name?.toLowerCase?.() ??
-    //     ({ 1: 'present', 2: 'absent', 3: 'late', 4: 'partial', 5: 'offday' } as any)[rec.status_id] ??
-    //     (typeof determineStatus === 'function'
-    //       ? determineStatus(rec.first_check_in_time ?? rec.clock_in, rec.last_check_out_time ?? rec.clock_out)
-    //       : 'partial');
-
-    //   return {
-    //     date,
-    //     checkIn,
-    //     checkOut,
-    //     status,
-    //     // (optional extras you already use)
-    //     // @ts-ignore
-    //     attendanceDayId: rec.attendance_day_id,
-    //     // @ts-ignore
-    //     first_checkIn: rec.first_check_in_day ? displayTime(rec.first_check_in_day) : '',
-    //     // @ts-ignore
-    //     last_checkOut: rec.last_check_out_day ? displayTime(rec.last_check_out_day) : '',
-    //     // @ts-ignore
-    //     appealStatus: rec.appeal_status || ''
-    //   };
-    // });
+console.log('Employee View - Raw API Data:', data);
+console.log('Employee View - Status field:', data.map((r: any) => ({
+  date: r.attendance_date,
+  status_name: r.status_name,
+  status_id: r.status_id
+})));
 
     // In fetchAttendanceHistory, replace the mapping section with:
 const formatted: AttendanceRecord[] = data.map((rec: any) => {
@@ -3232,61 +3073,6 @@ function append(qs: URLSearchParams, k: string, v?: string | number | null) {
   if (v !== undefined && v !== null && v !== '' && v !== 'undefined' && v !== 'null') qs.append(k, String(v));
 }
 
-async function handleExportWithLeaves1211() {
-  try {
-    setIsExporting(true);
-    const API = `${API_BASE_URL}/api/v1`;
-
-    // date range
-    const range = (() => {
-      if (filters?.fromDate && filters?.toDate) {
-        return { startDate: fmtLocal(filters.fromDate), endDate: fmtLocal(filters.toDate) };
-      }
-      const dates = (amendAttendanceData ?? []).map((r:any)=>r.date).filter(Boolean).sort();
-      if (dates.length) return { startDate: dates[0], endDate: dates[dates.length - 1] };
-      const n = new Date(), y = n.getFullYear(), m = n.getMonth();
-      const last = new Date(y, m + 1, 0).getDate();
-      return { startDate: `${y}-${String(m+1).padStart(2,'0')}-01`, endDate: `${y}-${String(m+1).padStart(2,'0')}-${last}` };
-    })();
-
-    // employee IDs from current table
-    const empIds = Array.from(new Set(
-      (amendAttendanceData||[]).map((r:any)=>r.employee_id).filter((x:any)=>Number.isFinite(x))
-    ));
-
-    const qs = new URLSearchParams();
-    append(qs, 'startDate', range.startDate);
-    append(qs, 'endDate',   range.endDate);
-    if (empIds.length) append(qs, 'employeeIds', empIds.join(','));
-    append(qs, 'departmentId', filters?.department);
-    append(qs, 'companyId',    filters?.company);
-    append(qs, 'status',       filters?.status);
-
-    const url = `${API}/leaves/history/range?${qs.toString()}`;
-    const res = await fetch(url, {
-      method: 'GET',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('hrms_token')}`
-        }//credentials: 'include', // keep if cookie/session auth; otherwise remove
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const leaves: LeaveRow[] = await res.json();
-
-    downloadAttendanceReport(amendAttendanceData, {
-      includeLeaves: true,
-      leaves,
-      fileName: `Attendance_with_Leaves_${range.startDate}_${range.endDate}.xlsx`,
-    });
-  } catch (e) {
-    console.error('Export with leaves failed:', e);
-    downloadAttendanceReport(amendAttendanceData); // fallback
-    showNotification('Failed to fetch leave data. Exported attendance only.', 'error');
-  } finally {
-    setIsExporting(false);
-  }
-}
-
 async function handleExportWithLeaves(exportData = amendAttendanceData) {
   try {
     setIsExporting(true);
@@ -4075,23 +3861,7 @@ useEffect(() => {
     applyAttendanceFilters(filters);
   }
 }, [activeTab, employeeId]);
-// // Add to your useEffect to fetch overtime data
-// useEffect(() => {
-//   if (employeeId) {
-//     fetchTodayAttendance();
-//     fetchAttendanceHistory();
-//     fetchAppealData(filters);
-//     fetchEmployeeOvertime(); // Add this line
-    
-//     if (role === 'admin' || role === 'manager') {
-//       fetchAttendanceStats();
-//       if (role === 'admin') {
-//         fetchCompanies();
-//         applyAttendanceFilters(filters);
-//       }
-//     }
-//   }
-// }, [employeeId]);
+
   
   return (
     <div className={`container mx-auto p-6 max-w-7xl ${theme === 'light' ? 'bg-white' : 'bg-slate-900'}`}>
@@ -5669,7 +5439,7 @@ useEffect(() => {
   {(item as any).check_in_ip || (item as any).check_in_public_ip ? (
     <div className="text-xs space-y-1">
       {/* Internal IP */}
-      {/*  {(item as any).check_in_ip && (
+      {/* {(item as any).check_in_ip && (
         <div>
           <span className="font-medium">Internal: </span>
           <span className="font-mono">{(item as any).check_in_ip}</span>
@@ -8456,4 +8226,4 @@ useEffect(() => {
       />
     </div>
   );
-} 
+}
