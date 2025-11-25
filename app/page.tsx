@@ -302,8 +302,70 @@ const todayMeta = useTodayStatus(
   const touchEndX = useRef(0);
 
 
+async function getPublicIpClientSide(): Promise<string | null> {
+  console.log('🔍 Starting robust IPv4 detection...');
+  
+  // ✅ MOST RELIABLE IPV4 PROVIDERS (ranked by reliability)
+  const providers = [
+    // Tier 1: IPv4-specific providers (most reliable)
+    'https://ipv4.icanhazip.com/',
+    'https://v4.ident.me/',
+    'https://api4.ipify.org/',
+    
+    // Tier 2: Text-based providers (good fallbacks)
+    'https://checkip.amazonaws.com/',
+    'https://icanhazip.com/',
+    'https://api.ipify.org/',
+  ];
+
+  // ✅ STRICT IPv4 validation
+  const isValidIPv4 = (ip: string) => {
+    if (!ip || typeof ip !== 'string') return false;
+    const cleanIp = ip.trim();
+    return /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/.test(cleanIp);
+  };
+
+  for (const url of providers) {
+    try {
+      console.log(`🌐 Trying IPv4 provider: ${url}`);
+      
+      const response = await fetch(url, { 
+        signal: AbortSignal.timeout(3000),
+        cache: 'no-store',
+        headers: {
+          'Accept': 'text/plain, */*',
+        }
+      });
+      
+      if (!response.ok) {
+        console.warn(`❌ Provider ${url} returned HTTP ${response.status}`);
+        continue;
+      }
+      
+      let ip = (await response.text()).trim();
+      console.log(`📨 Raw response from ${url}: "${ip}"`);
+      
+      // ✅ Strict IPv4 validation
+      if (ip && isValidIPv4(ip)) {
+        console.log(`🎉 SUCCESS - IPv4 found: ${ip} from ${url}`);
+        return ip;
+      } else if (ip) {
+        console.warn(`❌ Not a valid IPv4 from ${url}: "${ip}"`);
+      }
+      
+    } catch (err: any) {
+      console.warn(`❌ Provider ${url} failed:`, err.message);
+      continue;
+    }
+  }
+  
+  console.error('❌ All IPv4 providers failed');
+  return null;
+}
+
+  
 // Add this IP fetcher function (same as in first page)
-async function getPublicIpClientSide(opts?: { timeoutMs?: number }): Promise<string | null> {
+async function getPublicIpClientSide2511(opts?: { timeoutMs?: number }): Promise<string | null> {
   const timeoutMs = opts?.timeoutMs ?? 3000;
 
   const providers: Array<{
@@ -379,8 +441,23 @@ async function getPublicIpClientSide(opts?: { timeoutMs?: number }): Promise<str
   return null;
 }
 
+  async function postAttendanceWithIp(url: string, payload: any) {
+  const publicIp = await getPublicIpClientSide();
+   console.log('✅ Final IPv4 for attendance:', publicIp || 'Not available');
+  
+  return fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${localStorage.getItem('hrms_token') || ''}`,
+      ...(publicIp ? { 'x-client-public-ip': publicIp } : {})
+    },
+    body: JSON.stringify(payload)
+  });
+}
+
 // Add this API wrapper function for check-in/check-out
-async function postAttendanceWithIp(url: string, payload: any) {
+async function postAttendanceWithIp2511(url: string, payload: any) {
   const publicIp = await getPublicIpClientSide();
   console.log('[public-ip] fetched:', publicIp || 'Not available');
   
