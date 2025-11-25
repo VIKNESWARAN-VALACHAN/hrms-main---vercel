@@ -980,6 +980,133 @@ const displayRawDateOnly = (datetimeString: string) => {
 
 
   async function getPublicIpClientSide(opts?: { timeoutMs?: number }): Promise<string | null> {
+  const timeoutMs = opts?.timeoutMs ?? 3000;
+
+  // ✅ IPv4-ONLY providers (no CORS proxies needed)
+  const providers: Array<{
+    url: string;
+    parse: (r: any) => string | null;
+  }> = [
+    // IPv4-specific providers (most reliable)
+    {
+      url: 'https://api4.ipify.org?format=json',
+      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
+    },
+    {
+      url: 'https://ipv4.icanhazip.com/',
+      parse: (j) => (typeof j === 'string' ? j.trim() : null),
+    },
+    {
+      url: 'https://checkip.amazonaws.com/',
+      parse: (j) => (typeof j === 'string' ? j.trim() : null),
+    },
+    // Fallback providers
+    {
+      url: 'https://api.ipify.org?format=json',
+      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
+    },
+  ];
+
+  // ✅ STRICT IPv4 validation only
+  const isValidIPv4 = (ip: string) => {
+    if (!ip || typeof ip !== 'string') return false;
+    
+    const cleanIp = ip.trim();
+    const ipv4Pattern = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
+    
+    if (!ipv4Pattern.test(cleanIp)) {
+      console.warn(`[public-ip] Not IPv4: ${cleanIp}`);
+      return false;
+    }
+    
+    // Validate each octet is between 0-255
+    const octets = cleanIp.split('.');
+    const isValid = octets.every(octet => {
+      const num = parseInt(octet, 10);
+      return num >= 0 && num <= 255 && octet === num.toString();
+    });
+    
+    if (!isValid) {
+      console.warn(`[public-ip] Invalid IPv4 octets: ${cleanIp}`);
+    }
+    
+    return isValid;
+  };
+
+  const fetchWithTimeout = async (url: string): Promise<any | null> => {
+    const ctrl = new AbortController();
+    const tm = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { 
+        signal: ctrl.signal, 
+        cache: 'no-store',
+        headers: {
+          'Accept': 'application/json, text/plain, */*',
+        }
+      });
+      
+      if (!res.ok) {
+        console.warn(`[public-ip] HTTP ${res.status} from: ${url}`);
+        return null;
+      }
+      
+      const ct = res.headers.get('content-type') || '';
+      
+      // Handle text responses (like icanhazip, checkip.amazonaws.com)
+      if (ct.includes('text/plain')) {
+        const text = (await res.text()).trim();
+        console.log(`[public-ip] Text response from ${url}: "${text}"`);
+        return text;
+      }
+      
+      // Handle JSON responses
+      if (ct.includes('application/json')) {
+        const data = await res.json();
+        console.log(`[public-ip] JSON response from ${url}:`, data);
+        return data;
+      }
+      
+      // Fallback: try to parse as text
+      const text = (await res.text()).trim();
+      console.log(`[public-ip] Fallback text from ${url}: "${text}"`);
+      return text;
+      
+    } catch (err: any) {
+      console.warn(`[public-ip] Failed to fetch from ${url}:`, err.message);
+      return null;
+    } finally {
+      clearTimeout(tm);
+    }
+  };
+
+  console.log('[public-ip] Starting IPv4 detection...');
+  
+  for (const p of providers) {
+    try {
+      console.log(`[public-ip] Trying provider: ${p.url}`);
+      const payload = await fetchWithTimeout(p.url);
+      const ip = payload ? p.parse(payload) : null;
+      
+      if (ip && isValidIPv4(ip)) {
+        console.log(`[public-ip] ✅ SUCCESS - IPv4 found: ${ip} from ${p.url}`);
+        return ip;
+      } else if (ip) {
+        console.warn(`[public-ip] ❌ Not IPv4 from ${p.url}: ${ip}`);
+      } else {
+        console.warn(`[public-ip] ❌ No IP from ${p.url}`);
+      }
+    } catch (err) {
+      console.warn(`[public-ip] ❌ Provider failed: ${p.url}`, err);
+    }
+  }
+
+  console.error('[public-ip] ❌ All IPv4 providers failed');
+  return null;
+}
+
+  
+
+  async function getPublicIpClientSide2511(opts?: { timeoutMs?: number }): Promise<string | null> {
     const timeoutMs = opts?.timeoutMs ?? 3000;
 
     // Use CORS proxies for the providers
