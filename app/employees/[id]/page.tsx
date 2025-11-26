@@ -2838,9 +2838,341 @@ const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement 
     }
   };
 
-  
+
   // Handle form submission
 const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!formData) return;
+  
+  // Check if employee number is valid before submitting (only if changed from original)
+  if (formData.employee_no !== originalEmployeeNo && employeeNoValidation.isValid === false) {
+    setSaveLoading(false);
+    setError('Please fix the employee number validation errors before submitting.');
+    return;
+  }
+  
+  // If employee number has been changed but not validated yet, validate it now
+  if (formData.employee_no !== originalEmployeeNo && employeeNoValidation.isValid === null) {
+    setSaveLoading(false);
+    setError('Please wait for employee number validation to complete before submitting.');
+    return;
+  }
+
+  // If resigned_date is set, resignation_reason must be provided.
+  if (formData.resigned_date && !formData.resignation_reason?.trim()) {
+    setSaveLoading(false);
+    showNotification('Please provide a resignation reason when Resigned Date is set.', 'error');
+    return;
+  }
+
+  // NOTE: required-field validation removed here
+  // const missingFields = validateRequiredFields(formData);
+  // if (missingFields.length > 0) {
+  //   setSaveLoading(false);
+  //   const fieldList = missingFields.length === 1 
+  //     ? missingFields[0] 
+  //     : missingFields.slice(0, -1).join(', ') + ' and ' + missingFields[missingFields.length - 1];
+  //   showNotification(`Please fill in the following required fields: ${fieldList}`, 'error');
+  //   return;
+  // }
+
+  try {
+    setSaveLoading(true);
+    
+    // Create an object with only the fields we want to update
+    const updateData = {
+      name: formData.name,
+      email: formData.email,
+      salary: formData.salary,
+      currency: formData.currency,
+      company_id: formData.company_id,
+      manager_id: formData.job_level === 'Manager' ? null : formData.manager_id,
+      role: formData.role,
+      gender: formData.gender,
+      employee_no: formData.employee_no,
+      employment_type: formData.employment_type,
+      job_level: formData.job_level,
+      department_id: formData.department_id,
+      position: formData.position,
+      position_id: formData.position_id,
+      superior: formData.job_level === 'Manager' ? null : formData.superior,
+      //office: formData.office,
+      //office_id: formData.office_id ?? null,
+      nationality: formData.nationality,
+      joined_date: formData.joined_date,
+      resigned_date: formData.resigned_date ? toDateOnly(formData.resigned_date) : null,
+      resignation_reason: formData.resignation_reason || null,
+      visa_expired_date: formData.visa_expired_date ? toDateOnly(formData.visa_expired_date) : null,
+      passport_expired_date: formData.passport_expired_date ? toDateOnly(formData.passport_expired_date) : null,
+      ic_passport: formData.ic_passport || null,
+      confirmation_date: formData.confirmation_date
+  ? toDateOnly(formData.confirmation_date)
+  : null,
+      marital_status: formData.marital_status,
+      dob: toDateOnly(formData.dob),
+      age: formData.age,
+      mobile_number: formData.mobile_number,
+      country_code: formData.country_code || null,
+      payment_company: formData.payment_company,
+      pay_interval: formData.pay_interval,
+      payment_method: formData.payment_method,
+      bank_name: formData.bank_name,
+      bank_currency: formData.bank_currency,
+      bank_account_name: formData.bank_account_name,
+      bank_account_no: formData.bank_account_no,
+      income_tax_no: formData.income_tax_no || null,
+      socso_account_no: formData.socso_account_no || null,
+      epf_account_no: formData.epf_account_no || null,
+      status: formData.status,
+      activation: formData.activation,
+      race: formData.race || null,
+      religion: formData.religion || null,
+      education_level: formData.education_level || null,
+      qualification: formData.qualification || null,
+      training_remarks: formData.training_remarks || null,
+      disciplinary_remarks: formData.disciplinary_remarks || null,
+      address: formData.address || null,
+      emergency_contact_name: formData.emergency_contact_name || null,
+      emergency_contact_relationship: formData.emergency_contact_relationship || null,
+      emergency_contact_phone: formData.emergency_contact_phone || null,
+      emergency_contact_email: formData.emergency_contact_email || null,
+      password: formData.password || null,
+      office_id: formData.office_id ? Number(formData.office_id) : null,
+      office: formData.office || '',
+    };
+
+    const formDataToSend = new FormData();
+    formDataToSend.append('data', JSON.stringify(updateData));
+    formDataToSend.append('office_id', formData.office_id ? String(formData.office_id) : '');
+    formDataToSend.append('office', formData.office || '');
+
+    // Add training records data
+    const trainingRecordsData = {
+      trainingRecords: trainingRecords.map(record => ({
+        id: record.id,
+        training_course: record.training_course,
+        venue: record.venue,
+        start_datetime: record.start_datetime,
+        end_datetime: record.end_datetime,
+        status: record.status,
+        isNew: record.id?.startsWith('temp_') || false,
+        // Bond-related fields that backend expects
+        has_bond: record.has_bond || false,
+        bond_period_months: record.bond_period_days || null,
+        bond_start_date: record.bond_start_date || null,
+        bond_end_date: record.bond_end_date || null,
+        bond_status: record.bond_status || null,
+      })),
+      deletedTrainingRecords: deletedTrainingRecords
+    };
+    
+    formDataToSend.append('trainingRecordsData', JSON.stringify(trainingRecordsData));
+
+    // Add disciplinary records data
+    const disciplinaryRecordsData = {
+      disciplinaryRecords: disciplinaryRecords.map(record => ({
+        id: record.id,
+        issue_date: record.issue_date,
+        type_of_letter: record.type_of_letter,
+        reason: record.reason,
+        isNew: record.id?.startsWith('temp_') || false
+      })),
+      deletedDisciplinaryRecords: deletedDisciplinaryRecords
+    };
+    
+    formDataToSend.append('disciplinaryRecordsData', JSON.stringify(disciplinaryRecordsData));
+    
+    // Add dependents data (robust)
+    const dependentsPayload = (formData.dependents ?? []).map(dep => {
+      const isPersisted = typeof dep.id === 'number' && Number.isFinite(dep.id);
+      const isChild = dep.relationship === 'Child';
+
+      return {
+        id: isPersisted ? dep.id : null, // never send "temp_*" to backend
+        isNew: !isPersisted,
+
+        full_name: (dep.full_name || '').trim(),
+        relationship: dep.relationship || null,
+        birth_date: toDateOnly(dep.birth_date),
+        gender: dep.gender || null,
+        nationality: dep.nationality || null,
+        identification_no: dep.identification_no || null,
+        notes: dep.notes || null,
+
+        is_disabled: !!dep.is_disabled,
+        is_studying: !!dep.is_studying,
+
+        // Only for children; otherwise 0
+        child_relief_percent: isChild && typeof dep.child_relief_percent === 'number'
+          ? dep.child_relief_percent
+          : 0,
+      };
+    });
+
+    const dependentsData = {
+      dependents: dependentsPayload,
+      deletedDependents: deletedDependents, // numbers only
+    };
+
+    // If needed later:
+    // formDataToSend.append('dependentsData', JSON.stringify(dependentsData));
+
+    // Add training record attachments (only new files, exclude existing ones)
+    trainingRecords.forEach((record, recordIndex) => {
+      if (record.attachments && record.attachments.length > 0) {
+        const newAttachments = record.attachments.filter(doc => 
+          doc.file && !doc.id && !doc.url // Only new files without existing ID or URL
+        );
+        
+        newAttachments.forEach((doc) => {
+          if (doc.file) {
+            const isEditMode = record.id?.startsWith('temp_') ? 0 : 1;
+            formDataToSend.append(
+              `employee-data|${EMPLOYEE_TRAINING_RECORDS_DOCUMENT[0].type}|${isEditMode ? record.id : recordIndex}|${isEditMode}`,
+              doc.file
+            );
+          }
+        });
+      }
+    });
+
+    // Add disciplinary record attachments (only new files, exclude existing ones)
+    disciplinaryRecords.forEach((record, recordIndex) => {
+      if (record.attachments && record.attachments.length > 0) {
+        const newAttachments = record.attachments.filter(doc => 
+          doc.file && !doc.id && !doc.url // Only new files without existing ID or URL
+        );
+        
+        newAttachments.forEach((doc) => {
+          if (doc.file) {
+            const isEditMode = record.id?.startsWith('temp_') ? 0 : 1;
+            formDataToSend.append(
+              `employee-data|${EMPLOYEE_DISCIPLINARY_RECORDS_DOCUMENT[0].type}|${isEditMode ? record.id : recordIndex}|${isEditMode}`,
+              doc.file
+            );
+          }
+        });
+      }
+    });
+    
+    const response = await fetch(`${API_BASE_URL}/api/admin/employees/${employeeId}`, {
+      method: 'PUT',
+      body: formDataToSend
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Failed to update employee: ${response.statusText}`);
+    }
+
+    // Update office assignment separately if changed
+    if (formData?.office_id !== employee?.office_id) {
+      try {
+        const officeResponse = await fetch(`${API_BASE_URL}/api/attendance/employees/${employeeId}/office`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('hrms_token')}`
+          },
+          body: JSON.stringify({
+            office_id: formData.office_id ? Number(formData.office_id) : null
+          })
+        });
+        
+        if (!officeResponse.ok) {
+          console.warn('Failed to update office assignment, but employee was updated');
+        }
+      } catch (officeError) {
+        console.warn('Error updating office assignment:', officeError);
+      }
+    }
+    
+    // Fetch the updated employee data instead of just updating the state
+    const updatedEmployee = await getEmployeeById(employeeId);
+    setEmployee(updatedEmployee);
+    setIsEditing(false);
+    
+    // Clear local state
+    setDeletedTrainingRecords([]);
+    setDeletedDisciplinaryRecords([]);
+    setDeletedDependents([]);
+    
+    // Refresh training records from database
+    try {
+      const trainingResponse = await fetch(`${API_BASE_URL}/api/admin/employees/${employeeId}/training-records`);
+      if (trainingResponse.ok) {
+        const trainingData = await trainingResponse.json();
+        if (trainingData.success) {
+          const records = trainingData.training_records || [];
+          setTrainingRecords(records);
+          setOriginalTrainingRecords(records);
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing training records:', error);
+    }
+
+    // Refresh disciplinary records from database
+    try {
+      const disciplinaryResponse = await fetch(`${API_BASE_URL}/api/admin/employees/${employeeId}/disciplinary-records`);
+      if (disciplinaryResponse.ok) {
+        const disciplinaryData = await disciplinaryResponse.json();
+        if (disciplinaryData.success) {
+          const records = disciplinaryData.disciplinary_records || [];
+          setDisciplinaryRecords(records);
+          setOriginalDisciplinaryRecords(records);
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing disciplinary records:', error);
+    }
+
+    await persistDependentChanges(
+      employeeId,
+      originalDependents,
+      formData.dependents ?? dependents, // use the most up-to-date list
+      deletedDependents
+    );
+    setDeletedDependents([]);
+
+    // Refresh dependents from database
+    try {
+      const dependentsResponse = await fetch(`${API_BASE_URL}/api/dependents/${employeeId}`);
+      if (dependentsResponse.ok) {
+        const dependentsDataRes = await dependentsResponse.json();
+        if (dependentsDataRes.success) {
+          const records = dependentsDataRes.data || [];
+          setDependents(records);
+          setOriginalDependents([...records]);
+          setDeletedDependents([]);
+
+          setFormData(prev => prev ? { ...prev, dependents: records } : prev);
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing dependents:', error);
+    }
+    
+    // Show success notification
+    showNotification('Employee updated successfully!', 'success');
+    
+  } catch (error) {
+    console.error('Error updating employee:', error);
+    setError('Failed to update employee. Please try again.');
+    
+    // Show error notification
+    showNotification(
+      error instanceof Error ? error.message : 'Failed to update employee.',
+      'error'
+    );
+  } finally {
+    setSaveLoading(false);
+  }
+};
+
+  
+  // Handle form submission
+const handleSubmit2611 = async (e: React.FormEvent) => {
   e.preventDefault();
   if (!formData) return;
   
