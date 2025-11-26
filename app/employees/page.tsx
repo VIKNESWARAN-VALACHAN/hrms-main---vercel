@@ -2667,7 +2667,138 @@ export default function ManageEmployees() {
     }
   };
 
+
   const handleBulkResetPassword = async () => {
+  if (selectedEmployees.length === 0) return;
+
+  console.log('Bulk reset started, sendEmail:', sendEmail); // DEBUG
+  console.log('Selected employees:', selectedEmployees.length); // DEBUG
+
+  setBulkDone(0);
+  setBulkResetting(true);
+  setShowBulkResetConfirm(false);
+
+  const results: BulkResetResult[] = [];
+  const emailResults: Array<{name: string; email: string | null; success: boolean; error?: string}> = [];
+
+  for (const employeeId of selectedEmployees) {
+    const employee = allEmployees.find(emp => emp.id === employeeId);
+    if (!employee) { 
+      setBulkDone(d => d + 1); 
+      continue; 
+    }
+
+    console.log(`Processing employee: ${employee.name}, Email: ${employee.email}`); // DEBUG
+
+    try {
+      const resetRes = await fetch(
+        `${API_BASE_URL}/api/admin/employees/${employeeId}/reset-password`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' } }
+      );
+      if (!resetRes.ok) throw new Error('Failed to reset password');
+
+      const data = await resetRes.json();
+
+      results.push({
+        id: employeeId,
+        name: employee.name,
+        email: employee.email || null,
+        tempPassword: data.tempPassword,
+        success: true,
+      });
+
+      // EMAIL SENDING LOGIC - Add more debugging here
+      if (sendEmail && employee.email) {
+        console.log(`Attempting to send email to: ${employee.email}`); // DEBUG
+        try {
+          const companyName = companies.find(c => c.id === employee.company_id)?.name || employee.company_id;
+          const emailRes = await fetch(`${API_BASE_URL}/api/notifications/password-reset`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: employee.email,
+              employeeName: employee.name,
+              tempPassword: data.tempPassword,
+              companyName,
+            }),
+          });
+          
+          console.log(`Email response status: ${emailRes.status}`); // DEBUG
+          
+          if (!emailRes.ok) {
+            const errorText = await emailRes.text().catch(() => 'Failed to send email');
+            console.error(`Email send failed: ${errorText}`); // DEBUG
+            throw new Error(errorText);
+          }
+          
+          emailResults.push({ name: employee.name, email: employee.email, success: true });
+          console.log(`Email sent successfully to: ${employee.email}`); // DEBUG
+        } catch (emailError: any) {
+          console.error(`Email error for ${employee.email}:`, emailError); // DEBUG
+          emailResults.push({
+            name: employee.name,
+            email: employee.email,
+            success: false,
+            error: emailError?.message || 'Failed to send email',
+          });
+        }
+      } else if (sendEmail && !employee.email) {
+        console.log(`No email for employee: ${employee.name}`); // DEBUG
+        emailResults.push({ name: employee.name, email: null, success: false, error: 'No email address available' });
+      } else {
+        console.log(`Email not sent for: ${employee.name} (sendEmail: ${sendEmail})`); // DEBUG
+      }
+    } catch (error: any) {
+      console.error(`Error processing ${employee.name}:`, error); // DEBUG
+      results.push({
+        id: employeeId,
+        name: employee?.name || employeeId,
+        email: employee?.email || null,
+        tempPassword: '',
+        success: false,
+        error: error?.message || 'Unknown error',
+      });
+    } finally {
+      setBulkDone(d => d + 1);
+    }
+  }
+
+  // DEBUG: Log final results
+  console.log('Bulk reset completed. Results:', results);
+  console.log('Email results:', emailResults);
+  console.log('SendEmail flag was:', sendEmail);
+
+  setBulkResetResults(results);
+
+  // Enhanced notification with more details
+  if (sendEmail) {
+    const ok = emailResults.filter(r => r.success).length;
+    const fail = emailResults.filter(r => !r.success && r.email).length;
+    const none = emailResults.filter(r => !r.success && !r.email).length;
+
+    let msg = '';
+    if (ok) msg += `Emails sent to ${ok} employee(s). `;
+    if (fail) msg += `Failed to send emails to ${fail} employee(s). `;
+    if (none) msg += `${none} employee(s) have no email address.`;
+    
+    if (msg) {
+      showNotification(msg, ok ? 'success' : fail > 0 ? 'error' : 'warning');
+    } else {
+      showNotification('No emails were sent (sendEmail was false)', 'info');
+    }
+  } else {
+    showNotification('Passwords reset successfully (emails not sent)', 'info');
+  }
+
+  setShowBulkResetResults(true);
+  setBulkResetting(false);
+  setBulkResetMode(false);
+  setSelectedEmployees([]);
+  setBulkDone(0);
+};
+
+
+  const handleBulkResetPassword2611 = async () => {
     if (selectedEmployees.length === 0) return;
 
     setBulkDone(0);
@@ -2759,7 +2890,28 @@ export default function ManageEmployees() {
     setBulkDone(0);
   };
 
-  const startBulkReset = () => {
+const startBulkReset = () => {
+  if (selectedEmployees.length === 0) {
+    showNotification('Please select at least one employee for password reset', 'warning');
+    return;
+  }
+  
+  const inactiveEmployees = selectedEmployees.filter(id => {
+    const emp = allEmployees.find(e => e.id === id);
+    return emp && emp.status !== 'active';
+  });
+  
+  if (inactiveEmployees.length > 0) {
+    showNotification('Cannot reset passwords for inactive employees', 'warning');
+    return;
+  }
+  
+  // Reset sendEmail to false when starting new bulk reset
+  setSendEmail(false);
+  setShowBulkResetConfirm(true);
+};
+
+  const startBulkReset2611 = () => {
     if (selectedEmployees.length === 0) {
       showNotification('Please select at least one employee for password reset', 'warning');
       return;
@@ -4096,22 +4248,326 @@ const availableDepartments = useMemo(() => {
         </div>
       )}
 
-      {/* Rest of the modal components remain unchanged */}
-      {showTempPasswordModal && (
-        <div className="modal modal-open backdrop-blur-sm">
-          {/* ... existing temp password modal content ... */}
+       {showTempPasswordModal && (
+         <div className="modal modal-open backdrop-blur-sm">
+          <div className="modal-box max-w-lg p-0 overflow-hidden shadow-xl">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-50 to-blue-50 p-6 border-b border-gray-200">
+              <div className="flex items-start gap-4">
+                <div className="rounded-xl bg-white p-3 shadow-sm border border-gray-200">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-6 w-6 text-indigo-600"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M21 2l-2 2m-7.5 7.5L7 16l1 1-4 4-1-1 4-4-1-1 4.5-4.5M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-800">Temporary Password Created</h3>
+                  <p className="mt-1 text-sm text-gray-600">
+                    Share this temporary password with the employee. They'll be required to change it after first login.
+                  </p>
+
+                  {(resettingEmployee?.name || resettingEmployee?.email) && (
+                    <div className="mt-3 text-sm text-gray-700 bg-white/50 p-2 rounded-lg">
+                      For: <span className="font-medium">{resettingEmployee?.name ?? 'Selected Employee'}</span>
+                      {typeof resettingEmployee?.email === 'string' && resettingEmployee.email.trim() ? (
+                        <>
+                          {' '}· <span className="text-gray-500">Email:</span>{' '}
+                          <span className="font-medium">{resettingEmployee.email}</span>
+                        </>
+                      ) : (
+                        ' · No email available'
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="p-6">
+              {/* Password panel */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Temporary Password</label>
+
+                <div className="flex items-stretch rounded-lg border border-gray-300 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-indigo-500">
+                  <input
+                    type={showPw ? 'text' : 'password'}
+                    value={tempPassword}
+                    readOnly
+                    className="flex-grow px-4 py-3 font-mono text-lg tracking-widest border-0 focus:ring-0"
+                  />
+                  <div className="flex">
+                    {/* Copy */}
+                    <button
+                      type="button"
+                      aria-label="Copy password"
+                      className="px-3 py-2 text-gray-500 hover:text-gray-700 border-l border-gray-300 transition-colors"
+                      onClick={() => {
+                        navigator.clipboard.writeText(tempPassword)
+                          .then(() => showNotification('Copied to clipboard', 'success'))
+                          .catch(() => showNotification('Copy failed', 'error'));
+                      }}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5"
+                        viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                      </svg>
+                    </button>
+                    {/* Show/Hide */}
+                    <button
+                      type="button"
+                      aria-label={showPw ? 'Hide password' : 'Show password'}
+                      className="px-3 py-2 text-gray-500 hover:text-gray-700 border-l border-gray-300 transition-colors"
+                      onClick={() => setShowPw(v => !v)}
+                    >
+                      {showPw ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5"
+                          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M17.94 17.94A10.94 10.94 0 0112 20C6.477 20 2 15.523 2 12c0-1.21.39-2.343 1.06-3.34M9.9 4.24A10.94 10.94 0 0112 4c5.523 0 10 4.477 10 8 0 1.21-.39 2.343-1.06 3.34"/>
+                          <path d="M1 1l22 22"/>
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5"
+                          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                          <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-2 text-xs text-gray-500 flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                  One-time use only; employee must change after login
+                </div>
+              </div>
+
+              {/* Email delivery */}
+              {typeof resettingEmployee?.email === 'string' && resettingEmployee.email.trim() ? (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-5 mb-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-700 flex-shrink-0"
+                      viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="5" width="18" height="14" rx="2" ry="2" />
+                      <path d="M3 7l9 6 9-6" />
+                    </svg>
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-800">Email Delivery</h4>
+                      <p className="text-xs text-gray-600 mt-1">Send this temporary password to the employee's email address</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-700">
+                      Send to: <span className="font-medium text-blue-700">{resettingEmployee.email}</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn btn-sm bg-blue-600 hover:bg-blue-700 text-white border-0"
+                      disabled={emailSending}
+                      onClick={() => handleSendTempPasswordEmail(tempPassword, resettingEmployee!)}
+                    >
+                      {emailSending ? (
+                        <>
+                          <span className="loading loading-spinner loading-xs mr-2"></span>
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="mr-2 h-4 w-4"
+                            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M4 4h16v16H4z" />
+                            <path d="M22 6l-10 7L2 6" />
+                          </svg>
+                          Send Email
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg bg-blue-600-50 border border-amber-200 p-4 mb-6">
+                  <div className="flex items-start">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-500 mt-0.5 mr-3 flex-shrink-0"
+                      viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 9v4m0 4h.01" />
+                      <path d="M10.29 3.86l-8.18 14.14A2 2 0 003.82 21h16.36a2 2 0 001.71-2.99L13.71 3.86a2 2 0 00-3.42 0z" />
+                    </svg>
+                    <div>
+                      <div className="font-medium text-amber-800">Email unavailable</div>
+                      <div className="text-sm text-blue-600 mt-1">No email address is on file for this employee.</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="modal-action bg-gray-50 px-6 py-4 border-t border-gray-200">
+              <button
+                type="button"
+                className="btn bg-blue-600 hover:bg-blue-700 text-white border-0"
+                onClick={() => {
+                  setShowTempPasswordModal(false);
+                  setTempPassword('');
+                  setShowPw(false);
+                  setSendEmail(true); // keep prior behavior
+                  setResettingEmployee(null);
+                }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
       {showBulkResetConfirm && (
         <div className="modal modal-open">
-          {/* ... existing bulk reset confirm modal content ... */}
+          <div className="modal-box">
+            <h3 className="font-bold text-lg">Confirm Bulk Password Reset</h3>
+            <p className="py-4">
+              Are you sure you want to reset passwords for {selectedEmployees.length} employee(s)? 
+              New temporary passwords will be generated for each employee.
+            </p>
+            
+            <div className="bg-yellow-50 p-3 rounded-md mb-4">
+              <p className="text-sm text-yellow-800">
+                <strong>Note:</strong> {selectedEmployees.filter(id => {
+                  const emp = allEmployees.find(e => e.id === id);
+                  return emp && !emp.email;
+                }).length} of the selected employees do not have email addresses.
+              </p>
+            </div>
+            
+            <div className="form-control">
+              <label className="label cursor-pointer justify-start gap-2">
+                <input 
+                  type="checkbox" 
+                  checked={sendEmail} 
+                  onChange={(e) => setSendEmail(e.target.checked)}
+                  className="checkbox checkbox-sm" 
+                />
+                <span className="label-text">
+                  <strong>Email Delivery</strong><br />
+                  Send temporary passwords to employees' email addresses
+                  {!sendEmail && <span className="text-sm text-gray-500 block">(Passwords will still be generated)</span>}
+                </span>
+              </label>
+            </div>
+            
+            <div className="modal-action">
+              <button 
+                className="btn btn-outline" 
+                onClick={() => setShowBulkResetConfirm(false)}
+                disabled={bulkResetting}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn bg-blue-600 hover:bg-blue-700 text-white border-0"
+                onClick={handleBulkResetPassword}
+                disabled={bulkResetting}
+              >
+                {bulkResetting ? (
+                  <>
+                    <span className="loading loading-spinner loading-sm mr-2"></span>
+                    Resetting...
+                  </>
+                ) : (
+                  'Confirm Reset'
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
       {showBulkResetResults && (
         <div className="modal modal-open">
-          {/* ... existing bulk reset results modal content ... */}
+          <div className="modal-box max-w-4xl">
+            <h3 className="font-bold text-lg mb-4">Bulk Password Reset Results</h3>
+            
+            <div className="mb-4 p-4 bg-base-200 rounded-lg">
+              <h4 className="font-semibold mb-2">Summary:</h4>
+              <p>
+                Successfully reset {bulkResetResults.filter(r => r.success).length} of {bulkResetResults.length} passwords.
+                {sendEmail && (
+                  <span className="block mt-1">
+                    {bulkResetResults.filter(r => r.success && r.email).length} employees received emails.
+                  </span>
+                )}
+              </p>
+            </div>
+            
+            <div className="overflow-x-auto max-h-96">
+              <table className="table table-zebra w-full">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Email</th>
+                    <th>Status</th>
+                    <th>Temporary Password</th>
+                    <th>Email Sent</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bulkResetResults.map((result) => (
+                    <tr key={result.id}>
+                      <td>{result.name}</td>
+                      <td>{result.email || 'No email'}</td>
+                      <td>
+                        {result.success ? (
+                          <span className="text-green-600">✓ Success</span>
+                        ) : (
+                          <span className="text-red-600">✗ Failed: {result.error}</span>
+                        )}
+                      </td>
+                      <td className="font-mono">
+                        {result.success ? result.tempPassword : '-'}
+                      </td>
+                      <td>
+                        {result.success && sendEmail ? (
+                          result.email ? (
+                            <span className="text-green-600">✓ Sent</span>
+                          ) : (
+                            <span className="text-orange-600">No email</span>
+                          )
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            <div className="modal-action">
+              <button 
+                className="btn bg-blue-600 hover:bg-blue-700 text-white border-0"
+                onClick={() => {
+                  setShowBulkResetResults(false);
+                  setBulkResetResults([]);
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -4138,6 +4594,7 @@ const availableDepartments = useMemo(() => {
           </div>
         </div>
       )}
+
     </div>
   );
 }
