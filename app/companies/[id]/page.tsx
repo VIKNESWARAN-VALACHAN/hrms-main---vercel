@@ -105,45 +105,157 @@ interface OfficeIpRange {
   created_at?: string;
 }
 const TIMEZONES: { label: string; value: string }[] = [
-  // Core / Malaysia & neighbors
+  // ========== ASIA ==========
+  // Southeast Asia
   { label: 'Asia/Kuala_Lumpur (MYT, +08:00)', value: 'Asia/Kuala_Lumpur' },
   { label: 'Asia/Singapore (SGT, +08:00)', value: 'Asia/Singapore' },
   { label: 'Asia/Jakarta (WIB, +07:00)', value: 'Asia/Jakarta' },
+  { label: 'Asia/Makassar (WITA, +08:00)', value: 'Asia/Makassar' },
+  { label: 'Asia/Jayapura (WIT, +09:00)', value: 'Asia/Jayapura' },
   { label: 'Asia/Bangkok (ICT, +07:00)', value: 'Asia/Bangkok' },
   { label: 'Asia/Manila (PST, +08:00)', value: 'Asia/Manila' },
   { label: 'Asia/Ho_Chi_Minh (ICT, +07:00)', value: 'Asia/Ho_Chi_Minh' },
-  { label: 'Asia/Brunei (+08:00)', value: 'Asia/Brunei' },
+  { label: 'Asia/Brunei (BNT, +08:00)', value: 'Asia/Brunei' },
+  { label: 'Asia/Yangon (MMT, +06:30)', value: 'Asia/Yangon' },
+  { label: 'Asia/Phnom_Penh (ICT, +07:00)', value: 'Asia/Phnom_Penh' },
+  { label: 'Asia/Vientiane (ICT, +07:00)', value: 'Asia/Vientiane' },
+  { label: 'Asia/Dili (TLT, +09:00)', value: 'Asia/Dili' },
 
-  // North Asia
-  { label: 'Asia/Hong_Kong (HKT, +08:00)', value: 'Asia/Hong_Kong' },
+  // East Asia
   { label: 'Asia/Shanghai (CST, +08:00)', value: 'Asia/Shanghai' },
+  { label: 'Asia/Beijing (CST, +08:00)', value: 'Asia/Beijing' },
+  { label: 'Asia/Hong_Kong (HKT, +08:00)', value: 'Asia/Hong_Kong' },
+  { label: 'Asia/Macau (CST, +08:00)', value: 'Asia/Macau' },
   { label: 'Asia/Taipei (CST, +08:00)', value: 'Asia/Taipei' },
   { label: 'Asia/Tokyo (JST, +09:00)', value: 'Asia/Tokyo' },
   { label: 'Asia/Seoul (KST, +09:00)', value: 'Asia/Seoul' },
+  { label: 'Asia/Pyongyang (KST, +09:00)', value: 'Asia/Pyongyang' },
+  { label: 'Asia/Ulaanbaatar (ULAT, +08:00)', value: 'Asia/Ulaanbaatar' },
 
   // South Asia
   { label: 'Asia/Kolkata (IST, +05:30)', value: 'Asia/Kolkata' },
+  { label: 'Asia/Colombo (IST, +05:30)', value: 'Asia/Colombo' },
+  { label: 'Asia/Kathmandu (NPT, +05:45)', value: 'Asia/Kathmandu' },
+  { label: 'Asia/Dhaka (BDT, +06:00)', value: 'Asia/Dhaka' },
+  { label: 'Asia/Thimphu (BTT, +06:00)', value: 'Asia/Thimphu' },
+  { label: 'Asia/Karachi (PKT, +05:00)', value: 'Asia/Karachi' },
+  { label: 'Asia/Kabul (AFT, +04:30)', value: 'Asia/Kabul' },
 
-  // Australia
+  // Central Asia & Middle East
+  { label: 'Asia/Dubai (GST, +04:00)', value: 'Asia/Dubai' },
+  { label: 'Asia/Muscat (GST, +04:00)', value: 'Asia/Muscat' },
+  { label: 'Asia/Qatar (AST, +03:00)', value: 'Asia/Qatar' },
+  { label: 'Asia/Riyadh (AST, +03:00)', value: 'Asia/Riyadh' },
+  { label: 'Asia/Baghdad (AST, +03:00)', value: 'Asia/Baghdad' },
+  { label: 'Asia/Kuwait (AST, +03:00)', value: 'Asia/Kuwait' },
+  { label: 'Asia/Bahrain (AST, +03:00)', value: 'Asia/Bahrain' },
+  { label: 'Asia/Tehran (IRST, +03:30)', value: 'Asia/Tehran' },
+  { label: 'Asia/Baku (AZT, +04:00)', value: 'Asia/Baku' },
+  { label: 'Asia/Tbilisi (GET, +04:00)', value: 'Asia/Tbilisi' },
+  { label: 'Asia/Yerevan (AMT, +04:00)', value: 'Asia/Yerevan' },
+
+  // ========== AUSTRALIA & OCEANIA ==========
   { label: 'Australia/Perth (AWST, +08:00)', value: 'Australia/Perth' },
+  { label: 'Australia/Adelaide (ACST, +09:30)', value: 'Australia/Adelaide' },
+  { label: 'Australia/Darwin (ACST, +09:30)', value: 'Australia/Darwin' },
   { label: 'Australia/Brisbane (AEST, +10:00)', value: 'Australia/Brisbane' },
-  { label: 'Australia/Sydney (AEST/AEDT)', value: 'Australia/Sydney' },
+  { label: 'Australia/Sydney (AEST/AEDT, +10:00/+11:00)', value: 'Australia/Sydney' },
+  { label: 'Australia/Melbourne (AEST/AEDT, +10:00/+11:00)', value: 'Australia/Melbourne' },
+  { label: 'Australia/Hobart (AEST/AEDT, +10:00/+11:00)', value: 'Australia/Hobart' },
+  { label: 'Pacific/Auckland (NZST/NZDT, +12:00/+13:00)', value: 'Pacific/Auckland' },
+  { label: 'Pacific/Fiji (FJT, +12:00)', value: 'Pacific/Fiji' },
+  { label: 'Pacific/Guam (ChST, +10:00)', value: 'Pacific/Guam' },
+  { label: 'Pacific/Port_Moresby (PGT, +10:00)', value: 'Pacific/Port_Moresby' },
 
-  // Europe
-  { label: 'Europe/London (UK)', value: 'Europe/London' },
-  { label: 'Europe/Berlin (CET/CEST)', value: 'Europe/Berlin' },
-  { label: 'Europe/Paris (CET/CEST)', value: 'Europe/Paris' },
+  // ========== EUROPE ==========
+  // Western Europe
+  { label: 'Europe/London (GMT/BST, +00:00/+01:00)', value: 'Europe/London' },
+  { label: 'Europe/Dublin (GMT/IST, +00:00/+01:00)', value: 'Europe/Dublin' },
+  { label: 'Europe/Lisbon (WET, +00:00)', value: 'Europe/Lisbon' },
+  { label: 'Europe/Madrid (CET/CEST, +01:00/+02:00)', value: 'Europe/Madrid' },
+  { label: 'Europe/Paris (CET/CEST, +01:00/+02:00)', value: 'Europe/Paris' },
+  { label: 'Europe/Brussels (CET/CEST, +01:00/+02:00)', value: 'Europe/Brussels' },
+  { label: 'Europe/Amsterdam (CET/CEST, +01:00/+02:00)', value: 'Europe/Amsterdam' },
+  { label: 'Europe/Berlin (CET/CEST, +01:00/+02:00)', value: 'Europe/Berlin' },
+  { label: 'Europe/Rome (CET/CEST, +01:00/+02:00)', value: 'Europe/Rome' },
+  { label: 'Europe/Vienna (CET/CEST, +01:00/+02:00)', value: 'Europe/Vienna' },
+  { label: 'Europe/Zurich (CET/CEST, +01:00/+02:00)', value: 'Europe/Zurich' },
 
-  // Americas
-  { label: 'America/Los_Angeles (PT)', value: 'America/Los_Angeles' },
-  { label: 'America/Denver (MT)', value: 'America/Denver' },
-  { label: 'America/Chicago (CT)', value: 'America/Chicago' },
-  { label: 'America/New_York (ET)', value: 'America/New_York' },
+  // Northern Europe
+  { label: 'Europe/Stockholm (CET/CEST, +01:00/+02:00)', value: 'Europe/Stockholm' },
+  { label: 'Europe/Oslo (CET/CEST, +01:00/+02:00)', value: 'Europe/Oslo' },
+  { label: 'Europe/Copenhagen (CET/CEST, +01:00/+02:00)', value: 'Europe/Copenhagen' },
+  { label: 'Europe/Helsinki (EET/EEST, +02:00/+03:00)', value: 'Europe/Helsinki' },
 
-  // Default / neutral
+  // Eastern Europe
+  { label: 'Europe/Warsaw (CET/CEST, +01:00/+02:00)', value: 'Europe/Warsaw' },
+  { label: 'Europe/Prague (CET/CEST, +01:00/+02:00)', value: 'Europe/Prague' },
+  { label: 'Europe/Budapest (CET/CEST, +01:00/+02:00)', value: 'Europe/Budapest' },
+  { label: 'Europe/Bucharest (EET/EEST, +02:00/+03:00)', value: 'Europe/Bucharest' },
+  { label: 'Europe/Sofia (EET/EEST, +02:00/+03:00)', value: 'Europe/Sofia' },
+  { label: 'Europe/Athens (EET/EEST, +02:00/+03:00)', value: 'Europe/Athens' },
+  { label: 'Europe/Istanbul (TRT, +03:00)', value: 'Europe/Istanbul' },
+  { label: 'Europe/Moscow (MSK, +03:00)', value: 'Europe/Moscow' },
+  { label: 'Europe/Kiev (EET/EEST, +02:00/+03:00)', value: 'Europe/Kiev' },
+
+  // ========== AFRICA ==========
+  { label: 'Africa/Cairo (EET/EEST, +02:00/+03:00)', value: 'Africa/Cairo' },
+  { label: 'Africa/Johannesburg (SAST, +02:00)', value: 'Africa/Johannesburg' },
+  { label: 'Africa/Lagos (WAT, +01:00)', value: 'Africa/Lagos' },
+  { label: 'Africa/Casablanca (WEST, +01:00)', value: 'Africa/Casablanca' },
+  { label: 'Africa/Nairobi (EAT, +03:00)', value: 'Africa/Nairobi' },
+  { label: 'Africa/Addis_Ababa (EAT, +03:00)', value: 'Africa/Addis_Ababa' },
+  { label: 'Africa/Accra (GMT, +00:00)', value: 'Africa/Accra' },
+
+  // ========== NORTH AMERICA ==========
+  // United States
+  { label: 'America/New_York (ET, -05:00/-04:00)', value: 'America/New_York' },
+  { label: 'America/Chicago (CT, -06:00/-05:00)', value: 'America/Chicago' },
+  { label: 'America/Denver (MT, -07:00/-06:00)', value: 'America/Denver' },
+  { label: 'America/Los_Angeles (PT, -08:00/-07:00)', value: 'America/Los_Angeles' },
+  { label: 'America/Phoenix (MST, -07:00)', value: 'America/Phoenix' },
+  { label: 'America/Anchorage (AKST, -09:00)', value: 'America/Anchorage' },
+  { label: 'America/Honolulu (HST, -10:00)', value: 'America/Honolulu' },
+
+  // Canada
+  { label: 'America/Toronto (ET, -05:00/-04:00)', value: 'America/Toronto' },
+  { label: 'America/Vancouver (PT, -08:00/-07:00)', value: 'America/Vancouver' },
+  { label: 'America/Edmonton (MT, -07:00/-06:00)', value: 'America/Edmonton' },
+  { label: 'America/Winnipeg (CT, -06:00/-05:00)', value: 'America/Winnipeg' },
+  { label: 'America/Halifax (AT, -04:00/-03:00)', value: 'America/Halifax' },
+
+  // Mexico & Central America
+  { label: 'America/Mexico_City (CST, -06:00)', value: 'America/Mexico_City' },
+  { label: 'America/Cancun (EST, -05:00)', value: 'America/Cancun' },
+  { label: 'America/Guatemala (CST, -06:00)', value: 'America/Guatemala' },
+  { label: 'America/Costa_Rica (CST, -06:00)', value: 'America/Costa_Rica' },
+  { label: 'America/Panama (EST, -05:00)', value: 'America/Panama' },
+
+  // Caribbean
+  { label: 'America/Havana (CST/CDT, -05:00/-04:00)', value: 'America/Havana' },
+  { label: 'America/Jamaica (EST, -05:00)', value: 'America/Jamaica' },
+  { label: 'America/Puerto_Rico (AST, -04:00)', value: 'America/Puerto_Rico' },
+  { label: 'America/Port-au-Prince (EST, -05:00)', value: 'America/Port-au-Prince' },
+
+  // ========== SOUTH AMERICA ==========
+  { label: 'America/Sao_Paulo (BRT, -03:00)', value: 'America/Sao_Paulo' },
+  { label: 'America/Buenos_Aires (ART, -03:00)', value: 'America/Buenos_Aires' },
+  { label: 'America/Lima (PET, -05:00)', value: 'America/Lima' },
+  { label: 'America/Bogota (COT, -05:00)', value: 'America/Bogota' },
+  { label: 'America/Caracas (VET, -04:00)', value: 'America/Caracas' },
+  { label: 'America/Santiago (CLT, -04:00)', value: 'America/Santiago' },
+
+  // ========== PACIFIC & OTHERS ==========
+  { label: 'Pacific/Honolulu (HST, -10:00)', value: 'Pacific/Honolulu' },
+  { label: 'Pacific/Tahiti (TAHT, -10:00)', value: 'Pacific/Tahiti' },
+  { label: 'Pacific/Majuro (MHT, +12:00)', value: 'Pacific/Majuro' },
+
+  // ========== STANDARD & UTC ==========
   { label: 'UTC (Coordinated Universal Time)', value: 'UTC' },
+  { label: 'GMT (Greenwich Mean Time)', value: 'GMT' },
+  { label: 'Etc/UTC (UTC)', value: 'Etc/UTC' },
+  { label: 'Etc/GMT (GMT)', value: 'Etc/GMT' },
 ];
-
 
 export default function CompanyDetails() {
   const params = useParams();
