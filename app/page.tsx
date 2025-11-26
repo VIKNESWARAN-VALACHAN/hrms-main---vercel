@@ -254,7 +254,8 @@ const todayMeta = useTodayStatus(
   (Number(employee.work_break) || 0)
 );
   
-
+// Add this to your state declarations
+const [isAttendanceLoading, setIsAttendanceLoading] = useState(false);
   const [recentAnnouncements, setRecentAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
@@ -989,6 +990,7 @@ const fetchTodayAttendance = useCallback(async () => {
 
 const handleAttendanceToggle = async () => {
   try {
+    setIsAttendanceLoading(true);
     if (!employeeId) {
       showNotification(
         'Employee ID is not available. Please refresh the page or log in again.',
@@ -1049,6 +1051,9 @@ const handleAttendanceToggle = async () => {
     const msg = err instanceof Error ? err.message : 'Attendance action failed';
     showNotification(msg, 'error');
     console.error('Error with attendance action:', err);
+  } finally {
+    // Always reset loading state, whether success or error
+    setIsAttendanceLoading(false);
   }
 };
 
@@ -1559,7 +1564,7 @@ const handleAttendanceToggle = async () => {
               </div>
 
             {/* Check in/out button */}
-            <button 
+            {/* <button 
               onClick={handleAttendanceToggle}
               className={`btn w-full py-4 text-lg font-semibold ${
                 todayAttendance.isCheckedIn 
@@ -1570,7 +1575,29 @@ const handleAttendanceToggle = async () => {
               {todayAttendance.isCheckedIn 
                 ? "Check Out Now" 
                 : "Check In Now"}
-            </button>
+            </button> */}
+
+            {/* Check in/out button */}
+<button 
+  onClick={handleAttendanceToggle}
+  disabled={isAttendanceLoading}
+  className={`btn w-full py-4 text-lg font-semibold ${
+    todayAttendance.isCheckedIn 
+      ? "bg-gradient-to-r from-yellow-500 to-yellow-600 border-0 hover:from-yellow-600 hover:to-yellow-700" 
+      : "bg-gradient-to-r from-green-600 to-green-700 border-0 hover:from-green-700 hover:to-green-800"
+  } text-white shadow-md hover:shadow-lg transition-all duration-300 ${
+    isAttendanceLoading ? 'opacity-70 cursor-not-allowed' : ''
+  }`}
+>
+  {isAttendanceLoading ? (
+    <>
+      <span className="loading loading-spinner loading-sm"></span>
+      {todayAttendance.isCheckedIn ? "Checking Out..." : "Checking In..."}
+    </>
+  ) : (
+    todayAttendance.isCheckedIn ? "Check Out Now" : "Check In Now"
+  )}
+</button>
           </div>
 
           {/* Right side - Additional info panel */}
