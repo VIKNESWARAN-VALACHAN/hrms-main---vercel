@@ -292,6 +292,12 @@ interface AppealData {
   attendance_day_id: number;
 }
 
+interface Notification {
+  id: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+}
+
 interface AttendanceStats {
   overallAttendanceRate: number;
   topEmployees: EmployeeAttendance[];
@@ -648,7 +654,8 @@ const [overtimePagination, setOvertimePagination] = useState({
 const [overtimePage, setOvertimePage] = useState(1);
 const [overtimeFilter, setOvertimeFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
 const [overtimeRecordsPerPage] = useState(10);
-
+const [notifications, setNotifications] = useState<Notification[]>([]);
+  
   // Add state for filter toggle (responsive filters)
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   // Initialize employeeId from localStorage on component mount
@@ -1206,7 +1213,7 @@ async function postAttendanceWithIp(url: string, payload: any) {
   };
 
   // Update handleAttendanceAction to use the state variable
-  const handleAttendanceAction = async () => {
+  const handleAttendanceAction2711 = async () => {
     try {
       // Check if we have the employee ID before making the request
       if (!employeeId) {
@@ -1242,6 +1249,90 @@ async function postAttendanceWithIp(url: string, payload: any) {
       console.error('Error with attendance action:', err);
     }
   };
+
+const handleAttendanceAction = async () => {
+  try {
+    setIsAttendanceLoading(true);
+    
+    // ✅ CAPTURE THE ACTION TYPE BEFORE MAKING THE REQUEST
+    const isCheckingIn = !todayAttendance.isCheckedIn;
+    const actionType = isCheckingIn ? 'checked in' : 'checked out';
+
+    if (!employeeId) {
+      showNotification(
+        'Employee ID is not available. Please refresh the page or log in again.',
+        'error'
+      );
+      return;
+    }
+
+    const endpoint = todayAttendance.isCheckedIn
+      ? API_ROUTES.checkOut
+      : API_ROUTES.checkIn;
+
+    const res = await postAttendanceWithIp(
+      `${API_BASE_URL}${endpoint}`,
+      { employee_id: employeeId }
+    );
+
+    const payload = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      const serverMsg = payload?.message || payload?.error || `HTTP ${res.status}`;
+
+      if (res.status === 403 && payload?.code === 'IP_BLOCKED') {
+        showNotification(serverMsg, 'error');
+        return;
+      }
+
+      if (res.status === 701) {
+        showNotification(serverMsg, 'info');
+        return;
+      }
+
+      throw new Error(serverMsg);
+    }
+
+    // ✅ USE THE CAPTURED ACTION TYPE INSTEAD OF todayAttendance.isCheckedIn
+    showNotification(
+      `Successfully ${actionType}!`,
+      'success'
+    );
+
+    // If backend flagged the IP in FLAG_ONLY mode, surface that to the user
+    if (payload?.ipFlag) {
+      setTimeout(() => {
+        showNotification(
+          payload?.ipMessage || 'Outside allowed IP (flagged).',
+          'error' // Consider using 'warning' instead of 'error' for flags
+        );
+      }, 1500);
+    }
+
+    // Refresh data
+    await fetchTodayAttendance();
+    setTimeout(() => { fetchTodayAttendance(); }, 500);
+
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Attendance action failed';
+    showNotification(msg, 'error');
+    console.error('Error with attendance action:', err);
+  } finally {
+    setIsAttendanceLoading(false);
+  }
+};
+
+  //   const showNotification = (message: string, type: 'success' | 'error' | 'info') => {
+  //   const id = Math.random().toString(36).substring(2, 9);
+  //   setNotifications(prev => [...prev, { id, message, type }]);
+
+  //   if (type === 'error') setError(message);
+
+  //   setTimeout(() => {
+  //     setNotifications(prev => prev.filter(notification => notification.id !== id));
+  //     if (type === 'error') setError('');
+  //   }, 3000);
+  // };
 
   const applyAttendanceFilters = async (filter: Record<string, string>) => {
   const filtersQuery = filter || filters;
@@ -3976,12 +4067,29 @@ useEffect(() => {
                 </h1>
 
                 {/* NEW: Check-in/out action button */}
-                <button
+                {/* <button
                   onClick={handleAttendanceAction}
                   className={`btn ${todayAttendance.isCheckedIn ? 'btn-error' : 'btn-success'} text-white px-6 py-2 rounded-md`}
                 >
                   {todayAttendance.isCheckedIn ? 'Check Out' : 'Check In'}
-                </button>
+                </button> */}
+
+<button
+  onClick={handleAttendanceAction}
+  disabled={isAttendanceLoading}
+  className={`btn ${todayAttendance.isCheckedIn ? 'btn-error' : 'btn-success'} text-white px-6 py-2 rounded-md ${
+    isAttendanceLoading ? 'opacity-70 cursor-not-allowed' : ''
+  }`}
+>
+  {isAttendanceLoading ? (
+    <>
+      <span className="loading loading-spinner loading-sm"></span>
+      {todayAttendance.isCheckedIn ? "Checking Out..." : "Checking In..."}
+    </>
+  ) : (
+    todayAttendance.isCheckedIn ? 'Check Out' : 'Check In'
+  )}
+</button>
               </div>
               <p className={`mb-6 ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`}>
                 Track your daily attendance and view attendance history
@@ -4441,6 +4549,7 @@ useEffect(() => {
           </span>
         </div>
         <div>
+          
           <span className={`${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Status:</span>
           <span className={`ml-2 badge ${getStatusBadgeClass(selectedRecord.status)}`}>
             {selectedRecord.status}
@@ -4501,7 +4610,7 @@ useEffect(() => {
                           <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Check In</th>
                           <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Check Out</th>
                           <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Working Hours</th>
-                          <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Working Status</th>
+                          {/* <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Working Status</th> */}
                           <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Status</th>
                           <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Appeal Status</th>
                           {/* <th className={`${theme === 'light' ? 'text-slate-700' : 'text-slate-200'}`}>Action</th> */}
@@ -4555,11 +4664,11 @@ useEffect(() => {
                               return `${diffHrs}h ${diffMins}m`;
                             })()}
                             </td>
-                            <td>
+                            {/* <td>
                               <span className={`badge ${!session.checkOut && idx === sessions.length - 1 && todayAttendance.isCheckedIn ? 'badge-success animate-pulse' : 'badge-info'}`}>
                                 {!session.checkOut && idx === sessions.length - 1 && todayAttendance.isCheckedIn ? 'Active' : 'Complete'}
                               </span>
-                            </td>
+                            </td> */}
                             <td>
                               <span className="badge badge-success">
                                 Present
@@ -4617,7 +4726,7 @@ useEffect(() => {
                                   {record.checkOut ? displayTime(record.checkOut) : '--'}
                               </td>
                               <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{workingHours || '--'}</td>
-                              <td>
+                              {/* <td>
                                 {record.checkIn && record.checkOut ? (
                                   <span className="badge badge-info">Complete</span>
                                 ) : record.checkIn ? (
@@ -4625,7 +4734,7 @@ useEffect(() => {
                                 ) : (
                                   <span className="badge badge-error">No Check-in</span>
                                 )}
-                              </td>
+                              </td> */}
                               <td>
                                 <span className={`badge ${getStatusBadgeClass(record.status)}`}>
                                   {record.status}
@@ -6358,514 +6467,514 @@ useEffect(() => {
         </div>
       )}
 
-{activeTab === 'overtime' && (
-  <div className={`p-6 rounded-lg shadow-md ${theme === 'light' ? 'bg-white' : 'bg-slate-800'}`}>
-    {/* Header with View Toggles */}
-    <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6">
-      <h2 className={`text-2xl font-bold ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
-        Overtime Management
-      </h2>
-      
-      {/* View Toggle Buttons */}
-      <div className="flex flex-wrap gap-2 mt-4 lg:mt-0">
-        <div className={`tabs tabs-boxed p-1 rounded-lg ${theme === 'light' ? 'bg-slate-100' : 'bg-slate-700'}`}>
-          <button
-            className={`tab ${overtimeView === 'myRecords' ? 
-              `${theme === 'light' ? 'tab-active bg-white shadow-sm text-slate-900' : 'tab-active bg-slate-600 shadow-sm text-slate-100'}` : 
-              `${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`
-            }`}
-            onClick={() => handleOvertimeViewChange('myRecords')}
-          >
-            My Overtime Records
-          </button>
-          
-          {/* Show approval tabs only for approvers */}
-          {(role === 'admin' || role === 'manager' || role === 'supervisor') && (
-            <>
-              <button
-                className={`tab ${overtimeView === 'pendingApprovals' ? 
-                  `${theme === 'light' ? 'tab-active bg-white shadow-sm text-slate-900' : 'tab-active bg-slate-600 shadow-sm text-slate-100'}` : 
-                  `${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`
-                }`}
-                onClick={() => handleOvertimeViewChange('pendingApprovals')}
-              >
-                Pending Approvals
-                {pendingApprovals.length > 0 && (
-                  <span className="badge badge-primary badge-sm ml-2">
-                    {pendingApprovals.length}
-                  </span>
+      {activeTab === 'overtime' && (
+        <div className={`p-6 rounded-lg shadow-md ${theme === 'light' ? 'bg-white' : 'bg-slate-800'}`}>
+          {/* Header with View Toggles */}
+          <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center mb-6">
+            <h2 className={`text-2xl font-bold ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
+              Overtime Management
+            </h2>
+            
+            {/* View Toggle Buttons */}
+            <div className="flex flex-wrap gap-2 mt-4 lg:mt-0">
+              <div className={`tabs tabs-boxed p-1 rounded-lg ${theme === 'light' ? 'bg-slate-100' : 'bg-slate-700'}`}>
+                <button
+                  className={`tab ${overtimeView === 'myRecords' ? 
+                    `${theme === 'light' ? 'tab-active bg-white shadow-sm text-slate-900' : 'tab-active bg-slate-600 shadow-sm text-slate-100'}` : 
+                    `${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`
+                  }`}
+                  onClick={() => handleOvertimeViewChange('myRecords')}
+                >
+                  My Overtime Records
+                </button>
+                
+                {/* Show approval tabs only for approvers */}
+                {(role === 'admin' || role === 'manager' || role === 'supervisor') && (
+                  <>
+                    <button
+                      className={`tab ${overtimeView === 'pendingApprovals' ? 
+                        `${theme === 'light' ? 'tab-active bg-white shadow-sm text-slate-900' : 'tab-active bg-slate-600 shadow-sm text-slate-100'}` : 
+                        `${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`
+                      }`}
+                      onClick={() => handleOvertimeViewChange('pendingApprovals')}
+                    >
+                      Pending Approvals
+                      {pendingApprovals.length > 0 && (
+                        <span className="badge badge-primary badge-sm ml-2">
+                          {pendingApprovals.length}
+                        </span>
+                      )}
+                    </button>
+                    
+                    <button
+                      className={`tab ${overtimeView === 'approvalHistory' ? 
+                        `${theme === 'light' ? 'tab-active bg-white shadow-sm text-slate-900' : 'tab-active bg-slate-600 shadow-sm text-slate-100'}` : 
+                        `${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`
+                      }`}
+                      onClick={() => handleOvertimeViewChange('approvalHistory')}
+                    >
+                      Approval History
+                    </button>
+                  </>
                 )}
-              </button>
-              
-              <button
-                className={`tab ${overtimeView === 'approvalHistory' ? 
-                  `${theme === 'light' ? 'tab-active bg-white shadow-sm text-slate-900' : 'tab-active bg-slate-600 shadow-sm text-slate-100'}` : 
-                  `${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`
-                }`}
-                onClick={() => handleOvertimeViewChange('approvalHistory')}
-              >
-                Approval History
-              </button>
-            </>
+              </div>
+            </div>
+          </div>
+
+          {/* Approval History Filters */}
+          {overtimeView === 'approvalHistory' && (
+            <div className={`mb-6 p-4 rounded-lg ${theme === 'light' ? 'bg-slate-50 border border-slate-200' : 'bg-slate-700 border border-slate-600'}`}>
+              <div className="flex flex-wrap items-center gap-4">
+                <span className={`font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
+                  Filter by action:
+                </span>
+                <div className="join">
+                  <button
+                    className={`join-item btn btn-sm ${approvalHistoryType === 'all' ? 
+                      `${theme === 'light' ? 'btn-primary' : 'bg-blue-600 text-white'}` : 
+                      `${theme === 'light' ? 'btn-ghost border-slate-300' : 'bg-slate-600 border-slate-500 text-slate-300'}`
+                    }`}
+                    onClick={() => handleApprovalHistoryFilter('all')}
+                  >
+                    All Actions
+                  </button>
+                  <button
+                    className={`join-item btn btn-sm ${approvalHistoryType === 'approved' ? 
+                      `${theme === 'light' ? 'btn-success' : 'bg-green-600 text-white'}` : 
+                      `${theme === 'light' ? 'btn-ghost border-slate-300' : 'bg-slate-600 border-slate-500 text-slate-300'}`
+                    }`}
+                    onClick={() => handleApprovalHistoryFilter('approved')}
+                  >
+                    Approved
+                  </button>
+                  <button
+                    className={`join-item btn btn-sm ${approvalHistoryType === 'rejected' ? 
+                      `${theme === 'light' ? 'btn-error' : 'bg-red-600 text-white'}` : 
+                      `${theme === 'light' ? 'btn-ghost border-slate-300' : 'bg-slate-600 border-slate-500 text-slate-300'}`
+                    }`}
+                    onClick={() => handleApprovalHistoryFilter('rejected')}
+                  >
+                    Rejected
+                  </button>
+                </div>
+              </div>
+            </div>
           )}
-        </div>
-      </div>
-    </div>
 
-    {/* Approval History Filters */}
-    {overtimeView === 'approvalHistory' && (
-      <div className={`mb-6 p-4 rounded-lg ${theme === 'light' ? 'bg-slate-50 border border-slate-200' : 'bg-slate-700 border border-slate-600'}`}>
-        <div className="flex flex-wrap items-center gap-4">
-          <span className={`font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>
-            Filter by action:
-          </span>
-          <div className="join">
-            <button
-              className={`join-item btn btn-sm ${approvalHistoryType === 'all' ? 
-                `${theme === 'light' ? 'btn-primary' : 'bg-blue-600 text-white'}` : 
-                `${theme === 'light' ? 'btn-ghost border-slate-300' : 'bg-slate-600 border-slate-500 text-slate-300'}`
-              }`}
-              onClick={() => handleApprovalHistoryFilter('all')}
-            >
-              All Actions
-            </button>
-            <button
-              className={`join-item btn btn-sm ${approvalHistoryType === 'approved' ? 
-                `${theme === 'light' ? 'btn-success' : 'bg-green-600 text-white'}` : 
-                `${theme === 'light' ? 'btn-ghost border-slate-300' : 'bg-slate-600 border-slate-500 text-slate-300'}`
-              }`}
-              onClick={() => handleApprovalHistoryFilter('approved')}
-            >
-              Approved
-            </button>
-            <button
-              className={`join-item btn btn-sm ${approvalHistoryType === 'rejected' ? 
-                `${theme === 'light' ? 'btn-error' : 'bg-red-600 text-white'}` : 
-                `${theme === 'light' ? 'btn-ghost border-slate-300' : 'bg-slate-600 border-slate-500 text-slate-300'}`
-              }`}
-              onClick={() => handleApprovalHistoryFilter('rejected')}
-            >
-              Rejected
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
+          {/* Loading State */}
+          {isLoadingOvertime && (
+            <div className="flex justify-center items-center py-10">
+              <div className={`animate-spin rounded-full h-12 w-12 border-b-2 ${theme === 'light' ? 'border-blue-700' : 'border-blue-400'}`}></div>
+            </div>
+          )}
 
-    {/* Loading State */}
-    {isLoadingOvertime && (
-      <div className="flex justify-center items-center py-10">
-        <div className={`animate-spin rounded-full h-12 w-12 border-b-2 ${theme === 'light' ? 'border-blue-700' : 'border-blue-400'}`}></div>
-      </div>
-    )}
+          {/* Overtime Content Based on View */}
+          {!isLoadingOvertime && (
+            <div className="space-y-6">
+              {/* My Overtime Records View */}
+              {overtimeView === 'myRecords' && (
+                <div>
+                  {overtimeRequests.length === 0 ? (
+                    <div className={`text-center py-8 ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+                      <CiFaceFrown className="mx-auto h-12 w-12 mb-4" />
+                      <p>No overtime records found.</p>
+                    </div>
+                  ) : (
+                    <div className={`overflow-x-auto rounded-lg shadow ${theme === 'light' ? 'bg-white' : 'bg-slate-700'}`}>
+                      <table className="table w-full">
+                        <thead>
+                          <tr className={theme === 'light' ? 'bg-slate-100' : 'bg-slate-600'}>
+                            <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Date</th>
+                            <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Total Hours</th>
+                            <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>OT Hours</th>
+                            <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Type</th>
+                            <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Status</th>
+                            <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Amount</th>
+                            <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {overtimeRequests.map((record) => {
+                            const statusDisplay = getOvertimeStatusDisplay(record.status);
+                            const typeDisplay = getOvertimeTypeDisplay(record.ot_type);
+                            
+                            return (
+                              <tr 
+                                key={record.ot_request_id}
+                                className={`${theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-600'} ${
+                                  record._justUpdated ? (theme === 'light' ? 'bg-green-100' : 'bg-green-900') + ' animate-pulse' : ''
+                                }`}
+                              >
+                                <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>
+                                  {displayDateOnly(record.ot_date)}
+                                </td>
+                                <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>
+                                  {(record.total_worked_minutes / 60).toFixed(1)}h
+                                </td>
+                                <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>
+                                  {(record.ot_minutes / 60).toFixed(1)}h
+                                </td>
+                                <td>
+                                  <span className={`badge ${typeDisplay.class}`}>
+                                    {typeDisplay.label}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span className={`badge ${statusDisplay.class}`}>
+                                    {statusDisplay.label}
+                                  </span>
+                                </td>
+                                <td className={`font-medium ${theme === 'light' ? 'text-green-600' : 'text-green-400'}`}>
+                                  RM {record.calculated_amount || '0.00'}
+                                </td>
+                                <td>
+                                  <div className="flex gap-2">
+                                    <button
+                                      className={`btn btn-xs ${theme === 'light' ? 'btn-info' : 'bg-blue-600 border-blue-600 text-white'}`}
+                                      onClick={() => fetchOvertimeDetails(record.ot_request_id)}
+                                    >
+                                      Details
+                                    </button>
+                                    {canApplyForOvertime(record) && (
+                                      <button
+                                        className={`btn btn-xs ${theme === 'light' ? 'btn-success' : 'bg-green-600 border-green-600 text-white'}`}
+                                        onClick={() => {
+                                          setSelectedOvertimeForApply(record);
+                                          setIsOvertimeApplyModalOpen(true);
+                                        }}
+                                      >
+                                        Apply
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
 
-    {/* Overtime Content Based on View */}
-    {!isLoadingOvertime && (
-      <div className="space-y-6">
-        {/* My Overtime Records View */}
-        {overtimeView === 'myRecords' && (
-          <div>
-            {overtimeRequests.length === 0 ? (
-              <div className={`text-center py-8 ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
-                <CiFaceFrown className="mx-auto h-12 w-12 mb-4" />
-                <p>No overtime records found.</p>
-              </div>
-            ) : (
-              <div className={`overflow-x-auto rounded-lg shadow ${theme === 'light' ? 'bg-white' : 'bg-slate-700'}`}>
-                <table className="table w-full">
-                  <thead>
-                    <tr className={theme === 'light' ? 'bg-slate-100' : 'bg-slate-600'}>
-                      <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Date</th>
-                      <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Total Hours</th>
-                      <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>OT Hours</th>
-                      <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Type</th>
-                      <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Status</th>
-                      <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Amount</th>
-                      <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {overtimeRequests.map((record) => {
-                      const statusDisplay = getOvertimeStatusDisplay(record.status);
-                      const typeDisplay = getOvertimeTypeDisplay(record.ot_type);
-                      
-                      return (
-                        <tr 
-                          key={record.ot_request_id}
-                          className={`${theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-600'} ${
-                            record._justUpdated ? (theme === 'light' ? 'bg-green-100' : 'bg-green-900') + ' animate-pulse' : ''
+              {/* Pending Approvals View */}
+              {overtimeView === 'pendingApprovals' && (
+                <div>
+                  {pendingApprovals.length === 0 ? (
+                    <div className={`text-center py-8 ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+                      <CiFaceFrown className="mx-auto h-12 w-12 mb-4" />
+                      <p>No pending approvals found.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className={`p-4 rounded-lg ${theme === 'light' ? 'bg-blue-50 border border-blue-200' : 'bg-blue-900 border border-blue-700'}`}>
+                        <div className="flex items-center">
+                          <svg className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                          </svg>
+                          <span className={`font-medium ${theme === 'light' ? 'text-blue-800' : 'text-blue-200'}`}>
+                            You have {pendingApprovals.length} overtime request(s) waiting for your approval
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className={`overflow-x-auto rounded-lg shadow ${theme === 'light' ? 'bg-white' : 'bg-slate-700'}`}>
+                        <table className="table w-full">
+                          <thead>
+                            <tr className={theme === 'light' ? 'bg-slate-100' : 'bg-slate-600'}>
+                              <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Employee</th>
+                              <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Department</th>
+                              <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Date</th>
+                              <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>OT Hours</th>
+                              <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Type</th>
+                              <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Current Level</th>
+                              <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Amount</th>
+                              <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pendingApprovals.map((record) => {
+                              const typeDisplay = getOvertimeTypeDisplay(record.ot_type);
+                              
+                              return (
+                                <tr 
+                                  key={record.ot_request_id}
+                                  className={theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-600'}
+                                >
+                                  <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>
+                                    <div>
+                                      <div className="font-bold">{record.employee_name || 'Unknown'}</div>
+                                      <div className="text-sm opacity-70">{record.employee_no || record.employee_id}</div>
+                                    </div>
+                                  </td>
+                                  <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>{record.department_name || 'N/A'}</td>
+                                  <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>{displayDateOnly(record.ot_date)}</td>
+                                  <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>{(record.ot_minutes / 60).toFixed(1)}h</td>
+                                  <td>
+                                    <span className={`badge ${typeDisplay.class}`}>
+                                      {typeDisplay.label}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <span className={`badge ${theme === 'light' ? 'badge-info' : 'bg-blue-600 text-white'}`}>
+                                      {record.current_approval_level || record.current_approver || 'Pending'}
+                                    </span>
+                                  </td>
+                                  <td className={`font-medium ${theme === 'light' ? 'text-green-600' : 'text-green-400'}`}>
+                                    RM {record.calculated_amount || '0.00'}
+                                  </td>
+                                  <td>
+                                    <div className="flex gap-2">
+                                      <button
+                                        className={`btn btn-xs ${theme === 'light' ? 'btn-success' : 'bg-green-600 border-green-600 text-white'}`}
+                                        onClick={() => {
+                                          setSelectedOvertimeForApproval(record);
+                                          setApprovalComment('');
+                                          setConfirmAction('approve');
+                                          setShowConfirmModal(true);
+                                        }}
+                                        disabled={isProcessingApproval}
+                                      >
+                                        {isProcessingApproval ? (
+                                          <span className="loading loading-spinner loading-xs"></span>
+                                        ) : (
+                                          'Approve'
+                                        )}
+                                      </button>
+                                      <button
+                                        className={`btn btn-xs ${theme === 'light' ? 'btn-error' : 'bg-red-600 border-red-600 text-white'}`}
+                                        onClick={() => {
+                                          setSelectedOvertimeForApproval(record);
+                                          setApprovalComment('');
+                                          setConfirmAction('reject');
+                                          setShowConfirmModal(true);
+                                        }}
+                                        disabled={isProcessingApproval}
+                                      >
+                                        {isProcessingApproval ? (
+                                          <span className="loading loading-spinner loading-xs"></span>
+                                        ) : (
+                                          'Reject'
+                                        )}
+                                      </button>
+                                      <button
+                                        className={`btn btn-xs ${theme === 'light' ? 'btn-info' : 'bg-blue-600 border-blue-600 text-white'}`}
+                                        onClick={() => fetchOvertimeDetails(record.ot_request_id)}
+                                      >
+                                        Details
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Approval History View */}
+              {overtimeView === 'approvalHistory' && (
+                <div>
+                  {approvalHistory.length === 0 ? (
+                    <div className={`text-center py-8 ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+                      <CiFaceFrown className="mx-auto h-12 w-12 mb-4" />
+                      <p>No approval history found.</p>
+                      <p className="text-sm mt-2">
+                        {approvalHistoryType !== 'all' 
+                          ? `No ${approvalHistoryType} records found.` 
+                          : 'You have not processed any overtime requests yet.'
+                        }
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className={`p-4 rounded-lg ${theme === 'light' ? 'bg-green-50 border border-green-200' : 'bg-green-900 border border-green-700'}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <svg className="w-5 h-5 mr-2 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                            <span className={`font-medium ${theme === 'light' ? 'text-green-800' : 'text-green-200'}`}>
+                              Showing {approvalHistory.length} historical approval(s)
+                            </span>
+                          </div>
+                          <div className="text-sm opacity-70">
+                            Filter: <span className="font-medium capitalize">{approvalHistoryType}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className={`overflow-x-auto rounded-lg shadow ${theme === 'light' ? 'bg-white' : 'bg-slate-700'}`}>
+                        <table className="table w-full">
+                          <thead>
+                            <tr className={theme === 'light' ? 'bg-slate-100' : 'bg-slate-600'}>
+                              <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Employee</th>
+                              <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Date</th>
+                              <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>OT Hours</th>
+                              <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Type</th>
+                              <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Your Action</th>
+                              <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Final Status</th>
+                              <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Amount</th>
+                              <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {approvalHistory.map((record) => {
+                              const typeDisplay = getOvertimeTypeDisplay(record.ot_type);
+                              const finalStatusDisplay = getOvertimeStatusDisplay(record.status);
+                              
+                              // Fixed user action detection
+                              const getUserAction = () => {
+                                if (record.status === OvertimeStatus.APPROVED) return 'Approved';
+                                if (record.status === OvertimeStatus.REJECTED) return 'Rejected';
+                                return 'Processed';
+                              };
+
+                              const userAction = getUserAction();
+                              
+                              return (
+                                <tr 
+                                  key={record.ot_request_id}
+                                  className={theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-600'}
+                                >
+                                  <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>
+                                    <div>
+                                      <div className="font-bold">{record.employee_name || 'Unknown'}</div>
+                                      <div className="text-sm opacity-70">{record.employee_no || record.employee_id}</div>
+                                    </div>
+                                  </td>
+                                  <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>{displayDateOnly(record.ot_date)}</td>
+                                  <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>{(record.ot_minutes / 60).toFixed(1)}h</td>
+                                  <td>
+                                    <span className={`badge ${typeDisplay.class}`}>
+                                      {typeDisplay.label}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <span className={`badge ${
+                                      userAction?.toLowerCase().includes('approved') ? 
+                                      `${theme === 'light' ? 'badge-success' : 'bg-green-600 text-white'}` : 
+                                      userAction?.toLowerCase().includes('rejected') ? 
+                                      `${theme === 'light' ? 'badge-error' : 'bg-red-600 text-white'}` : 
+                                      `${theme === 'light' ? 'badge-info' : 'bg-blue-600 text-white'}`
+                                    }`}>
+                                      {userAction}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    <span className={`badge ${finalStatusDisplay.class}`}>
+                                      {finalStatusDisplay.label}
+                                    </span>
+                                  </td>
+                                  <td className={`font-medium ${theme === 'light' ? 'text-green-600' : 'text-green-400'}`}>
+                                    RM {record.calculated_amount || '0.00'}
+                                  </td>
+                                  <td>
+                                    <button
+                                      className={`btn btn-xs ${theme === 'light' ? 'btn-info' : 'bg-blue-600 border-blue-600 text-white'}`}
+                                      onClick={() => fetchOvertimeDetails(record.ot_request_id)}
+                                    >
+                                      Details
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                  )}
+                </div>
+              )}
+
+            {overtimePagination.totalPages > 1 && (
+              <div className="flex justify-center mt-6">
+                <div className="join">
+                  <button
+                    className={`join-item btn btn-sm ${
+                      overtimePagination.page === 1 ? 'btn-disabled' : 
+                      theme === 'light' ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'
+                    }`}
+                    onClick={() => fetchOvertimeData(overtimePagination.page - 1)}
+                    disabled={overtimePagination.page === 1}
+                  >
+                    «
+                  </button>
+                  
+                  {Array.from({ length: overtimePagination.totalPages }, (_, i) => i + 1)
+                    .filter(page => 
+                      page === 1 || 
+                      page === overtimePagination.totalPages || 
+                      Math.abs(page - overtimePagination.page) <= 1
+                    )
+                    .map((page, index, array) => (
+                      <React.Fragment key={page}>
+                        {index > 0 && array[index - 1] !== page - 1 && (
+                          <button className="join-item btn btn-sm btn-disabled">...</button>
+                        )}
+                        <button
+                          className={`join-item btn btn-sm ${
+                            overtimePagination.page === page ? 
+                              `${theme === 'light' ? 'bg-blue-600 text-white' : 'bg-blue-400 text-white'}` : 
+                              `${theme === 'light' ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'}`
                           }`}
+                          onClick={() => fetchOvertimeData(page)}
                         >
-                          <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>
-                            {displayDateOnly(record.ot_date)}
-                          </td>
-                          <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>
-                            {(record.total_worked_minutes / 60).toFixed(1)}h
-                          </td>
-                          <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>
-                            {(record.ot_minutes / 60).toFixed(1)}h
-                          </td>
-                          <td>
-                            <span className={`badge ${typeDisplay.class}`}>
-                              {typeDisplay.label}
-                            </span>
-                          </td>
-                          <td>
-                            <span className={`badge ${statusDisplay.class}`}>
-                              {statusDisplay.label}
-                            </span>
-                          </td>
-                          <td className={`font-medium ${theme === 'light' ? 'text-green-600' : 'text-green-400'}`}>
-                            RM {record.calculated_amount || '0.00'}
-                          </td>
-                          <td>
-                            <div className="flex gap-2">
-                              <button
-                                className={`btn btn-xs ${theme === 'light' ? 'btn-info' : 'bg-blue-600 border-blue-600 text-white'}`}
-                                onClick={() => fetchOvertimeDetails(record.ot_request_id)}
-                              >
-                                Details
-                              </button>
-                              {canApplyForOvertime(record) && (
-                                <button
-                                  className={`btn btn-xs ${theme === 'light' ? 'btn-success' : 'bg-green-600 border-green-600 text-white'}`}
-                                  onClick={() => {
-                                    setSelectedOvertimeForApply(record);
-                                    setIsOvertimeApplyModalOpen(true);
-                                  }}
-                                >
-                                  Apply
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Pending Approvals View */}
-        {overtimeView === 'pendingApprovals' && (
-          <div>
-            {pendingApprovals.length === 0 ? (
-              <div className={`text-center py-8 ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
-                <CiFaceFrown className="mx-auto h-12 w-12 mb-4" />
-                <p>No pending approvals found.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className={`p-4 rounded-lg ${theme === 'light' ? 'bg-blue-50 border border-blue-200' : 'bg-blue-900 border border-blue-700'}`}>
-                  <div className="flex items-center">
-                    <svg className="w-5 h-5 mr-2 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                    </svg>
-                    <span className={`font-medium ${theme === 'light' ? 'text-blue-800' : 'text-blue-200'}`}>
-                      You have {pendingApprovals.length} overtime request(s) waiting for your approval
-                    </span>
-                  </div>
-                </div>
-
-                <div className={`overflow-x-auto rounded-lg shadow ${theme === 'light' ? 'bg-white' : 'bg-slate-700'}`}>
-                  <table className="table w-full">
-                    <thead>
-                      <tr className={theme === 'light' ? 'bg-slate-100' : 'bg-slate-600'}>
-                        <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Employee</th>
-                        <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Department</th>
-                        <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Date</th>
-                        <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>OT Hours</th>
-                        <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Type</th>
-                        <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Current Level</th>
-                        <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Amount</th>
-                        <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pendingApprovals.map((record) => {
-                        const typeDisplay = getOvertimeTypeDisplay(record.ot_type);
-                        
-                        return (
-                          <tr 
-                            key={record.ot_request_id}
-                            className={theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-600'}
-                          >
-                            <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>
-                              <div>
-                                <div className="font-bold">{record.employee_name || 'Unknown'}</div>
-                                <div className="text-sm opacity-70">{record.employee_no || record.employee_id}</div>
-                              </div>
-                            </td>
-                            <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>{record.department_name || 'N/A'}</td>
-                            <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>{displayDateOnly(record.ot_date)}</td>
-                            <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>{(record.ot_minutes / 60).toFixed(1)}h</td>
-                            <td>
-                              <span className={`badge ${typeDisplay.class}`}>
-                                {typeDisplay.label}
-                              </span>
-                            </td>
-                            <td>
-                              <span className={`badge ${theme === 'light' ? 'badge-info' : 'bg-blue-600 text-white'}`}>
-                                {record.current_approval_level || record.current_approver || 'Pending'}
-                              </span>
-                            </td>
-                            <td className={`font-medium ${theme === 'light' ? 'text-green-600' : 'text-green-400'}`}>
-                              RM {record.calculated_amount || '0.00'}
-                            </td>
-                            <td>
-                              <div className="flex gap-2">
-                                <button
-                                  className={`btn btn-xs ${theme === 'light' ? 'btn-success' : 'bg-green-600 border-green-600 text-white'}`}
-                                  onClick={() => {
-                                    setSelectedOvertimeForApproval(record);
-                                    setApprovalComment('');
-                                    setConfirmAction('approve');
-                                    setShowConfirmModal(true);
-                                  }}
-                                  disabled={isProcessingApproval}
-                                >
-                                  {isProcessingApproval ? (
-                                    <span className="loading loading-spinner loading-xs"></span>
-                                  ) : (
-                                    'Approve'
-                                  )}
-                                </button>
-                                <button
-                                  className={`btn btn-xs ${theme === 'light' ? 'btn-error' : 'bg-red-600 border-red-600 text-white'}`}
-                                  onClick={() => {
-                                    setSelectedOvertimeForApproval(record);
-                                    setApprovalComment('');
-                                    setConfirmAction('reject');
-                                    setShowConfirmModal(true);
-                                  }}
-                                  disabled={isProcessingApproval}
-                                >
-                                  {isProcessingApproval ? (
-                                    <span className="loading loading-spinner loading-xs"></span>
-                                  ) : (
-                                    'Reject'
-                                  )}
-                                </button>
-                                <button
-                                  className={`btn btn-xs ${theme === 'light' ? 'btn-info' : 'bg-blue-600 border-blue-600 text-white'}`}
-                                  onClick={() => fetchOvertimeDetails(record.ot_request_id)}
-                                >
-                                  Details
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Approval History View */}
-        {overtimeView === 'approvalHistory' && (
-          <div>
-            {approvalHistory.length === 0 ? (
-              <div className={`text-center py-8 ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
-                <CiFaceFrown className="mx-auto h-12 w-12 mb-4" />
-                <p>No approval history found.</p>
-                <p className="text-sm mt-2">
-                  {approvalHistoryType !== 'all' 
-                    ? `No ${approvalHistoryType} records found.` 
-                    : 'You have not processed any overtime requests yet.'
+                          {page}
+                        </button>
+                      </React.Fragment>
+                    ))
                   }
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className={`p-4 rounded-lg ${theme === 'light' ? 'bg-green-50 border border-green-200' : 'bg-green-900 border border-green-700'}`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <svg className="w-5 h-5 mr-2 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                      <span className={`font-medium ${theme === 'light' ? 'text-green-800' : 'text-green-200'}`}>
-                        Showing {approvalHistory.length} historical approval(s)
-                      </span>
-                    </div>
-                    <div className="text-sm opacity-70">
-                      Filter: <span className="font-medium capitalize">{approvalHistoryType}</span>
-                    </div>
-                  </div>
+                  
+                  <button
+                    className={`join-item btn btn-sm ${
+                      overtimePagination.page === overtimePagination.totalPages ? 'btn-disabled' : 
+                      theme === 'light' ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'
+                    }`}
+                    onClick={() => fetchOvertimeData(overtimePagination.page + 1)}
+                    disabled={overtimePagination.page === overtimePagination.totalPages}
+                  >
+                    »
+                  </button>
                 </div>
-
-                <div className={`overflow-x-auto rounded-lg shadow ${theme === 'light' ? 'bg-white' : 'bg-slate-700'}`}>
-                  <table className="table w-full">
-                    <thead>
-                      <tr className={theme === 'light' ? 'bg-slate-100' : 'bg-slate-600'}>
-                        <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Employee</th>
-                        <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Date</th>
-                        <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>OT Hours</th>
-                        <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Type</th>
-                        <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Your Action</th>
-                        <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Final Status</th>
-                        <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Amount</th>
-                        <th className={theme === 'light' ? 'text-slate-700' : 'text-slate-200'}>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {approvalHistory.map((record) => {
-                        const typeDisplay = getOvertimeTypeDisplay(record.ot_type);
-                        const finalStatusDisplay = getOvertimeStatusDisplay(record.status);
-                        
-                        // Fixed user action detection
-                        const getUserAction = () => {
-                          if (record.status === OvertimeStatus.APPROVED) return 'Approved';
-                          if (record.status === OvertimeStatus.REJECTED) return 'Rejected';
-                          return 'Processed';
-                        };
-
-                        const userAction = getUserAction();
-                        
-                        return (
-                          <tr 
-                            key={record.ot_request_id}
-                            className={theme === 'light' ? 'hover:bg-slate-50' : 'hover:bg-slate-600'}
-                          >
-                            <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>
-                              <div>
-                                <div className="font-bold">{record.employee_name || 'Unknown'}</div>
-                                <div className="text-sm opacity-70">{record.employee_no || record.employee_id}</div>
-                              </div>
-                            </td>
-                            <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>{displayDateOnly(record.ot_date)}</td>
-                            <td className={theme === 'light' ? 'text-slate-900' : 'text-slate-100'}>{(record.ot_minutes / 60).toFixed(1)}h</td>
-                            <td>
-                              <span className={`badge ${typeDisplay.class}`}>
-                                {typeDisplay.label}
-                              </span>
-                            </td>
-                            <td>
-                              <span className={`badge ${
-                                userAction?.toLowerCase().includes('approved') ? 
-                                `${theme === 'light' ? 'badge-success' : 'bg-green-600 text-white'}` : 
-                                userAction?.toLowerCase().includes('rejected') ? 
-                                `${theme === 'light' ? 'badge-error' : 'bg-red-600 text-white'}` : 
-                                `${theme === 'light' ? 'badge-info' : 'bg-blue-600 text-white'}`
-                              }`}>
-                                {userAction}
-                              </span>
-                            </td>
-                            <td>
-                              <span className={`badge ${finalStatusDisplay.class}`}>
-                                {finalStatusDisplay.label}
-                              </span>
-                            </td>
-                            <td className={`font-medium ${theme === 'light' ? 'text-green-600' : 'text-green-400'}`}>
-                              RM {record.calculated_amount || '0.00'}
-                            </td>
-                            <td>
-                              <button
-                                className={`btn btn-xs ${theme === 'light' ? 'btn-info' : 'bg-blue-600 border-blue-600 text-white'}`}
-                                onClick={() => fetchOvertimeDetails(record.ot_request_id)}
-                              >
-                                Details
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                
+                {/* Add items per page selector */}
+                <div className="ml-4 flex items-center">
+                  <span className={`text-sm mr-2 ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`}>
+                    Show:
+                  </span>
+                  <select
+                    className={`select select-bordered select-sm ${
+                      theme === 'light' ? 'bg-white' : 'bg-slate-700'
+                    }`}
+                    value={overtimePagination.limit}
+                    onChange={(e) => {
+                      setOvertimePagination(prev => ({
+                        ...prev,
+                        limit: parseInt(e.target.value),
+                        page: 1
+                      }));
+                      setTimeout(() => fetchOvertimeData(1), 100);
+                    }}
+                  >
+                    <option value="5">5</option>
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                  </select>
                 </div>
               </div>
             )}
-          </div>
-        )}
-      </div>
-    )}
-
-{overtimePagination.totalPages > 1 && (
-  <div className="flex justify-center mt-6">
-    <div className="join">
-      <button
-        className={`join-item btn btn-sm ${
-          overtimePagination.page === 1 ? 'btn-disabled' : 
-          theme === 'light' ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'
-        }`}
-        onClick={() => fetchOvertimeData(overtimePagination.page - 1)}
-        disabled={overtimePagination.page === 1}
-      >
-        «
-      </button>
-      
-      {Array.from({ length: overtimePagination.totalPages }, (_, i) => i + 1)
-        .filter(page => 
-          page === 1 || 
-          page === overtimePagination.totalPages || 
-          Math.abs(page - overtimePagination.page) <= 1
-        )
-        .map((page, index, array) => (
-          <React.Fragment key={page}>
-            {index > 0 && array[index - 1] !== page - 1 && (
-              <button className="join-item btn btn-sm btn-disabled">...</button>
-            )}
-            <button
-              className={`join-item btn btn-sm ${
-                overtimePagination.page === page ? 
-                  `${theme === 'light' ? 'bg-blue-600 text-white' : 'bg-blue-400 text-white'}` : 
-                  `${theme === 'light' ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'}`
-              }`}
-              onClick={() => fetchOvertimeData(page)}
-            >
-              {page}
-            </button>
-          </React.Fragment>
-        ))
-      }
-      
-      <button
-        className={`join-item btn btn-sm ${
-          overtimePagination.page === overtimePagination.totalPages ? 'btn-disabled' : 
-          theme === 'light' ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50' : 'bg-slate-700 border-slate-600 text-slate-300 hover:bg-slate-600'
-        }`}
-        onClick={() => fetchOvertimeData(overtimePagination.page + 1)}
-        disabled={overtimePagination.page === overtimePagination.totalPages}
-      >
-        »
-      </button>
-    </div>
-    
-    {/* Add items per page selector */}
-    <div className="ml-4 flex items-center">
-      <span className={`text-sm mr-2 ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`}>
-        Show:
-      </span>
-      <select
-        className={`select select-bordered select-sm ${
-          theme === 'light' ? 'bg-white' : 'bg-slate-700'
-        }`}
-        value={overtimePagination.limit}
-        onChange={(e) => {
-          setOvertimePagination(prev => ({
-            ...prev,
-            limit: parseInt(e.target.value),
-            page: 1
-          }));
-          setTimeout(() => fetchOvertimeData(1), 100);
-        }}
-      >
-        <option value="5">5</option>
-        <option value="10">10</option>
-        <option value="20">20</option>
-        <option value="50">50</option>
-      </select>
-    </div>
-  </div>
-)}
-  </div>
-)}
+              </div>
+      )}
 
       {/* Amendment Modal */}
       {isAmendModalOpen && (
