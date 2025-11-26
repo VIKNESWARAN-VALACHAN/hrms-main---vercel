@@ -3310,7 +3310,7 @@ export default function CreateAnnouncementPage() {
   };
 
   // ---- Submit (single entry point) ----
-  const doSubmit = async (postNow: boolean) => {
+  const doSubmitold = async (postNow: boolean) => {
     setLoading(true);
     setError('');
 
@@ -3421,6 +3421,142 @@ scheduled_at: scheduleEnabled && scheduledAt
       setLoading(false);
     }
   };
+
+  const doSubmit = async (postNow: boolean) => {
+  setLoading(true);
+  setError('');
+
+  // serialize Slate value to HTML
+  const htmlContent = editorValue.map((n) => serialize(n)).join('');
+  const textForValidation = htmlContent.replace(/<[^>]*>/g, '').trim();
+
+  if (!formData.title.trim() || !textForValidation) {
+    setShowRequiredToast(true);
+    setLoading(false);
+    setTimeout(() => setShowRequiredToast(false), 3000);
+    setRequiredToastMsg(
+      formData.title.trim()
+        ? 'Content is required field. Please fill it in before submitting.'
+        : textForValidation
+        ? 'Title is required field. Please fill it in before submitting.'
+        : 'Title and Content are required fields. Please fill them in before submitting.'
+    );
+    return;
+  }
+
+  try {
+    const {
+      title,
+      requireAcknowledgement,
+      forceAcknowledgeLogin,
+      autoExpire,
+      targetRows,
+      scheduleEnabled,
+      scheduledAt,
+      attachments,
+    } = formData;
+
+    const payload: AnnouncementPayload = {
+      title,
+      content: htmlContent,
+      targets: [],
+      requireAcknowledgement,
+      forceAcknowledgeLogin,
+      autoExpire,
+      is_posted: scheduleEnabled ? false : postNow,
+      scheduled_at: scheduleEnabled && scheduledAt 
+        ? scheduledAt
+        : null,
+    };
+
+    const hasTargets = targetRows.some(
+      (row) =>
+        row.selectedCompanies.length > 0 ||
+        row.selectedDepartments.length > 0 ||
+        row.selectedPositions.length > 0 ||
+        row.selectedEmployees.length > 0
+    );
+
+    if (!hasTargets) {
+      payload.target_type = 'all';
+      payload.target_id = 0;
+    } else {
+      targetRows.forEach((row) => {
+        const targetType =
+          row.selectedEmployees.length > 0
+            ? 'employee'
+            : row.selectedPositions.length > 0
+            ? 'position'
+            : row.selectedDepartments.length > 0
+            ? 'department'
+            : 'company';
+
+        const pushAll = (ids: string[]) => {
+          ids.forEach((id) => payload.targets.push({ target_type: targetType, target_id: id }));
+        };
+        if (row.selectedEmployees.length) pushAll(row.selectedEmployees);
+        else if (row.selectedPositions.length) pushAll(row.selectedPositions);
+        else if (row.selectedDepartments.length) pushAll(row.selectedDepartments);
+        else if (row.selectedCompanies.length) pushAll(row.selectedCompanies);
+      });
+    }
+
+    const formDataToSend = new FormData();
+    
+    // Append the main announcement data
+    formDataToSend.append(
+      'data',
+      JSON.stringify({
+        ...payload,
+        is_acknowledgement: requireAcknowledgement,
+        is_force_login: forceAcknowledgeLogin,
+        is_expired: autoExpire,
+      })
+    );
+
+    // Append attachments correctly
+    if (attachments && attachments.length > 0) {
+      attachments.forEach((doc, index) => {
+        if (doc.file) {
+          // Append each file with a consistent naming pattern
+          formDataToSend.append(`attachments[${index}]`, doc.file);
+          
+          // Also append metadata if needed
+          formDataToSend.append(`attachments_metadata[${index}]`, JSON.stringify({
+            name: doc.name,
+            documentType: doc.documentType,
+            size: doc.file.size,
+            type: doc.file.type
+          }));
+        }
+      });
+    }
+
+    console.log('Sending form data with attachments:', attachments?.length || 0);
+
+    const response = await fetch(`${API_BASE_URL}${API_ROUTES.announcements}`, {
+      method: 'POST',
+      body: formDataToSend,
+      // Don't set Content-Type header - browser will set it with boundary for FormData
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Server response:', errorText);
+      throw new Error(`Failed to create announcement: ${response.status} ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log('Announcement created successfully:', result);
+    
+    router.push('/announcements');
+  } catch (err) {
+    console.error('Error creating announcement:', err);
+    setError(err instanceof Error ? err.message : 'Failed to create announcement. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Keep keyboard submit (Enter) as Save Draft by default
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
@@ -3707,18 +3843,18 @@ scheduled_at: scheduleEnabled && scheduledAt
               {/* Attachments */}
               <div className="mt-4">
                 <div className={`mb-2 font-medium ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}>Attachments</div>
-                <EmployeeDocumentManager
-                  employeeId={null}
-                  mode="add"
-                  documentTypes={[{ type: 'AnnouncementAttachment', label: 'Announcement Attachments', description: 'Upload files to be included with this announcement (PDF, Word, Excel, images, etc.)' }]}
-                  onFilesSelected={handleFilesSelected}
-                  moduleName="announcement"
-                  customUploadEndpoint={`${API_BASE_URL}/api/announcement/announcements/documents/upload-request`}
-                  customDeleteEndpoint={`${API_BASE_URL}/api/announcement/announcements/documents`}
-                  customViewEndpoint={`${API_BASE_URL}/api/announcement/announcements/documents/view-url`}
-                  initialDocuments={formData.attachments || []}
-                  onDocumentDeleted={handleDocumentDeleted}
-                />
+<EmployeeDocumentManager
+  employeeId={null}
+  mode="add"
+  documentTypes={[{ type: 'AnnouncementAttachment', label: 'Announcement Attachments', description: 'Upload files to be included with this announcement (PDF, Word, Excel, images, etc.)' }]}
+  onFilesSelected={handleFilesSelected}
+  moduleName="announcement"
+  customUploadEndpoint={`${API_BASE_URL}/api/announcement/announcements/documents/upload-request`}
+  customDeleteEndpoint={`${API_BASE_URL}/api/announcement/announcements/documents`}
+  customViewEndpoint={`${API_BASE_URL}/api/announcement/announcements/documents/view-url`}
+  initialDocuments={formData.attachments || []}
+  onDocumentDeleted={handleDocumentDeleted}
+/>
               </div>
             </div>
           </div>
