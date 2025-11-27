@@ -4,7 +4,7 @@
  * @param endDate The end date
  * @returns The number of weekdays between the dates
  */
-export const calculateDuration = (startDate: Date, endDate: Date): number => {
+export const calculateDuration_excludingWeekends2711 = (startDate: Date, endDate: Date): number => {
   let count = 0;
   const curDate = new Date(startDate.getTime());
   while (curDate <= endDate) {
@@ -16,6 +16,16 @@ export const calculateDuration = (startDate: Date, endDate: Date): number => {
   }
   return count;
 }; 
+
+export const calculateDuration = (startDate: Date, endDate: Date): number => {
+  let count = 0;
+  const curDate = new Date(startDate.getTime());
+  while (curDate <= endDate) {
+    count++;
+    curDate.setDate(curDate.getDate() + 1);
+  }
+  return count;
+};
 
 export function calculateAge(dob: string | undefined | null): number | "" {
   if (!dob) return "";
