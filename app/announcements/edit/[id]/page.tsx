@@ -2199,8 +2199,6 @@
 //     </div>
 //   );
 // }
-
-
 'use client';
 
 import React, { useState, useEffect, ChangeEvent, FormEvent, useCallback, ReactNode } from 'react';
@@ -2208,8 +2206,6 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { FaSave, FaArrowLeft, FaBold, FaItalic, FaUnderline } from 'react-icons/fa';
 import { API_BASE_URL, API_ROUTES } from '../../../config';
-import toSingaporeTime from '@/app/components/ConvertToSingaporeTimeZone';
-import { format } from 'date-fns';
 import type { EmployeeDocument } from '../../../components/EmployeeDocumentManager';
 import { useTheme } from '../../../components/ThemeProvider';
 
@@ -2324,6 +2320,12 @@ function toggleMark(editor: Editor, format: 'bold'|'italic'|'underline') {
   else Editor.addMark(editor, format, true);
 }
 
+function toLocalDateTimeInputValue(dateString: string): string {
+  if (!dateString) return '';
+  // API: "2025-11-13 13:24:00"  -> "2025-11-13T13:24"
+  return dateString.replace(' ', 'T').slice(0, 16);
+}
+
 // UPDATED: accept icon OR label (label optional)
 const MarkButton = ({
   format,
@@ -2417,6 +2419,7 @@ export default function EditAnnouncementPage() {
   const router = useRouter();
   const params = useParams();
   const id = params.id as string;
+  const [originalTargets, setOriginalTargets] = useState<any>(null);
 
   const [loading, setLoading] = useState(false);
   const [fetchLoading, setFetchLoading] = useState(true);
@@ -2469,6 +2472,7 @@ export default function EditAnnouncementPage() {
 
         const data = (await response.json()) as Announcement;
 
+        setOriginalTargets(data.targets);
         // Apply content to Slate (handles array JSON, HTML, or plain text)
         const raw = data.content;
         if (Array.isArray(raw) && isSlateArray(raw)) {
@@ -2492,42 +2496,70 @@ export default function EditAnnouncementPage() {
           title: data.title || '',
           is_posted: data.is_posted,
           scheduleEnabled: !!data.scheduled_at,
-          scheduledAt: data.scheduled_at ? format(toSingaporeTime(new Date(data.scheduled_at)), 'yyyy-MM-dd HH:mm') : '',
+          scheduledAt: data.scheduled_at
+            ? toLocalDateTimeInputValue(data.scheduled_at)
+            : '',
           attachments: [],
           documentsToDelete: []
         }));
 
+        // FIXED: Proper recipient detection
         if (data.targets) {
-          const hasEmployees = data.targets.employees?.length;
-          const hasDepartments = data.targets.departments?.length;
-          const hasPositions = data.targets.positions?.length;
-          const hasCompanies = data.targets.companies?.length;
+          const hasEmployees = data.targets.employees && data.targets.employees.length > 0;
+          const hasDepartments = data.targets.departments && data.targets.departments.length > 0;
+          const hasPositions = data.targets.positions && data.targets.positions.length > 0;
+          const hasCompanies = data.targets.companies && data.targets.companies.length > 0;
 
-          setRecipientInfo({
-            type: hasEmployees ? 'employee' : hasDepartments ? 'department' :
-                  hasPositions ? 'position' : hasCompanies ? 'company' : '',
-            name: hasEmployees ? (data.targets.employees?.map(emp => emp.name).join(', ') || 'No employees specified') :
-                  hasDepartments ? (data.targets.departments?.map(dept => dept.name).join(', ') || 'No departments specified') :
-                  hasPositions ? (data.targets.positions?.map(pos => pos.name).join(', ') || 'No positions specified') :
-                  hasCompanies ? (data.targets.companies?.map(comp => comp.name).join(', ') || 'No companies specified') : 'All Users'
-          });
+          // Check if it's actually "All Users" (no specific targets)
+          const hasSpecificTargets = hasEmployees || hasDepartments || hasPositions || hasCompanies;
 
-          setListName(
-            hasEmployees ? (data.targets.employees?.map(emp => ({
-              name: emp.name, position_title: emp.position_title, job_level: emp.job_level,
-              department_name: emp.department_name, company_name: emp.company_name
-            })) || []) :
-            hasDepartments ? (data.targets.departments?.map(dept => ({
-              name: dept.name, company_name: dept.company_name
-            })) || []) :
-            hasPositions ? (data.targets.positions?.map(pos => ({
-              name: pos.name, department_name: pos.department_name, company_name: pos.company_name
-            })) || []) :
-            hasCompanies ? (data.targets.companies?.map(comp => ({ name: comp.name })) || []) :
-            [{ name: 'All Users' }]
-          );
+          if (!hasSpecificTargets) {
+            setRecipientInfo({ type: 'all', name: 'All Users' });
+            setListName([{ name: 'All Users' }]);
+          } else {
+            // Set recipient info based on what targets exist
+            if (hasEmployees) {
+              setRecipientInfo({
+                type: 'employee',
+                name: data.targets.employees?.map(emp => emp.name).join(', ') || 'No employees specified'
+              });
+              setListName(data.targets.employees?.map(emp => ({
+                name: emp.name, 
+                position_title: emp.position_title, 
+                job_level: emp.job_level,
+                department_name: emp.department_name, 
+                company_name: emp.company_name
+              })) || []);
+            } else if (hasDepartments) {
+              setRecipientInfo({
+                type: 'department',
+                name: data.targets.departments?.map(dept => dept.name).join(', ') || 'No departments specified'
+              });
+              setListName(data.targets.departments?.map(dept => ({
+                name: dept.name, 
+                company_name: dept.company_name
+              })) || []);
+            } else if (hasPositions) {
+              setRecipientInfo({
+                type: 'position',
+                name: data.targets.positions?.map(pos => pos.name).join(', ') || 'No positions specified'
+              });
+              setListName(data.targets.positions?.map(pos => ({
+                name: pos.name, 
+                department_name: pos.department_name, 
+                company_name: pos.company_name
+              })) || []);
+            } else if (hasCompanies) {
+              setRecipientInfo({
+                type: 'company',
+                name: data.targets.companies?.map(comp => comp.name).join(', ') || 'No companies specified'
+              });
+              setListName(data.targets.companies?.map(comp => ({ name: comp.name })) || []);
+            }
+          }
         } else {
-          setRecipientInfo({ type: 'All', name: 'All Users' });
+          // No targets object means it's for all users
+          setRecipientInfo({ type: 'all', name: 'All Users' });
           setListName([{ name: 'All Users' }]);
         }
 
@@ -2550,6 +2582,40 @@ export default function EditAnnouncementPage() {
     setFormData(prev => ({ ...prev, title: value }));
   };
 
+const convertTargetsToPayload = (targets: any) => {
+  const payload = [];
+  
+  if (targets.companies && targets.companies.length > 0) {
+    payload.push(...targets.companies.map((company: any) => ({
+      type: 'company',
+      id: company.id
+    })));
+  }
+  
+  if (targets.departments && targets.departments.length > 0) {
+    payload.push(...targets.departments.map((dept: any) => ({
+      type: 'department', 
+      id: dept.id
+    })));
+  }
+  
+  if (targets.positions && targets.positions.length > 0) {
+    payload.push(...targets.positions.map((pos: any) => ({
+      type: 'position',
+      id: pos.id
+    })));
+  }
+  
+  if (targets.employees && targets.employees.length > 0) {
+    payload.push(...targets.employees.map((emp: any) => ({
+      type: 'employee',
+      id: emp.id
+    })));
+  }
+  
+  return payload;
+};
+
   const handleSubmit = async (e: FormEvent<HTMLFormElement>, isPost: boolean = false) => {
     e.preventDefault();
     setLoading(true);
@@ -2557,39 +2623,60 @@ export default function EditAnnouncementPage() {
 
     try {
       const fd = new FormData();
-      fd.append('data', JSON.stringify({
-        title: formData.title,
-        content: editorValue.map(serialize).join(''), // send as HTML string
-        is_posted: isPost,
-        scheduled_at: formData.scheduleEnabled && formData.scheduledAt ? formData.scheduledAt : null,
-        documents_to_delete: formData.documentsToDelete || []
-      }));
+    fd.append('data', JSON.stringify({
+      title: formData.title,
+      content: editorValue.map(serialize).join(''),
+      is_posted: isPost,
+      scheduled_at: formData.scheduleEnabled && formData.scheduledAt ? formData.scheduledAt : null,
+      documents_to_delete: formData.documentsToDelete || [],
+      target_all: false, // Always false to preserve specific targets
+      targets: originalTargets ? convertTargetsToPayload(originalTargets) : []
+    }));
 
+      // FIXED: Proper file upload handling
       if (formData.attachments?.length) {
-        formData.attachments.forEach(doc => {
-          if ((doc as any).file) fd.append('attachments[]', (doc as any).file as File);
+        formData.attachments.forEach((doc, index) => {
+          if ((doc as any).file) {
+            // Append files with proper naming for backend
+            fd.append(`attachments[${index}]`, (doc as any).file as File);
+          }
         });
       }
+
+      console.log('Updating announcement with attachments:', formData.attachments?.length || 0);
 
       const response = await fetch(`${API_BASE_URL}${API_ROUTES.announcements}/${id}`, {
         method: 'PUT',
         body: fd,
       });
-      if (!response.ok) throw new Error('Failed to update announcement');
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Server response:', errorText);
+        throw new Error(`Failed to update announcement: ${response.status} ${response.statusText}`);
+      }
 
+      // Delete marked documents if any
       if (formData.documentsToDelete?.length) {
-        const responseDelete = await fetch(`${API_BASE_URL}${API_ROUTES.announcements}/${id}/documents`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ document_id: formData.documentsToDelete, announcement_id: id })
-        });
-        if (!responseDelete.ok) throw new Error('Failed to delete documents');
+        try {
+          const responseDelete = await fetch(`${API_BASE_URL}${API_ROUTES.announcements}/${id}/documents`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              document_ids: formData.documentsToDelete, 
+              announcement_id: id 
+            })
+          });
+          if (!responseDelete.ok) console.warn('Failed to delete some documents');
+        } catch (deleteError) {
+          console.error('Error deleting documents:', deleteError);
+        }
       }
 
       router.push('/announcements');
     } catch (e) {
       console.error('Error updating announcement:', e);
-      setError('Failed to update announcement. Please try again.');
+      setError(e instanceof Error ? e.message : 'Failed to update announcement. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -2601,7 +2688,8 @@ export default function EditAnnouncementPage() {
       case 'department': return 'Department';
       case 'position': return 'Position';
       case 'employee': return 'Employee';
-      default: return 'All';
+      case 'all': return 'All Users';
+      default: return 'All Users';
     }
   };
 
@@ -2849,7 +2937,7 @@ export default function EditAnnouncementPage() {
                         className={`input border ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900 focus:border-blue-500' : 'bg-slate-600 border-slate-500 text-slate-100 focus:border-blue-400'} rounded-lg px-3 py-2`}
                         value={formData.scheduledAt}
                         onChange={(e) => setFormData(prev => ({ ...prev, scheduledAt: e.target.value }))}
-                        min={new Date().toISOString().slice(0, 16)}
+                        min={""}
                         required={formData.scheduleEnabled}
                       />
                     </div>
