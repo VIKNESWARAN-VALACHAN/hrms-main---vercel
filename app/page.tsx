@@ -310,14 +310,12 @@ async function getPublicIpClientSide(): Promise<string | null> {
   // ✅ MOST RELIABLE IPV4 PROVIDERS (ranked by reliability)
   const providers = [
     // Tier 1: IPv4-specific providers (most reliable)
-    'https://ipv4.icanhazip.com/',
-    'https://v4.ident.me/',
-    'https://api4.ipify.org/',
+    //'https://ipv4.icanhazip.com/',
+    //'https://v4.ident.me/',
     
     // Tier 2: Text-based providers (good fallbacks)
     'https://checkip.amazonaws.com/',
-    'https://icanhazip.com/',
-    'https://api.ipify.org/',
+    //'https://icanhazip.com/',
   ];
 
   // ✅ STRICT IPv4 validation
@@ -349,7 +347,7 @@ async function getPublicIpClientSide(): Promise<string | null> {
       
       // ✅ Strict IPv4 validation
       if (ip && isValidIPv4(ip)) {
-        console.log(`🎉 SUCCESS - IPv4 found: ${ip} from ${url}`);
+        //console.log(`🎉 SUCCESS - IPv4 found: ${ip} from ${url}`);
         return ip;
       } else if (ip) {
         console.warn(`❌ Not a valid IPv4 from ${url}: "${ip}"`);
@@ -375,7 +373,7 @@ async function postAttendanceWithIp(url: string, payload: any) {
     client_public_ip: publicIp // Add to payload
   };
 
-  console.log('📤 Sending attendance request with IP in body:', requestPayload);
+  //console.log('📤 Sending attendance request with IP in body:', requestPayload);
   
   return fetch(url, {
     method: 'POST',
@@ -588,7 +586,7 @@ const sortedEmployees = [...affectedEmployees].sort((a, b) => {
         throw new Error('Failed to fetch employee data');
       }
       const data = await response.json();
-      console.log('API Response Data:', data);
+      //console.log('API Response Data:', data);
          setEmployee({
           id: data.id,
           start_work_time: data.start_work_time,
@@ -922,7 +920,7 @@ const displayTime = (date: Date | string | null): string => {
 };
 
 
-const fetchTodayAttendance = useCallback(async () => {
+const fetchTodayAttendance2811 = useCallback(async () => {
   try {
     if (!employeeId) {
       showNotification('Employee ID is not available. Please refresh the page or log in again.', 'error');
@@ -934,7 +932,7 @@ const fetchTodayAttendance = useCallback(async () => {
     if (!res.ok) throw new Error('Failed to fetch today attendance');
 
     const payload = await res.json();
-    console.log('Attendance API response:', payload);
+    //console.log('Attendance API response:', payload);
 
     // Normalize shape
     const root = Array.isArray(payload) ? payload[0] : payload;
@@ -963,7 +961,7 @@ const fetchTodayAttendance = useCallback(async () => {
       return { id, checkIn: ci, checkOut: co };
     }).filter(s => s.checkIn); // Only include sessions with valid check-in
 
-    console.log('Mapped sessions for timer:', mappedSessions);
+    //console.log('Mapped sessions for timer:', mappedSessions);
     setSessions(mappedSessions);
 
     // Rest of your existing code...
@@ -988,7 +986,213 @@ const fetchTodayAttendance = useCallback(async () => {
   }
 }, [employeeId]);
 
-const handleAttendanceToggle = async () => {
+const fetchTodayAttendance2811_ = useCallback(async () => {
+  try {
+    if (!employeeId) {
+      showNotification('Employee ID is not available. Please refresh the page or log in again.', 'error');
+      return;
+    }
+
+    const url = `${API_BASE_URL}${API_ROUTES.todayAttendance}?employee_id=${employeeId}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Failed to fetch today attendance');
+
+    const payload = await res.json();
+    
+    // ✅ ADD DEBUGGING TO SEE WHAT'S HAPPENING
+    // console.log('🔍 DEBUG Attendance API Response:', {
+    //   fullPayload: payload,
+    //   isArray: Array.isArray(payload),
+    //   rootKeys: Array.isArray(payload) ? Object.keys(payload[0] || {}) : Object.keys(payload || {})
+    // });
+
+    // Normalize shape
+    const root = Array.isArray(payload) ? payload[0] : payload;
+    const rows: any[] =
+      Array.isArray(root?.attendanceDayRows) ? root.attendanceDayRows :
+      Array.isArray(root?.sessions) ? root.sessions : [];
+
+    // ✅ IMPROVED: Better debugging for rows
+    console.log('🔍 DEBUG Rows Analysis:', {
+      rowsCount: rows.length,
+      rows: rows.map((r, index) => ({
+        index,
+        id: r.id || r.attendance_day_id,
+        checkIn: r.first_check_in_time_local_iso ?? r.first_check_in_time ?? r.clock_in,
+        checkOut: r.last_check_out_time_local_iso ?? r.last_check_out_time ?? r.clock_out,
+        hasCheckIn: !!(r.first_check_in_time_local_iso ?? r.first_check_in_time ?? r.clock_in),
+        hasCheckOut: !!(r.last_check_out_time_local_iso ?? r.last_check_out_time ?? r.clock_out),
+        isCurrentlyCheckedIn: !!(r.first_check_in_time_local_iso ?? r.first_check_in_time ?? r.clock_in) && 
+                              !(r.last_check_out_time_local_iso ?? r.last_check_out_time ?? r.clock_out)
+      }))
+    });
+
+    // Map rows -> sessions with proper date validation
+    const mappedSessions: AttendanceRecord[] = rows.map((r: any) => {
+      const id = String(r.id ?? r.attendance_day_id ?? Math.random().toString(36).slice(2));
+      
+      // Parse dates with validation
+      const parseDate = (dateStr: any): Date | null => {
+        if (!dateStr) return null;
+        try {
+          const date = new Date(dateStr);
+          return isNaN(date.getTime()) ? null : date;
+        } catch {
+          return null;
+        }
+      };
+
+      const ci = parseDate(r.first_check_in_time_local_iso ?? r.first_check_in_time ?? r.clock_in);
+      const co = parseDate(r.last_check_out_time_local_iso ?? r.last_check_out_time ?? r.clock_out);
+      
+      return { id, checkIn: ci, checkOut: co };
+    }).filter(s => s.checkIn); // Only include sessions with valid check-in
+
+    console.log('🔍 Mapped sessions for timer:', mappedSessions);
+    setSessions(mappedSessions);
+
+    // ✅ IMPROVED: More reliable check-in detection
+    const isCurrentlyCheckedIn = rows.some((r: any) => {
+      const hasCheckIn = r.first_check_in_time_local_iso ?? r.first_check_in_time ?? r.clock_in;
+      const hasCheckOut = r.last_check_out_time_local_iso ?? r.last_check_out_time ?? r.clock_out;
+      
+      // User is checked in if they have a check-in time but NO check-out time
+      const checkedIn = !!hasCheckIn && !hasCheckOut;
+      
+      console.log(`🔍 Row ${r.id}:`, { 
+        hasCheckIn, 
+        hasCheckOut, 
+        checkedIn 
+      });
+      
+      return checkedIn;
+    });
+
+    // ✅ PRIORITIZE: Use direct API value first, then our inference
+    const isCheckedIn = typeof root?.isCheckedIn === 'boolean' 
+      ? root.isCheckedIn 
+      : isCurrentlyCheckedIn;
+
+    const last = mappedSessions.length ? mappedSessions[mappedSessions.length - 1] : null;
+
+    // ✅ FINAL STATE WITH DEBUGGING
+    const newAttendanceState = {
+      isCheckedIn,
+      checkInTime: last?.checkIn ?? null,
+      checkOutTime: last?.checkOut ?? null
+    };
+
+    // console.log('🎯 FINAL Attendance State:', {
+    //   newAttendanceState,
+    //   isCheckedIn,
+    //   sessionsCount: mappedSessions.length,
+    //   lastSession: last
+    // });
+
+    setTodayAttendance(newAttendanceState);
+
+  } catch (err) {
+    showNotification(err instanceof Error ? err.message : 'Failed to load attendance', 'error');
+    console.error('❌ Error fetching today attendance:', err);
+  }
+}, [employeeId]);
+
+const fetchTodayAttendance = useCallback(async () => {
+  try {
+    if (!employeeId) {
+      showNotification('Employee ID is not available. Please refresh the page or log in again.', 'error');
+      return;
+    }
+
+    const url = `${API_BASE_URL}${API_ROUTES.todayAttendance}?employee_id=${employeeId}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Failed to fetch today attendance');
+
+    const payload = await res.json();
+    
+    // console.log('🔍 DEBUG Attendance API Response:', {
+    //   fullPayload: payload,
+    //   isArray: Array.isArray(payload),
+    // });
+
+    // Normalize shape
+    const root = Array.isArray(payload) ? payload[0] : payload;
+    const rows: any[] =
+      Array.isArray(root?.attendanceDayRows) ? root.attendanceDayRows :
+      Array.isArray(root?.sessions) ? root.sessions : [];
+
+    // Map rows -> sessions with proper date validation
+    const mappedSessions: AttendanceRecord[] = rows.map((r: any) => {
+      const id = String(r.id ?? r.attendance_day_id ?? Math.random().toString(36).slice(2));
+      
+      const parseDate = (dateStr: any): Date | null => {
+        if (!dateStr) return null;
+        try {
+          const date = new Date(dateStr);
+          return isNaN(date.getTime()) ? null : date;
+        } catch {
+          return null;
+        }
+      };
+
+      const ci = parseDate(r.first_check_in_time_local_iso ?? r.first_check_in_time ?? r.clock_in);
+      const co = parseDate(r.last_check_out_time_local_iso ?? r.last_check_out_time ?? r.clock_out);
+      
+      return { id, checkIn: ci, checkOut: co };
+    }).filter(s => s.checkIn);
+
+    //console.log('🔍 Mapped sessions:', mappedSessions);
+    setSessions(mappedSessions);
+
+    // ✅ IMPROVED: Better check-in detection
+    const isCurrentlyCheckedIn = rows.some((r: any) => {
+      const hasCheckIn = r.first_check_in_time_local_iso ?? r.first_check_in_time ?? r.clock_in;
+      const hasCheckOut = r.last_check_out_time_local_iso ?? r.last_check_out_time ?? r.clock_out;
+      
+      // User is checked in if they have check-in but NO check-out
+      return !!hasCheckIn && !hasCheckOut;
+    });
+
+    // ✅ CHECK: If all sessions are completed (both check-in and check-out exist)
+    const allSessionsCompleted = rows.length > 0 && rows.every((r: any) => {
+      const hasCheckIn = r.first_check_in_time_local_iso ?? r.first_check_in_time ?? r.clock_in;
+      const hasCheckOut = r.last_check_out_time_local_iso ?? r.last_check_out_time ?? r.clock_out;
+      return !!hasCheckIn && !!hasCheckOut;
+    });
+
+    // console.log('🎯 Attendance Status:', {
+    //   isCurrentlyCheckedIn,
+    //   allSessionsCompleted,
+    //   sessionsCount: rows.length
+    // });
+
+    // ✅ FINAL: Determine the correct state
+    let finalIsCheckedIn = isCurrentlyCheckedIn;
+    
+    // If all sessions are completed, user is NOT checked in
+    if (allSessionsCompleted) {
+      finalIsCheckedIn = false;
+      console.log('ℹ️ All sessions completed - setting isCheckedIn to false');
+    }
+
+    const last = mappedSessions.length ? mappedSessions[mappedSessions.length - 1] : null;
+
+    const newAttendanceState = {
+      isCheckedIn: finalIsCheckedIn,
+      checkInTime: last?.checkIn ?? null,
+      checkOutTime: last?.checkOut ?? null
+    };
+
+    //console.log('🎯 FINAL Attendance State:', newAttendanceState);
+    setTodayAttendance(newAttendanceState);
+
+  } catch (err) {
+    showNotification(err instanceof Error ? err.message : 'Failed to load attendance', 'error');
+    console.error('❌ Error fetching today attendance:', err);
+  }
+}, [employeeId]);
+
+const handleAttendanceToggle2811 = async () => {
   try {
     setIsAttendanceLoading(true);
     if (!employeeId) {
@@ -1013,6 +1217,17 @@ const handleAttendanceToggle = async () => {
     if (!res.ok) {
       // Prefer server message over generic
       const serverMsg = payload?.message || payload?.error || `HTTP ${res.status}`;
+
+      if (payload.code === 'ALREADY_CHECKED_IN') {
+        showNotification('You have already checked in today', 'error');
+        await fetchTodayAttendance(); // Refresh state
+        return;
+      }
+      if (payload.code === 'ALREADY_CHECKED_OUT') {
+        showNotification('You have already checked out today', 'error');
+        await fetchTodayAttendance(); // Refresh state
+        return;
+      }
 
       // New: hard ENFORCE block (standardized 403 + code=IP_BLOCKED)
       if (res.status === 403 && payload?.code === 'IP_BLOCKED') {
@@ -1053,6 +1268,136 @@ const handleAttendanceToggle = async () => {
     console.error('Error with attendance action:', err);
   } finally {
     // Always reset loading state, whether success or error
+    setIsAttendanceLoading(false);
+  }
+};
+
+
+const handleAttendanceToggle = async () => {
+  // console.log('🔄 handleAttendanceToggle called', { 
+  //   employeeId, 
+  //   isCheckedIn: todayAttendance.isCheckedIn,
+  //   currentState: todayAttendance 
+  // });
+
+  try {
+    setIsAttendanceLoading(true);
+    
+    if (!employeeId) {
+      showNotification('Employee ID is not available.', 'error');
+      return;
+    }
+
+    const endpoint = todayAttendance.isCheckedIn ? API_ROUTES.checkOut : API_ROUTES.checkIn;
+    //console.log('🎯 Making request to:', endpoint, { employee_id: employeeId });
+
+    const res = await postAttendanceWithIp(
+      `${API_BASE_URL}${endpoint}`,
+      { employee_id: employeeId }
+    );
+
+    //console.log('📨 Response status:', res.status, res.ok);
+
+    let payload;
+    try {
+      payload = await res.json();
+      //console.log('📦 Response payload:', payload);
+    } catch (parseError) {
+      console.error('❌ Failed to parse response:', parseError);
+      throw new Error('Invalid response from server');
+    }
+
+    if (!res.ok) {
+      console.log('❌ Server returned error:', {
+        status: res.status,
+        payload,
+        endpoint
+      });
+
+      const serverMsg = payload?.message || payload?.error || `HTTP ${res.status}`;
+
+      // Handle specific attendance restrictions
+      if (payload?.code === 'ALREADY_CHECKED_IN') {
+        showNotification('You are already checked in today', 'error');
+        await fetchTodayAttendance();
+        return;
+      }
+      if (payload?.code === 'ALREADY_CHECKED_OUT') {
+        showNotification('You have already checked out today', 'error');
+        await fetchTodayAttendance();
+        return;
+      }
+      if (payload?.code === 'NO_CHECKIN_FOUND') {
+        showNotification('Please check in first before checking out', 'error');
+        // Reset frontend state to match backend
+        setTodayAttendance({
+          isCheckedIn: false,
+          checkInTime: null,
+          checkOutTime: null
+        });
+        await fetchTodayAttendance();
+        return;
+      }
+      if (payload?.code === 'ALREADY_COMPLETED') {
+        showNotification('You have already completed your attendance for today', 'error');
+        // ✅ CRITICAL: Reset frontend state since backend says attendance is completed
+        setTodayAttendance({
+          isCheckedIn: false,
+          checkInTime: null,
+          checkOutTime: null
+        });
+        await fetchTodayAttendance();
+        return;
+      }
+
+      // Handle IP restrictions
+      if (res.status === 403 && payload?.code === 'IP_BLOCKED') {
+        showNotification(serverMsg, 'error');
+        return;
+      }
+
+      // Legacy soft block
+      if (res.status === 701) {
+        showNotification(serverMsg, 'info');
+        return;
+      }
+
+      throw new Error(serverMsg);
+    }
+
+    // ✅ SUCCESS
+    //console.log('✅ Attendance action successful:', payload);
+    
+    const action = todayAttendance.isCheckedIn ? 'checked out' : 'checked in';
+    showNotification(`Successfully ${action}!`, 'success');
+
+    // Handle IP flagging
+    if (payload?.ipFlag) {
+      showNotification(payload?.ipMessage || 'Outside allowed IP (flagged).', 'error');
+    }
+
+    // Refresh data
+    //console.log('🔄 Refreshing attendance data...');
+    await fetchTodayAttendance();
+
+  } catch (err) {
+    console.error('💥 Error in handleAttendanceToggle:', err);
+    const msg = err instanceof Error ? err.message : 'Attendance action failed';
+    
+    // ✅ Don't show error for "already completed" - it's not really an error
+    if (msg.includes('already completed your attendance')) {
+      console.log('ℹ️ Attendance already completed - resetting state');
+      setTodayAttendance({
+        isCheckedIn: false,
+        checkInTime: null,
+        checkOutTime: null
+      });
+      await fetchTodayAttendance();
+    } else {
+      showNotification(msg, 'error');
+    }
+  } finally {
+    //console.log('🏁 handleAttendanceToggle completed');
     setIsAttendanceLoading(false);
   }
 };
@@ -1375,28 +1720,29 @@ const handleAttendanceToggle = async () => {
         
         {/* Header section with date and status badges */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 pb-4 border-b border-slate-200 dark:border-slate-600">
-<div className="mb-3 sm:mb-0">
-  {/* Date display  CHECK 1*/}
-  <div className={`text-lg font-semibold tracking-wide ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'} mb-1`}>
-    {format(toEmployeeTimezone(new Date()) as Date, 'EEEE, d MMM yyyy')} 
-  </div>
-  
-  {/* Time display */}
-  <div className="flex items-baseline gap-2">
-<div className={`text-2xl font-mono font-bold tracking-tight ${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`}>
-  <EmployeeClock 
-    showDate={false} 
-    timeZone={employee.time_zone} // Pass the employee's timezone
-  />
-</div>
-<div className={`text-xs ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
-  {employee.time_zone ? employee.time_zone.replace('_', ' ') : 'Singapore'} Time
-</div>
-  </div>
-</div>
+          <div className="mb-3 sm:mb-0">
+            {/* Date display */}
+            <div className={`text-lg font-semibold tracking-wide ${theme === 'light' ? 'text-slate-700' : 'text-slate-200'} mb-1`}>
+              {format(toEmployeeTimezone(new Date()) as Date, 'EEEE, d MMM yyyy')} 
+            </div>
+            
+            {/* Time display */}
+            <div className="flex items-baseline gap-2">
+              <div className={`text-2xl font-mono font-bold tracking-tight ${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`}>
+                <EmployeeClock 
+                  showDate={false} 
+                  timeZone={employee.time_zone} 
+                />
+              </div>
+              <div className={`text-xs ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                {employee.time_zone ? employee.time_zone.replace('_', ' ') : 'Singapore'} Time
+              </div>
+            </div>
+          </div>
           
           {/* Status badges - right side */}
           <div className="flex flex-wrap gap-2">
+           
             {/* Holiday badge */}
             {todayMeta.kind === 'holiday' && (
               <div className="badge badge-lg gap-2 bg-amber-100 text-amber-800 border-amber-200 py-3 px-4">
@@ -1434,13 +1780,19 @@ const handleAttendanceToggle = async () => {
               <div className={`w-16 h-16 rounded-full flex items-center justify-center text-white shadow-md ${
                 todayAttendance.isCheckedIn 
                   ? "bg-gradient-to-br from-green-500 to-green-600 animate-pulse" 
-                  : todayAttendance.checkInTime
-                    ? "bg-gradient-to-br from-blue-500 to-blue-600" 
-                    : "bg-gradient-to-br from-yellow-500 to-yellow-600"
+                  : sessions.length > 0 && sessions.every(session => session.checkOut)
+                    ? "bg-gradient-to-br from-emerald-500 to-emerald-600" 
+                    : todayAttendance.checkInTime
+                      ? "bg-gradient-to-br from-blue-500 to-blue-600" 
+                      : "bg-gradient-to-br from-yellow-500 to-yellow-600"
               }`}>
                 {todayAttendance.isCheckedIn ? (
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : sessions.length > 0 && sessions.every(session => session.checkOut) ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                 ) : todayAttendance.checkInTime ? (
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1456,11 +1808,22 @@ const handleAttendanceToggle = async () => {
                 <div className={`text-xl font-bold ${theme === 'light' ? 'text-slate-900' : 'text-slate-50'} mb-1`}>
                   {todayAttendance.isCheckedIn 
                     ? "Currently Working" 
-                    : todayAttendance.checkInTime
-                      ? "Checked Out" 
-                      : "Not Checked In"}
+                    : sessions.length > 0 && sessions.every(session => session.checkOut)
+                      ? "Attendance Completed" 
+                      : todayAttendance.checkInTime
+                        ? "Checked Out" 
+                        : "Not Checked In"}
                 </div>
                 
+                {/* Status description */}
+                <div className={`text-sm ${theme === 'light' ? 'text-slate-600' : 'text-slate-300'} mb-2`}>
+                  {sessions.length > 0 && sessions.every(session => session.checkOut) 
+                    ? "You have completed your attendance for today"
+                    : todayAttendance.isCheckedIn
+                      ? "You are currently checked in and working"
+                      : "Ready to check in for your work day"}
+                </div>
+
                 {/* Working/Off day status */}
                 <div className="flex items-center gap-2">
                   {employee.work_status === 'off' ? (
@@ -1475,7 +1838,7 @@ const handleAttendanceToggle = async () => {
                     </div>
                   )}
                   
-                  {/* Fixed break time display - convert minutes to hours if needed */}
+                  {/* Fixed break time display */}
                   {employee.work_break && Number(employee.work_break) > 0 && (
                     <div className="badge gap-2 bg-gray-100 text-gray-800 border-gray-200">
                       <ClockIcon className="w-3 h-3" />
@@ -1516,95 +1879,130 @@ const handleAttendanceToggle = async () => {
               <div className={`p-4 rounded-lg ${theme === 'light' ? 'bg-blue-50' : 'bg-slate-600'}`}>
                 <div className={`text-sm ${theme === 'light' ? 'text-slate-600' : 'text-slate-300'} mb-1`}>Check In</div>
                 <div className={`text-xl font-bold ${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`}>
-                {/* {todayAttendance.checkInTime
-                    ? format(toEmployeeTimezone(todayAttendance.checkInTime) as Date, 'hh:mm a')
-                    : '--:--'} */}
-
-                    {displayTime(todayAttendance.checkInTime)} 
+                  {displayTime(todayAttendance.checkInTime)}
                 </div>
               </div>
               <div className={`p-4 rounded-lg ${theme === 'light' ? 'bg-blue-50' : 'bg-slate-600'}`}>
                 <div className={`text-sm ${theme === 'light' ? 'text-slate-600' : 'text-slate-300'} mb-1`}>Check Out</div>
                 <div className={`text-xl font-bold ${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`}>
-                    {displayTime(todayAttendance.checkOutTime)}
-                   {/*{todayAttendance.checkOutTime
-                    ? format(toEmployeeTimezone(todayAttendance.checkOutTime) as Date, 'hh:mm a')
-                    : '--:--'}*/}
+                  {displayTime(todayAttendance.checkOutTime)}
                 </div>
               </div>
             </div>
 
-             {/* Working time counter */}
-              <div className="mb-6">
-                <div className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">
-                  Total Working Time Today
-                </div>
-{/* <WorkingTimeCounter
-  sessions={sessions.map(s => ({
-    id: s.id,
-    checkIn: s.checkIn ?? null,   // ← force undefined → null
-    checkOut: s.checkOut ?? null, // ← force undefined → null
-  }))}
-  isCheckedIn={todayAttendance.isCheckedIn}
-  className="font-mono text-2xl font-bold"
-  displayFormat="digital"
-  timeZone={employee.time_zone || 'Asia/Singapore'}
-/> */}
-
-<WorkingTimeCounter
-  sessions={sessions.map(s => ({
-    id: s.id || `session-${Math.random()}`,
-    checkIn: s.checkIn ? new Date(s.checkIn) : null,
-    checkOut: s.checkOut ? new Date(s.checkOut) : null,
-  }))}
-  isCheckedIn={todayAttendance.isCheckedIn}
-  className="font-mono text-2xl font-bold"
-  displayFormat="digital"
-/>
+            {/* Working time counter */}
+            <div className="mb-6">
+              <div className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-2">
+                Total Working Time Today
               </div>
+              <WorkingTimeCounter
+                sessions={sessions.map(s => ({
+                  id: s.id || `session-${Math.random()}`,
+                  checkIn: s.checkIn ? new Date(s.checkIn) : null,
+                  checkOut: s.checkOut ? new Date(s.checkOut) : null,
+                }))}
+                isCheckedIn={todayAttendance.isCheckedIn}
+                className="font-mono text-2xl font-bold"
+                displayFormat="digital"
+              />
+            </div>
 
-            {/* Check in/out button */}
-            {/* <button 
-              onClick={handleAttendanceToggle}
-              className={`btn w-full py-4 text-lg font-semibold ${
-                todayAttendance.isCheckedIn 
-                  ? "bg-gradient-to-r from-yellow-500 to-yellow-600 border-0 hover:from-yellow-600 hover:to-yellow-700" 
-                  : "bg-gradient-to-r from-green-600 to-green-700 border-0 hover:from-green-700 hover:to-green-800"
-              } text-white shadow-md hover:shadow-lg transition-all duration-300`}
-            >
-              {todayAttendance.isCheckedIn 
-                ? "Check Out Now" 
-                : "Check In Now"}
-            </button> */}
-
-            {/* Check in/out button */}
+            {/* Check in/out button with professional tooltip */}
+            <div className="relative group">
 <button 
   onClick={handleAttendanceToggle}
-  disabled={isAttendanceLoading}
-  className={`btn w-full py-4 text-lg font-semibold ${
-    todayAttendance.isCheckedIn 
-      ? "bg-gradient-to-r from-yellow-500 to-yellow-600 border-0 hover:from-yellow-600 hover:to-yellow-700" 
-      : "bg-gradient-to-r from-green-600 to-green-700 border-0 hover:from-green-700 hover:to-green-800"
-  } text-white shadow-md hover:shadow-lg transition-all duration-300 ${
-    isAttendanceLoading ? 'opacity-70 cursor-not-allowed' : ''
-  }`}
+  disabled={isAttendanceLoading || (sessions.length > 0 && sessions.every(session => session.checkOut))}
+  className={`btn w-full py-4 text-lg font-semibold shadow-lg transition-all duration-300 ${
+    sessions.length > 0 && sessions.every(session => session.checkOut)
+      ? "bg-gradient-to-br from-emerald-500 via-emerald-600 to-emerald-700 border-0 text-white cursor-not-allowed shadow-emerald-200/50" 
+      : todayAttendance.isCheckedIn 
+        ? "bg-gradient-to-r from-amber-500 to-amber-600 border-0 hover:from-amber-600 hover:to-amber-700 text-white shadow-amber-200/30" 
+        : "bg-gradient-to-r from-green-600 to-green-700 border-0 hover:from-green-700 hover:to-green-800 text-white shadow-green-200/30"
+  } ${isAttendanceLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
 >
   {isAttendanceLoading ? (
     <>
       <span className="loading loading-spinner loading-sm"></span>
       {todayAttendance.isCheckedIn ? "Checking Out..." : "Checking In..."}
     </>
+  ) : sessions.length > 0 && sessions.every(session => session.checkOut) ? (
+    <>
+      <div className="flex items-center justify-center gap-2">
+        <div className="relative">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+          </svg>
+        </div>
+        <span>Attendance Completed</span>
+      </div>
+    </>
+  ) : todayAttendance.isCheckedIn ? (
+    <div className="flex items-center justify-center gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+      </svg>
+      <span>Check Out Now</span>
+    </div>
   ) : (
-    todayAttendance.isCheckedIn ? "Check Out Now" : "Check In Now"
+    <div className="flex items-center justify-center gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+      </svg>
+      <span>Check In Now</span>
+    </div>
   )}
 </button>
+
+              {/* Professional Tooltip */}
+              {sessions.length > 0 && sessions.every(session => session.checkOut) && (
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block z-10">
+                  <div className={`relative p-3 rounded-lg shadow-lg max-w-xs ${
+                    theme === 'light' 
+                      ? 'bg-slate-800 text-white' 
+                      : 'bg-slate-200 text-slate-800'
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      <InformationCircleIcon className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                      <div className="text-sm">
+                        <div className="font-semibold mb-1">Attendance Completed</div>
+                        <p>You have already completed your check-in and check-out for today. No further attendance actions are required.</p>
+                      </div>
+                    </div>
+                    {/* Tooltip arrow */}
+                    <div className={`absolute top-full left-1/2 transform -translate-x-1/2 border-8 border-transparent ${
+                      theme === 'light' 
+                        ? 'border-t-slate-800' 
+                        : 'border-t-slate-200'
+                    }`}></div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Additional info for completed sessions */}
+            {/* {sessions.length > 0 && sessions.every(session => session.checkOut) && (
+              <div className={`mt-4 p-3 rounded-lg ${
+                theme === 'light' 
+                  ? 'bg-emerald-50 border border-emerald-200' 
+                  : 'bg-emerald-900 border border-emerald-700'
+              }`}>
+                <div className="flex items-center gap-2 text-sm">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className={theme === 'light' ? 'text-emerald-700' : 'text-emerald-300'}>
+                    Your attendance for today has been recorded. Thank you!
+                  </span>
+                </div>
+              </div>
+            )} */}
           </div>
 
           {/* Right side - Additional info panel */}
           <div className="md:w-1/3">
             <div className={`p-4 rounded-lg ${theme === 'light' ? 'bg-slate-50' : 'bg-slate-800'} h-full`}>
               <h3 className="font-medium text-slate-700 dark:text-slate-300 mb-3">Today's Information</h3>
-              
+
               {/* Holiday details */}
               {todayMeta.kind === 'holiday' && employee.public_holiday_titles && (
                 <div className="mb-4">
