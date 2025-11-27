@@ -404,24 +404,6 @@ const LoadingSpinner = ({
   );
 };
 
-// Button Loading Component
-const LoadingButton = ({ 
-  loading, 
-  children, 
-  ...props 
-}: any) => (
-  <button {...props} disabled={loading}>
-    {loading ? (
-      <>
-        <span className="loading loading-spinner loading-sm mr-2"></span>
-        Loading...
-      </>
-    ) : (
-      children
-    )}
-  </button>
-);
-
 // Add these states to your existing useState declarations
 const [overtimeRequests, setOvertimeRequests] = useState<OvertimeRequest[]>([]);
 const [selectedOvertime, setSelectedOvertime] = useState<OvertimeRequest | null>(null);
@@ -745,70 +727,6 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
     }
   })();
   }, [employeeId]);
-
-  const fetchTodayAttendanceWORK = async () => {
-    try {
-      if (!employeeId) {
-        setError('Employee ID is not available. Please refresh the page or log in again.');
-        return;
-      }
-
-      const res = await fetch(`${API_BASE_URL}${API_ROUTES.todayAttendance}?employee_id=${employeeId}`);
-      if (!res.ok) throw new Error('Failed to fetch today attendance');
-
-      const payload = await res.json();
-
-      // Normalize shape (array | object)
-      const root = Array.isArray(payload) ? payload[0] : payload;
-      const rows: any[] = Array.isArray(root?.attendanceDayRows) ? root.attendanceDayRows : [];
-
-      // Convert rows into sessions using UTC parsing
-      const mapped = rows.map((r: any) => {
-        const id = String(r.id ?? r.attendance_day_id ?? Math.random().toString(36).slice(2));
-
-        // Use the local ISO fields from backend
-        const ci = parseApiDateUTC(
-          r.first_check_in_time_local_iso ?? 
-          r.first_check_in_time ?? 
-          r.clock_in ?? 
-          null
-        );
-
-        const co = parseApiDateUTC(
-          r.last_check_out_time_local_iso ?? 
-          r.last_check_out_time ?? 
-          r.clock_out ?? 
-          null
-        );
-
-        return { id, checkIn: ci, checkOut: co };
-      }).filter(s => s.checkIn); // keep only sessions with a check-in
-
-      setSessions(mapped);
-
-      // Determine checked-in status
-      const inferred = rows.some((r: any) => {
-        const ci = r.first_check_in_time_local_iso ?? r.first_check_in_time ?? r.clock_in;
-        const co = r.last_check_out_time_local_iso ?? r.last_check_out_time ?? r.clock_out;
-        return ci && !co;
-      });
-      
-      const isCheckedIn = typeof root?.isCheckedIn === 'boolean' ? root.isCheckedIn : inferred;
-
-      // Latest session to show in the header card
-      const last = mapped.length ? mapped[mapped.length - 1] : null;
-
-      setTodayAttendance({
-        isCheckedIn,
-        checkInTime: last?.checkIn ?? null,
-        checkOutTime: last?.checkOut ?? null
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load attendance');
-      console.error('Error fetching today attendance:', err);
-    }
-  };
-
   
   const fetchTodayAttendance = async () => {
     try {
@@ -822,9 +740,9 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
 
       // 2) Request
       const url = `${API_BASE_URL}${API_ROUTES.todayAttendance}?employee_id=${employeeId}`;
-      log('GET', url);
+      //log('GET', url);
       const res = await fetch(url);
-      log('status', res.status, res.ok ? 'OK' : 'NOT OK');
+      //log('status', res.status, res.ok ? 'OK' : 'NOT OK');
       if (!res.ok) throw new Error('Failed to fetch today attendance');
 
       // 3) Parse + shape
@@ -834,10 +752,10 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
       const rowsFromSessions = Array.isArray(root?.sessions) ? root.sessions : null;
       const rows: any[] = rowsFromDay ?? rowsFromSessions ?? [];
 
-      log('payload type:', Array.isArray(payload) ? 'array' : typeof payload);
-      log('rows source:', rowsFromDay ? 'attendanceDayRows' : rowsFromSessions ? 'sessions' : 'none');
-      log('rows count:', rows.length);
-      if (rows.length) log('first row keys:', Object.keys(rows[0]));
+      //log('payload type:', Array.isArray(payload) ? 'array' : typeof payload);
+      //log('rows source:', rowsFromDay ? 'attendanceDayRows' : rowsFromSessions ? 'sessions' : 'none');
+      //log('rows count:', rows.length);
+      //if (rows.length) log('first row keys:', Object.keys(rows[0]));
 
       // 4) Map rows -> sessions
       const mapped = rows
@@ -854,16 +772,16 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
         .filter(s => s.checkIn);
 
       setSessions(mapped);
-      log('mapped sessions:', mapped.length);
-      if (mapped.length) {
-        console.table(
-          mapped.slice(0, 5).map(s => ({
-            id: s.id,
-            checkIn: s.checkIn ? s.checkIn.toISOString() : '',
-            checkOut: s.checkOut ? s.checkOut.toISOString() : '',
-          }))
-        );
-      }
+      //log('mapped sessions:', mapped.length);
+      // if (mapped.length) {
+      //   console.table(
+      //     mapped.slice(0, 5).map(s => ({
+      //       id: s.id,
+      //       checkIn: s.checkIn ? s.checkIn.toISOString() : '',
+      //       checkOut: s.checkOut ? s.checkOut.toISOString() : '',
+      //     }))
+      //   );
+      // }
 
       // 5) Determine check-in status
       const inferred = rows.some((r: any) => {
@@ -880,10 +798,10 @@ const [notifications, setNotifications] = useState<Notification[]>([]);
         checkOutTime: last?.checkOut ?? null,
       });
 
-      log('isCheckedIn:', isCheckedIn, 'last ci/co:', {
-        ci: last?.checkIn?.toISOString() ?? '',
-        co: last?.checkOut?.toISOString() ?? '',
-      });
+      // log('isCheckedIn:', isCheckedIn, 'last ci/co:', {
+      //   ci: last?.checkIn?.toISOString() ?? '',
+      //   co: last?.checkOut?.toISOString() ?? '',
+      // });
     } catch (err: any) {
       log('caught error:', err?.message || err);
       setError(err instanceof Error ? err.message : 'Failed to load attendance');
@@ -979,145 +897,6 @@ const displayRawTime = (datetime: Date | string | null) => {
     return formatInTimeZone(d, employeeTimezone, 'dd/MM/yyyy hh:mm a');
   };
 
-
-async function getPublicIpClientSideold(opts?: { timeoutMs?: number }): Promise<string | null> {
-  const timeoutMs = opts?.timeoutMs ?? 3000;
-
-  // ✅ IPv4-ONLY providers (no CORS proxies needed)
-  const providers: Array<{
-    url: string;
-    parse: (r: any) => string | null;
-  }> = [
-    // IPv4-specific providers (most reliable)
-    {
-      url: 'https://api4.ipify.org?format=json',
-      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
-    },
-    {
-      url: 'https://ipv4.icanhazip.com/',
-      parse: (j) => (typeof j === 'string' ? j.trim() : null),
-    },
-    {
-      url: 'https://checkip.amazonaws.com/',
-      parse: (j) => (typeof j === 'string' ? j.trim() : null),
-    },
-    // Fallback providers
-    {
-      url: 'https://api.ipify.org?format=json',
-      parse: (j) => (typeof j?.ip === 'string' ? j.ip : null),
-    },
-  ];
-
-  // ✅ STRICT IPv4 validation only
-  const isValidIPv4 = (ip: string) => {
-    if (!ip || typeof ip !== 'string') return false;
-    
-    const cleanIp = ip.trim();
-    const ipv4Pattern = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
-    
-    if (!ipv4Pattern.test(cleanIp)) {
-      console.warn(`[public-ip] Not IPv4: ${cleanIp}`);
-      return false;
-    }
-    
-    // Validate each octet is between 0-255
-    const octets = cleanIp.split('.');
-    const isValid = octets.every(octet => {
-      const num = parseInt(octet, 10);
-      return num >= 0 && num <= 255 && octet === num.toString();
-    });
-    
-    if (!isValid) {
-      console.warn(`[public-ip] Invalid IPv4 octets: ${cleanIp}`);
-    }
-    
-    return isValid;
-  };
-
-  const fetchWithTimeout = async (url: string): Promise<any | null> => {
-    const ctrl = new AbortController();
-    const tm = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { 
-        signal: ctrl.signal, 
-        cache: 'no-store',
-        headers: {
-          'Accept': 'application/json, text/plain, */*',
-        }
-      });
-      
-      if (!res.ok) {
-        console.warn(`[public-ip] HTTP ${res.status} from: ${url}`);
-        return null;
-      }
-      
-      const ct = res.headers.get('content-type') || '';
-      
-      // Handle text responses (like icanhazip, checkip.amazonaws.com)
-      if (ct.includes('text/plain')) {
-        const text = (await res.text()).trim();
-        console.log(`[public-ip] Text response from ${url}: "${text}"`);
-        return text;
-      }
-      
-      // Handle JSON responses
-      if (ct.includes('application/json')) {
-        const data = await res.json();
-        console.log(`[public-ip] JSON response from ${url}:`, data);
-        return data;
-      }
-      
-      // Fallback: try to parse as text
-      const text = (await res.text()).trim();
-      console.log(`[public-ip] Fallback text from ${url}: "${text}"`);
-      return text;
-      
-    } catch (err: any) {
-      console.warn(`[public-ip] Failed to fetch from ${url}:`, err.message);
-      return null;
-    } finally {
-      clearTimeout(tm);
-    }
-  };
-
-  console.log('[public-ip] Starting IPv4 detection...');
-  
-  for (const p of providers) {
-    try {
-      console.log(`[public-ip] Trying provider: ${p.url}`);
-      const payload = await fetchWithTimeout(p.url);
-      const ip = payload ? p.parse(payload) : null;
-      
-      if (ip && isValidIPv4(ip)) {
-        console.log(`[public-ip] ✅ SUCCESS - IPv4 found: ${ip} from ${p.url}`);
-        return ip;
-      } else if (ip) {
-        console.warn(`[public-ip] ❌ Not IPv4 from ${p.url}: ${ip}`);
-      } else {
-        console.warn(`[public-ip] ❌ No IP from ${p.url}`);
-      }
-    } catch (err) {
-      console.warn(`[public-ip] ❌ Provider failed: ${p.url}`, err);
-    }
-  }
-
-  console.error('[public-ip] ❌ All IPv4 providers failed');
-  return null;
-}
-
-  async function postAttendanceold(url: string, payload: any) {
-    console.log('[public-ip] fetched:', 'TEST');
-    const publicIp = await getPublicIpClientSide();
-    return fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(publicIp ? { 'x-client-public-ip': publicIp } : {})
-      },
-      body: JSON.stringify(payload)
-    });
-  }
-
   async function getPublicIpClientSide(): Promise<string | null> {
   console.log('🔍 Starting robust IPv4 detection...');
   
@@ -1212,45 +991,98 @@ async function postAttendanceWithIp(url: string, payload: any) {
     return formatInTimeZone(d, employeeTimezone, 'dd/MM/yyyy');
   };
 
-  // Update handleAttendanceAction to use the state variable
-  const handleAttendanceAction2711 = async () => {
-    try {
-      // Check if we have the employee ID before making the request
-      if (!employeeId) {
-        setError('Employee ID is not available. Please refresh the page or log in again.');
-        return;
-      }
+const handleAttendanceAction = async () => {
+  try {
+    setIsAttendanceLoading(true);
+    
+    // ✅ CAPTURE THE ACTION TYPE BEFORE MAKING THE REQUEST
+    const isCheckingIn = !todayAttendance.isCheckedIn;
+    const actionType = isCheckingIn ? 'checked in' : 'checked out';
 
-      const endpoint = todayAttendance.isCheckedIn ?
-        API_ROUTES.checkOut :
-        API_ROUTES.checkIn;
+    if (!employeeId) {
+      showNotification(
+        'Employee ID is not available. Please refresh the page or log in again.',
+        'error'
+      );
+      return;
+    }
 
+    // ✅ PREVENT ACTION IF ATTENDANCE IS COMPLETED
+    if (sessions.length > 0 && sessions.every(session => session.checkOut)) {
+      showNotification('Attendance already completed for today', 'info');
+      return;
+    }
 
-      // const response = await postAttendance(
-      //   `${API_BASE_URL}${endpoint}`,
-      //   { employee_id: employeeId }
-      // );
+    const endpoint = todayAttendance.isCheckedIn
+      ? API_ROUTES.checkOut
+      : API_ROUTES.checkIn;
 
-    const response = await postAttendanceWithIp(
+    const res = await postAttendanceWithIp(
       `${API_BASE_URL}${endpoint}`,
       { employee_id: employeeId }
     );
 
+    const payload = await res.json().catch(() => null);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Attendance action failed');
+    if (!res.ok) {
+      const serverMsg = payload?.message || payload?.error || `HTTP ${res.status}`;
+
+      // ✅ HANDLE COMPLETED ATTENDANCE ERROR
+      if (payload?.code === 'ALREADY_COMPLETED') {
+        showNotification('You have already completed your attendance for today', 'info');
+        // Reset frontend state
+        setTodayAttendance({
+          isCheckedIn: false,
+          checkInTime: null,
+          checkOutTime: null
+        });
+        await fetchTodayAttendance();
+        return;
       }
 
-      // Refresh data after successful action
-      await fetchTodayAttendance();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Attendance action failed');
-      console.error('Error with attendance action:', err);
-    }
-  };
+      if (res.status === 403 && payload?.code === 'IP_BLOCKED') {
+        showNotification(serverMsg, 'error');
+        return;
+      }
 
-const handleAttendanceAction = async () => {
+      if (res.status === 701) {
+        showNotification(serverMsg, 'info');
+        return;
+      }
+
+      throw new Error(serverMsg);
+    }
+
+    // ✅ USE THE CAPTURED ACTION TYPE INSTEAD OF todayAttendance.isCheckedIn
+    showNotification(
+      `Successfully ${actionType}!`,
+      'success'
+    );
+
+    // If backend flagged the IP in FLAG_ONLY mode, surface that to the user
+    if (payload?.ipFlag) {
+      setTimeout(() => {
+        showNotification(
+          payload?.ipMessage || 'Outside allowed IP (flagged).',
+          'error'
+        );
+      }, 1500);
+    }
+
+    // Refresh data
+    await fetchTodayAttendance();
+    setTimeout(() => { fetchTodayAttendance(); }, 500);
+
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Attendance action failed';
+    showNotification(msg, 'error');
+    console.error('Error with attendance action:', err);
+  } finally {
+    setIsAttendanceLoading(false);
+  }
+};
+
+const handleAttendanceAction2811 = async () => {
   try {
     setIsAttendanceLoading(true);
     
@@ -1322,19 +1154,13 @@ const handleAttendanceAction = async () => {
   }
 };
 
-  //   const showNotification = (message: string, type: 'success' | 'error' | 'info') => {
-  //   const id = Math.random().toString(36).substring(2, 9);
-  //   setNotifications(prev => [...prev, { id, message, type }]);
+const applyAttendanceFilters = async (filter: Record<string, string>) => {
+  // Add early return if no employeeId
+  if (!employeeId) {
+    console.warn('Cannot apply filters: employeeId not available');
+    return;
+  }
 
-  //   if (type === 'error') setError(message);
-
-  //   setTimeout(() => {
-  //     setNotifications(prev => prev.filter(notification => notification.id !== id));
-  //     if (type === 'error') setError('');
-  //   }, 3000);
-  // };
-
-  const applyAttendanceFilters = async (filter: Record<string, string>) => {
   const filtersQuery = filter || filters;
   
   // Set default to today if no dates provided
@@ -1402,7 +1228,75 @@ const handleAttendanceAction = async () => {
   }
 };
 
-const fetchAttendanceFilterData = async (currentTab = activeTab, filters: Record<string, string> | any) => {
+  const applyAttendanceFilters2811 = async (filter: Record<string, string>) => {
+  const filtersQuery = filter || filters;
+  
+  // Set default to today if no dates provided
+  const finalFilters = { ...filtersQuery };
+  if (!finalFilters.fromDate && !finalFilters.toDate && activeTab === 'attendance') {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    finalFilters.fromDate = today;
+    finalFilters.toDate = today;
+  }
+
+  // Validate search term
+  if (searchTerm && searchTerm.length === 1) {
+    setError('Please enter at least 2 characters for search');
+    return;
+  }
+
+  // Basic date validation
+  if (filtersQuery.fromDate && filtersQuery.toDate) {
+    const startDate = new Date(filtersQuery.fromDate);
+    const endDate = new Date(filtersQuery.toDate);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      setError('Please enter valid dates');
+      return;
+    }
+
+    if (startDate > endDate) {
+      setError('Start date cannot be after end date');
+      return;
+    }
+  }
+
+  // Set loading states
+  setIsFilterLoading(true);
+  setIsLoading(true);
+  
+  // Set specific tab loading state
+  if (activeTab === 'attendance') {
+    setIsAttendanceLoading(true);
+  } else if (activeTab === 'appeal') {
+    setIsAppealLoading(true);
+  } else if (activeTab === 'amend') {
+    setIsAmendLoading(true);
+  }
+
+  // Clear any previous errors before fetching
+  setError('');
+  
+  try {
+    await fetchAttendanceFilterData(activeTab, finalFilters);
+    
+    // Fetch appeal data if on appeal tab
+    if (activeTab === 'appeal') {
+      await fetchAppealData(filtersQuery);
+    }
+  } catch (error) {
+    console.error('Error applying filters:', error);
+    setError('Failed to apply filters');
+  } finally {
+    setIsFilterLoading(false);
+    setIsLoading(false);
+    setIsAttendanceLoading(false);
+    setIsAppealLoading(false);
+    setIsAmendLoading(false);
+  }
+};
+
+const fetchAttendanceFilterData2811 = async (currentTab = activeTab, filters: Record<string, string> | any) => {
   if (role !== 'admin') {
     return;
   }
@@ -1463,17 +1357,6 @@ const fetchAttendanceFilterData = async (currentTab = activeTab, filters: Record
       const checkInTime = item.first_check_in_time_local_iso || item.check_in_time;
       const checkOutTime = item.last_check_out_time_local_iso || item.check_out_time;
       
-    console.log('Raw API response item with IP:', {
-      employee: item.employee_name,
-      date: item.attendance_date,
-      check_in_ip: item.check_in_ip, // This should show internal IP
-      check_in_public_ip: item.check_in_public_ip, // This should show public IP
-      check_out_ip: item.check_out_ip, // This should show internal IP
-      check_out_public_ip: item.check_out_public_ip, // This should show public IP
-    });
-
-    console.log('Admin View - Raw API Data:', data);
-
       return {
         id: item.employee_no,
         employee_name: item.employee_name,
@@ -1523,6 +1406,135 @@ const fetchAttendanceFilterData = async (currentTab = activeTab, filters: Record
   }
 };
 
+const fetchAttendanceFilterData = async (currentTab = activeTab, filters: Record<string, string> | any) => {
+  if (role !== 'admin') {
+    return;
+  }
+
+  try {
+    setIsLoading(true);
+    if (currentTab === 'attendance') {
+      setIsAttendanceLoading(true);
+    } else if (currentTab === 'amend') {
+      setIsAmendLoading(true);
+    }
+
+    let queryParams = new URLSearchParams();
+
+    // Add search field for employee name if at least 2 characters
+    if (searchTerm && searchTerm.length >= 2) {
+      queryParams.append('employee_name', searchTerm);
+    }
+
+    // Add company filter
+    if (filters.company && filters.company !== '') {
+      queryParams.append('company_id', filters.company);
+    }
+
+    // Add status filter if provided
+    if (filters.status && filters.status !== '') {
+      queryParams.append('status', filters.status);
+    }
+
+    // Add date filters (today by default)
+    if (filters.fromDate && filters.toDate) {
+      queryParams.append('start_date', filters.fromDate);
+      queryParams.append('end_date', filters.toDate);
+    } else {
+      // Default to today if no dates provided
+      const today = new Date().toISOString().split('T')[0];
+      queryParams.append('start_date', today);
+      queryParams.append('end_date', today);
+    }
+
+    if(filters.department && filters.department !== ''){
+      queryParams.append('department_id', filters.department);
+    }
+
+    // Build URL with query parameters
+    const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    const url = `${API_BASE_URL}${API_ROUTES.attendanceData}${queryString}`;
+
+    const response = await fetch(url);
+    console.log("URL - " + url);
+    const data = await response.json();
+
+    console.log('Today\'s attendance data with IP (FULL RESPONSE):', data);
+
+    let amendedData = data.map((item: any) => {
+      // Always prefer the ISO times if available
+      const checkInTime = item.first_check_in_time_local_iso || item.check_in_time;
+      const checkOutTime = item.last_check_out_time_local_iso || item.check_out_time;
+      
+      return {
+        id: item.employee_no,
+        employee_name: item.employee_name,
+        company_name: item.company_name,
+        department_name: item.department,
+        date: item.attendance_date,
+        checkIn: checkInTime,
+        checkOut: checkOutTime,
+        status: item.status.toLowerCase(),
+        attendance_day_id: item.attendance_day_id,
+        employee_id: item.employee_id,
+        amend_date: item.amend_date,
+        amend_by: item.amend_by,
+        employee_timezone: item.employee_timezone || timeZone,
+        // Add worked hours
+        worked_hours: item.worked_hours || '0.00',
+        // Add amended status field for export
+        amended_status: item.amend_date ? 'Amended' : 'Original',
+        amended_by: item.amend_by || '',
+        amended_date: item.amend_date || '',
+        
+        // === ENHANCED IP FIELDS - ADD ALL OF THESE ===
+        // Basic IP fields
+        check_in_ip: item.check_in_ip || '',
+        check_in_public_ip: item.check_in_public_ip || '',
+        check_out_ip: item.check_out_ip || '',
+        check_out_public_ip: item.check_out_public_ip || '',
+        
+        // IP matching status fields
+        check_in_ip_match_status: item.check_in_ip_match_status || '',
+        check_in_ip_policy_mode: item.check_in_ip_policy_mode || '',
+        check_out_ip_match_status: item.check_out_ip_match_status || '',
+        check_out_ip_policy_mode: item.check_out_ip_policy_mode || '',
+        
+        // === NEW ENHANCED DEBUGGING FIELDS ===
+        check_in_ip_matched_rule: item.check_in_ip_matched_rule || '',
+        check_in_ip_used_override: item.check_in_ip_used_override || false,
+        check_out_ip_matched_rule: item.check_out_ip_matched_rule || '',
+        check_out_ip_used_override: item.check_out_ip_used_override || false,
+        
+        // Employee override information
+        employee_override_ip: item.employee_override_ip || '',
+        employee_override_label: item.employee_override_label || '',
+        employee_override_active: item.employee_override_active || false,
+        
+        // Office information
+        office_name: item.office_name || '',
+        whitelisted_cidr: item.whitelisted_cidr || '',
+        
+        // Keep raw data for debugging
+        //_raw: item
+      };
+    });
+
+    if(currentTab === 'amend'){
+      amendedData = amendedData.filter((item: any) => item.status.toLowerCase() === 'absent' || item.status.toLowerCase() === 'offday');
+    }
+
+    console.log('Processed attendance data with enhanced IP fields:', amendedData);
+    setAmendAttendanceData(amendedData);
+  } catch (err) {
+    console.error('Error fetching attendance filter data:', err);
+  } finally {
+    setIsLoading(false);
+    setIsAttendanceLoading(false);
+    setIsAmendLoading(false);
+  }
+};
+
   // Update the resetAttendanceFilters function to also reset company filter
   const resetAttendanceFilters = () => {
     // Reset filters
@@ -1540,7 +1552,7 @@ const fetchAttendanceFilterData = async (currentTab = activeTab, filters: Record
     setActiveQuickDate(null);
 
     // Re-fetch data without filters
-    fetchAttendanceFilterData(activeTab, filters);
+    //fetchAttendanceFilterData(activeTab, filters);
     if (activeTab === 'appeal') {
       fetchAppealData(filters);
     }
@@ -1685,286 +1697,108 @@ const fetchAttendanceFilterData = async (currentTab = activeTab, filters: Record
     }
   };
 
-  // Update fetchAttendanceHistory to use the state variable
-  const fetchAttendanceHistoryWORK = async (start?: Date, end?: Date) => {
+  const fetchAttendanceHistory = async (start?: Date, end?: Date) => {
     try {
-      // Check if we have the employee ID before making the request
+      // 1) Guard
       if (!employeeId) {
-        setError('Employee ID is not available. Please refresh the page or log in again.');
+        const msg = 'Employee ID is not available. Please refresh the page or log in again.';
+        //log('no employeeId');
+        setError(msg);
         return;
       }
 
-      // Use the employee ID from state
+      // 2) Build URL + date range (in employee TZ)
+      const tz = employee?.time_zone || timeZone || 'Asia/Singapore';
       let url = `${API_BASE_URL}${API_ROUTES.attendanceHistory}?employee_id=${employeeId}`;
 
-      // if (start && end) {
-      //   const startDate = format(toSingaporeTime(start!), 'yyyy-MM-dd');
-      //   const endDate = format(toSingaporeTime(end!), 'yyyy-MM-dd');
-      //   url += `&start_date=${startDate}&end_date=${endDate}`;
-      // }
-          if (start && end) {
-      const employeeTimezone = employee?.time_zone || timeZone;
-      const startDate = formatInTimeZone(start, employeeTimezone, 'yyyy-MM-dd');
-      const endDate = formatInTimeZone(end, employeeTimezone, 'yyyy-MM-dd');
-      url += `&start_date=${startDate}&end_date=${endDate}`;
-    }
+      if (start && end) {
+        try {
+          const startDate = formatInTimeZone(start, tz, 'yyyy-MM-dd');
+          const endDate = formatInTimeZone(end, tz, 'yyyy-MM-dd');
+          url += `&start_date=${startDate}&end_date=${endDate}`;
+          //log('range', { tz, start: startDate, end: endDate });
+        } catch (e) {
+          log('range format failed; continuing without range', e);
+        }
+      } else {
+        log('no range provided');
+      }
 
-    console.log("URL : "+ url);
-      const response = await fetch(url);
+      //log('GET', url);
 
+      // 3) Request
+      const res = await fetch(url);
+      //log('status', res.status, res.ok ? 'OK' : 'NOT OK');
 
-      if (!response.ok) throw new Error('Failed to fetch attendance history');
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        log('error body (first 300):', body.slice(0, 300));
+        throw new Error(`Failed to fetch attendance history (${res.status})`);
+      }
 
-      const data = await response.json();
-
-      console.log("TEST : "+ data);
+      // 4) Parse + shape check
+      const data = await res.json();
       if (!Array.isArray(data)) {
-        console.error("Unexpected response format:", data);
-        setError("Unexpected response format from server");
+        log('unexpected payload (not array):', data);
+        setError('Unexpected response format from server');
         return;
       }
 
-      // Map API data to our interface format, handling both data formats
-      const formattedRecords: AttendanceRecord[] = data.map((record: any) => {
-        // Determine which date format to use
-        let date: Date;
-        let checkIn: Date | undefined;
-        let checkOut: Date | undefined;
-        let status: 'present' | 'absent' | 'late' | 'partial' | 'offday';
+      //log('rows:', data.length);
+      //if (data.length) log('first row keys:', Object.keys(data[0]));
 
-        // New format (using attendance_days)
-        if (record.attendance_date || record.first_check_in_time) {
-          date = new Date(record.attendance_date || record.first_check_in_time);
-          checkIn = record.first_check_in_time ? new Date(record.first_check_in_time) : undefined;
-          checkOut = record.last_check_out_time ? new Date(record.last_check_out_time) : undefined;
+  // console.log('Employee View - Raw API Data:', data);
+  // console.log('Employee View - Status field:', data.map((r: any) => ({
+  //   date: r.attendance_date,
+  //   status_name: r.status_name,
+  //   status_id: r.status_id
+  // })));
 
-          // Determine status based on status_id or status_name if available
-          if (record.status_name) {
-            switch (record.status_name.toLowerCase()) {
-              case 'present': status = 'present'; break;
-              case 'absent': status = 'absent'; break;
-              case 'late': status = 'late'; break;
-              case 'offday': status = 'offday'; break;
-              default: status = 'partial';
-            }
-          } else if (record.status_id) {
-            switch (record.status_id) {
-              case 1: status = 'present'; break;
-              case 2: status = 'absent'; break;
-              case 3: status = 'late'; break;
-              case 4: status = 'partial'; break;
-              case 5: status = 'offday'; break;
-              default: status = 'partial';
-            }
-          } else {
-            status = determineStatus(
-              record.first_check_in_time,
-              record.last_check_out_time
-            );
-          }
-        }
-        // Old format (using attendance table)
-        else {
-          const checkInDate = record.clock_in ? parseISO(record.clock_in) : new Date();
-          const employeeTimezone = employee?.time_zone || timeZone;
-          const zonedCheckInDate = toZonedTime(checkInDate, employeeTimezone);
-          date = parseISO(formatInTimeZone(zonedCheckInDate, employeeTimezone, 'yyyy-MM-dd'));
-          
-          checkIn = record.clock_in ? parseISO(record.clock_in) : undefined;
-          checkOut = record.clock_out ? parseISO(record.clock_out) : undefined;
-          status = determineStatus(
-            record.clock_in,
-            record.clock_out
-          );
-        }
+      // In fetchAttendanceHistory, replace the mapping section with:
+  const formatted: AttendanceRecord[] = data.map((rec: any) => {
+    // Use local ISO times which are already timezone-correct
+    const date = new Date(rec.attendance_date || rec.first_check_in_time_local_iso);
+    const checkIn = rec.first_check_in_time_local_iso ? new Date(rec.first_check_in_time_local_iso) : undefined;
+    const checkOut = rec.last_check_out_time_local_iso ? new Date(rec.last_check_out_time_local_iso) : undefined;
 
-      return {
-        date,
-        checkIn,
-        checkOut,
-        status,
-        attendanceDayId: record.attendance_day_id,
-        first_checkIn: record.first_check_in_day ? displayTime(record.first_check_in_day) : '',
-        last_checkOut: record.last_check_out_day ? displayTime(record.last_check_out_day) : '',
-        appealStatus: record.appeal_status || ''
-      };
-    });
+    const status = rec.status_name?.toLowerCase() || 'partial';
 
-      setAttendanceRecords(formattedRecords);
-    } catch (err) {
+    return {
+      date,
+      checkIn,
+      checkOut,
+      status,
+      attendanceDayId: rec.attendance_day_id,
+      appealStatus: rec.appeal_status || ''
+    };
+  });
+
+      // 6) Quick peek (first 5 only)
+      // log('sample:');
+      // console.table(
+      //   formatted.slice(0, 5).map(r => ({
+      //     date: r.date?.toISOString()?.slice(0, 10),
+      //     checkIn: r.checkIn ? r.checkIn.toISOString() : '',
+      //     checkOut: r.checkOut ? r.checkOut.toISOString() : '',
+      //     status: r.status
+      //   }))
+      // );
+
+      setAttendanceRecords(formatted);
+      //log('done; set records:', formatted.length);
+    } catch (err: any) {
+      log('caught error:', err?.message || err);
       setError(err instanceof Error ? err.message : 'Failed to load attendance history');
-      console.error('Error fetching attendance history:', err);
     }
   };
 
-const fetchAttendanceHistory = async (start?: Date, end?: Date) => {
-  try {
-    // 1) Guard
-    if (!employeeId) {
-      const msg = 'Employee ID is not available. Please refresh the page or log in again.';
-      log('no employeeId');
-      setError(msg);
-      return;
+
+  useEffect(() => {
+    if (employeeId && activeTab === 'overtime') {
+      fetchOvertimeData(1);
     }
+  }, [employeeId, activeTab, overtimeView, approvalHistoryType]);
 
-    // 2) Build URL + date range (in employee TZ)
-    const tz = employee?.time_zone || timeZone || 'Asia/Singapore';
-    let url = `${API_BASE_URL}${API_ROUTES.attendanceHistory}?employee_id=${employeeId}`;
-
-    if (start && end) {
-      try {
-        const startDate = formatInTimeZone(start, tz, 'yyyy-MM-dd');
-        const endDate = formatInTimeZone(end, tz, 'yyyy-MM-dd');
-        url += `&start_date=${startDate}&end_date=${endDate}`;
-        log('range', { tz, start: startDate, end: endDate });
-      } catch (e) {
-        log('range format failed; continuing without range', e);
-      }
-    } else {
-      log('no range provided');
-    }
-
-    log('GET', url);
-
-    // 3) Request
-    const res = await fetch(url);
-    log('status', res.status, res.ok ? 'OK' : 'NOT OK');
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      log('error body (first 300):', body.slice(0, 300));
-      throw new Error(`Failed to fetch attendance history (${res.status})`);
-    }
-
-    // 4) Parse + shape check
-    const data = await res.json();
-    if (!Array.isArray(data)) {
-      log('unexpected payload (not array):', data);
-      setError('Unexpected response format from server');
-      return;
-    }
-
-    log('rows:', data.length);
-    if (data.length) log('first row keys:', Object.keys(data[0]));
-
-console.log('Employee View - Raw API Data:', data);
-console.log('Employee View - Status field:', data.map((r: any) => ({
-  date: r.attendance_date,
-  status_name: r.status_name,
-  status_id: r.status_id
-})));
-
-    // In fetchAttendanceHistory, replace the mapping section with:
-const formatted: AttendanceRecord[] = data.map((rec: any) => {
-  // Use local ISO times which are already timezone-correct
-  const date = new Date(rec.attendance_date || rec.first_check_in_time_local_iso);
-  const checkIn = rec.first_check_in_time_local_iso ? new Date(rec.first_check_in_time_local_iso) : undefined;
-  const checkOut = rec.last_check_out_time_local_iso ? new Date(rec.last_check_out_time_local_iso) : undefined;
-
-  const status = rec.status_name?.toLowerCase() || 'partial';
-
-  return {
-    date,
-    checkIn,
-    checkOut,
-    status,
-    attendanceDayId: rec.attendance_day_id,
-    appealStatus: rec.appeal_status || ''
-  };
-});
-
-    // 6) Quick peek (first 5 only)
-    log('sample:');
-    console.table(
-      formatted.slice(0, 5).map(r => ({
-        date: r.date?.toISOString()?.slice(0, 10),
-        checkIn: r.checkIn ? r.checkIn.toISOString() : '',
-        checkOut: r.checkOut ? r.checkOut.toISOString() : '',
-        status: r.status
-      }))
-    );
-
-    setAttendanceRecords(formatted);
-    log('done; set records:', formatted.length);
-  } catch (err: any) {
-    log('caught error:', err?.message || err);
-    setError(err instanceof Error ? err.message : 'Failed to load attendance history');
-  }
-};
-
-  // Helper to determine status based on check-in and check-out times
-  const determineStatus = (checkInTime: string, checkOutTime: string | null): 'present' | 'absent' | 'late' | 'partial' => {
-    if (!checkInTime) return 'absent';
-
-    const checkIn = parseISO(checkInTime);
-    const employeeTimezone = employee?.time_zone || timeZone;
-    const zonedCheckIn = toZonedTime(checkIn, employeeTimezone);
-    const workStartHour = 9; // Assuming work starts at 9 AM
-
-    // Consider late if checked in after 9:15 AM
-    const hours = parseInt(format(zonedCheckIn, 'H'));
-    const minutes = parseInt(format(zonedCheckIn, 'mm'));
-    const isLate = hours > workStartHour || (hours === workStartHour && minutes > 15);
-
-    if (!checkOutTime) return 'partial';
-
-    return isLate ? 'late' : 'present';
-  };
-
-  // Update initial data fetching to wait for employeeId
-  // useEffect(() => {
-  //   // Only fetch data if employeeId is available
-  //   if (employeeId) {
-  //     fetchTodayAttendance();
-  //     fetchAttendanceHistory();
-  //     fetchAppealData(filters);
-  //     if (role === 'admin' || role === 'manager') {
-  //       fetchAttendanceStats();
-  //       if (role === 'admin') {
-  //         fetchCompanies(); // Fetch companies for dropdown
-  //         //fetchAttendanceStatuses(); // Fetch attendance statuses
-  //         applyAttendanceFilters(filters); // Load initial attendance data
-  //         // Load appeal data
-  //       }
-  //     }
-  //   }
-  // }, [employeeId]); // Depend on employeeId to re-fetch when it's set
-
-// Add to your useEffect to fetch overtime data
-// In the useEffect
-
-
-useEffect(() => {
-  if (employeeId && activeTab === 'overtime') {
-    fetchOvertimeData(1);
-  }
-}, [employeeId, activeTab, overtimeView, approvalHistoryType]);
-
-
-// useEffect(() => {
-//   if (employeeId) {
-//     fetchTodayAttendance();
-//     fetchAttendanceHistory();
-//     fetchAppealData(filters);
-//     fetchEmployeeOvertime();
-//     fetchOvertimeData(); 
-    
-//     // Load approval data if user is an approver - UPDATED
-//     if (role === 'admin' || role === 'manager' || role === 'supervisor') {
-//       loadPendingApprovals();
-//       loadApprovalHistory();
-//     }
-    
-//     // UPDATED: Include supervisors in analytics access
-//     if (role === 'admin' || role === 'manager' || role === 'supervisor') {
-//       fetchAttendanceStats();
-//       if (role === 'admin') {
-//         fetchCompanies();
-//         applyAttendanceFilters(filters);
-//       }
-//     }
-//   }
-// }, [employeeId]);
 
   // Helper function for status badge
   const getStatusBadgeClass = (status: string) => {
@@ -2428,23 +2262,6 @@ useEffect(() => {
     });
   };
 
-  // Function to handle edit mode toggle
-  const toggleEditMode1 = () => {
-    if (selectedEmployeeAppeal) {
-      if (!isEditingAppeal) {
-        // Entering edit mode - ensure data is populated
-        setEditedAppealData({
-          requestedCheckIn: selectedEmployeeAppeal.requested_check_in ?
-            format(new Date(selectedEmployeeAppeal.requested_check_in), 'HH:mm') : '',
-          requestedCheckOut: selectedEmployeeAppeal.requested_check_out ?
-            format(new Date(selectedEmployeeAppeal.requested_check_out), 'HH:mm') : '',
-          reason: selectedEmployeeAppeal.reason || ''
-        });
-      }
-      setIsEditingAppeal(!isEditingAppeal);
-    }
-  };
-
 // Function to handle edit mode toggle
 // Function to handle edit mode toggle
 const toggleEditModework = () => {
@@ -2548,17 +2365,6 @@ const toggleEditMode = () => {
         throw new Error('Failed to update appeal');
       }
 
-      //console.error("TET : "+ requestedCheckOut);
-      // Update the local state with edited values
-      // if (selectedEmployeeAppeal) {
-      //   setSelectedEmployeeAppeal({
-      //     ...selectedEmployeeAppeal,
-      //     requested_check_in: requestedCheckInDate, //requestedCheckIn as Date | undefined,
-      //     requested_check_out: requestedCheckOutDate,
-      //     reason:editedAppealData.reason
-      //   });
-      // }
-      // // Update the local state with edited values
       if (selectedEmployeeAppeal) {
         setSelectedEmployeeAppeal({
           ...selectedEmployeeAppeal,
@@ -2584,72 +2390,6 @@ const toggleEditMode = () => {
       showNotification('Failed to update appeal', 'error');
     }
   };
-
-  // Function to save appeal changes
-// Function to save appeal changes
-const saveAppealChangescurrent = async () => {
-  if (!selectedEmployeeAppeal) return;
-
-  try {
-    const employeeTimezone = employee?.time_zone || timeZone;
-    const appealDate = new Date(selectedEmployeeAppeal.attendance_date);
-    
-    // Convert the edited times to proper Date objects in the employee's timezone
-    const requestedCheckIn = editedAppealData.requestedCheckIn ?
-      toZonedTime(new Date(`${format(appealDate, 'yyyy-MM-dd')}T${editedAppealData.requestedCheckIn}`), employeeTimezone) : 
-      undefined;
-    
-    const requestedCheckOut = editedAppealData.requestedCheckOut ?
-      toZonedTime(new Date(`${format(appealDate, 'yyyy-MM-dd')}T${editedAppealData.requestedCheckOut}`), employeeTimezone) : 
-      undefined;
-
-      
-
-    const payload = {
-      appeal_id: selectedEmployeeAppeal.id,
-      request_check_in: requestedCheckIn,
-      request_check_out: requestedCheckOut,
-      appeal_reason: editedAppealData.reason
-    };
-
-    const response = await fetch(`${API_BASE_URL}/api/attendance/appeal/edit`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to update appeal');
-    }
-
-    // Update the local state with edited values
-    if (selectedEmployeeAppeal) {
-      setSelectedEmployeeAppeal({
-        ...selectedEmployeeAppeal,
-        requested_check_in: requestedCheckIn,
-        requested_check_out: requestedCheckOut,
-        reason: editedAppealData.reason
-      });
-    }
-
-    // Exit edit mode
-    setIsEditingAppeal(false);
-
-    // Show success notification
-    showNotification('Appeal updated successfully', 'success');
-
-    // Refresh appeal data
-    await fetchAppealData(filters);
-    await fetchAttendanceHistory();
-
-  } catch (error) {
-    console.error('Error updating appeal:', error);
-    showNotification('Failed to update appeal', 'error');
-  }
-};
-  
 
   // Function to cancel an appeal
   const cancelAppeal = async () => {
@@ -2686,45 +2426,6 @@ const saveAppealChangescurrent = async () => {
       showNotification('Failed to cancel appeal', 'error');
     }
   };
-
-  // Add function to open appeal request modal
-  // const openAppealRequestModal1 = (record: AttendanceRecord) => {
-  
-
-  //     const employeeTimezone = employee?.time_zone || timeZone;
-  // const date = formatInTimeZone(record.date, employeeTimezone, 'yyyy-MM-dd');
-
-  // // Format check-in/out times for form
-  // const originalCheckIn = record.checkIn
-  //   ? formatInTimeZone(record.checkIn, employeeTimezone, 'HH:mm')
-  //   : null;
-
-  // const originalCheckOut = record.checkOut
-  //   ? formatInTimeZone(record.checkOut, employeeTimezone, 'HH:mm')
-  //   : null;
-
-  //   // Initialize form with current values
-  //   setAppealRequestData({
-  //     employeeId: employeeId,
-  //     attendanceDayId: record.attendanceDayId,
-  //     date: date,
-  //     originalCheckIn: originalCheckIn,
-  //     originalCheckOut: originalCheckOut,
-  //     requestedCheckIn: originalCheckIn || '',
-  //     requestedCheckOut: originalCheckOut || '',
-  //     reason: '',
-  //     status: record.status
-  //   });
-
-  //   // Reset errors
-  //   setAppealRequestErrors({
-  //     requestedCheckIn: '',
-  //     requestedCheckOut: '',
-  //     reason: ''
-  //   });
-
-  //   setIsAppealRequestModalOpen(true);
-  // };
 
 const openAppealRequestModal = (record: AttendanceRecord) => {
   const employeeTimezone = employee?.time_zone || timeZone;
@@ -2824,62 +2525,6 @@ const openAppealRequestModal = (record: AttendanceRecord) => {
 
     setAppealRequestErrors(errors);
     return isValid;
-  };
-
-  // Add function to submit appeal request
-  const submitAppealRequest1 = async () => {
-    // Validate form
-    if (!validateAppealForm()) {
-      if (appealRequestErrors) {
-        showNotification(appealRequestErrors.requestedCheckIn || appealRequestErrors.requestedCheckOut || appealRequestErrors.reason, 'error');
-      }
-      return;
-    }
-
-    try {
-      setIsAppealSubmitting(true);
-
-
-      const statusId = AttendanceStatus[appealRequestData.status as keyof typeof AttendanceStatus];
-      // Replace the toSingaporeTime calls in the payload:
-      const payload = {
-        employee_id: appealRequestData.employeeId,
-        attendance_day_id: appealRequestData.attendanceDayId,
-        appeal_reason: appealRequestData.reason,
-        status: statusId,
-        request_check_in: appealRequestData.requestedCheckIn ? new Date(`${appealRequestData.date}T${appealRequestData.requestedCheckIn}`) : null,
-        request_check_out: appealRequestData.requestedCheckOut ? new Date(`${appealRequestData.date}T${appealRequestData.requestedCheckOut}`) : null,
-        original_check_in: appealRequestData.originalCheckIn ? new Date(`${appealRequestData.date}T${appealRequestData.originalCheckIn}`) : null,
-        original_check_out: appealRequestData.originalCheckOut ? new Date(`${appealRequestData.date}T${appealRequestData.originalCheckOut}`) : null
-      };
-
-
-      // Make API call
-      const response = await fetch(`${API_BASE_URL}/api/attendance/appeal`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to submit appeal request');
-      }
-
-      // Close modal and show success notification
-      setIsAppealRequestModalOpen(false);
-      showNotification('Appeal request submitted successfully!', 'success');
-      
-      // Refresh attendance records to show updated appeal status
-      await fetchAttendanceHistory();
-
-    } catch (error) {
-      console.error('Error submitting appeal request:', error);
-      showNotification('Failed to submit appeal request. Please try again.', 'error');
-    } finally {
-      setIsAppealSubmitting(false);
-    }
   };
 
   // Add function to submit appeal request
@@ -3150,10 +2795,6 @@ const totalRecords = attendanceRecords.filter(record => {
     return pageNumbers;
   };
 
-  
-// in your page/component
-// build yyyy-MM-dd in LOCAL time (don’t use toISOString)
-
 // helpers (local yyyy-MM-dd; don’t use toISOString)
 const fmtLocal = (d: Date | string) => {
   const x = new Date(d);
@@ -3313,8 +2954,79 @@ async function handleExportWithLeaves(exportData = amendAttendanceData) {
     setActiveQuickDate(option);
   };
 
+  const handleActiveTabChange = async (tab: string) => {
+  try {
+    // 1. Set loading state immediately
+    setIsLoading(true);
+    
+    // 2. Update URL and state
+    router.push(`/attendance?tab=${tab}`);
+    setActiveTab(tab);
+    setActiveQuickDate(null);
+    
+    // 3. Reset filters with proper defaults
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const newFilters = {
+      fromDate: today,
+      toDate: today,
+      department: '',
+      company: '',
+      status: ''
+    };
+    
+    await setFilters(newFilters); // If your setState supports await
+    setSelectedCompany(0);
+    setIsFilterOpen(false);
+    setCurrentPage(1);
+    
+    // 4. Load tab-specific data
+    switch (tab) {
+      case 'attendance':
+        setIsAttendanceLoading(true);
+        await fetchAttendanceFilterData(tab, newFilters);
+        break;
+        
+      case 'amend':
+        setIsAmendLoading(true);
+        await fetchAttendanceFilterData(tab, newFilters);
+        break;
+        
+      case 'appeal':
+        setIsAppealLoading(true);
+        await fetchAppealData(newFilters);
+        break;
+        
+      case 'overtime':
+        setIsLoadingOvertime(true);
+        await fetchOvertimeData(1, true);
+        break;
+        
+      case 'overview':
+        // Load overview data if needed
+        if (role === 'admin' || role === 'manager') {
+          await fetchAttendanceStats();
+          await fetchDepartmentAttendance(selectedCompany, 1);
+        }
+        break;
+        
+      default:
+        break;
+    }
+    
+  } catch (error) {
+    console.error(`Error switching to tab ${tab}:`, error);
+    showNotification('Failed to switch tab', 'error');
+  } finally {
+    // Reset loading states
+    setIsLoading(false);
+    setIsAttendanceLoading(false);
+    setIsAmendLoading(false);
+    setIsAppealLoading(false);
+    setIsLoadingOvertime(false);
+  }
+};
 
-  const handleActiveTabChange = (tab: string) => {
+  const handleActiveTabChange2811 = (tab: string) => {
     router.push(`/attendance?tab=${tab}`);
     setActiveTab(tab);
     setActiveQuickDate(null);
@@ -3867,13 +3579,30 @@ const handleOvertimeApproval = async (action: 'approve' | 'reject') => {
   }
 };
 
-// Helper function to format IP status display
-const formatIPStatus = (status: string) => {
-  return status?.replace(/_/g, ' ').toLowerCase() || 'unknown';
+
+// Enhanced helper function for IP status display
+const getIPStatusDisplay = (status: string) => {
+  if (!status) return 'Unknown';
+  
+  const normalizedStatus = status.toLowerCase();
+  switch (normalizedStatus) {
+    case 'in_whitelist':
+      return 'Matched';
+    case 'not_in_whitelist':
+      return 'Not Matched';
+    case 'no_ip':
+      return 'No IP';
+    case 'no_event':
+      return 'No Event';
+    case 'pending':
+      return 'Pending';
+    default:
+      return status;
+  }
 };
 
 // Helper function to get IP status display text
-const getIPStatusDisplay = (status: string) => {
+const getIPStatusDisplay2811 = (status: string) => {
   if (!status) return 'Unknown';
   
   const normalizedStatus = status.toLowerCase();
@@ -3929,11 +3658,11 @@ useEffect(() => {
 }, [employeeId]);
 
 // Separate effect for filter changes
-useEffect(() => {
-  if (employeeId && role === 'admin' && filters.fromDate && filters.toDate) {
-    applyAttendanceFilters(filters);
-  }
-}, [filters.fromDate, filters.toDate]);
+// useEffect(() => {
+//   if (employeeId && role === 'admin' && filters.fromDate && filters.toDate) {
+//     applyAttendanceFilters(filters);
+//   }
+// }, [filters.fromDate, filters.toDate]);
 
 // Set default dates on component mount
 useEffect(() => {
@@ -3947,11 +3676,11 @@ useEffect(() => {
 }, []);
 
 // Apply default filters when tab changes
-useEffect(() => {
-  if ((activeTab === 'attendance' || activeTab === 'amend' || activeTab === 'appeal') && employeeId) {
-    applyAttendanceFilters(filters);
-  }
-}, [activeTab, employeeId]);
+// useEffect(() => {
+//   if ((activeTab === 'attendance' || activeTab === 'amend' || activeTab === 'appeal') && employeeId) {
+//     applyAttendanceFilters(filters);
+//   }
+// }, [activeTab, employeeId]);
 
   
   return (
@@ -4059,70 +3788,153 @@ useEffect(() => {
       {activeTab === 'overview' && (
         <>
           {/* Header with stats */}
-          {role !== 'admin' && (
-            <div className="flex flex-col mb-8">
-              <div className="flex justify-between items-center mb-2">
-                <h1 className={`text-3xl font-bold ${theme === 'light' ? 'text-gray-800' : 'text-slate-100'}`}>
-                  Attendance Management
-                </h1>
+{role !== 'admin' && (
+  <div className="flex flex-col mb-8">
+    <div className="flex justify-between items-center mb-2">
+      <h1 className={`text-3xl font-bold ${theme === 'light' ? 'text-gray-800' : 'text-slate-100'}`}>
+        Attendance Management
+      </h1>
 
-                {/* NEW: Check-in/out action button */}
-                {/* <button
-                  onClick={handleAttendanceAction}
-                  className={`btn ${todayAttendance.isCheckedIn ? 'btn-error' : 'btn-success'} text-white px-6 py-2 rounded-md`}
-                >
-                  {todayAttendance.isCheckedIn ? 'Check Out' : 'Check In'}
-                </button> */}
-
-<button
+      {/* Check In/Out Button with Tooltip Wrapper */}
+      <div className="relative group">
+       <button
   onClick={handleAttendanceAction}
-  disabled={isAttendanceLoading}
-  className={`btn ${todayAttendance.isCheckedIn ? 'btn-error' : 'btn-success'} text-white px-6 py-2 rounded-md ${
-    isAttendanceLoading ? 'opacity-70 cursor-not-allowed' : ''
-  }`}
+  disabled={isAttendanceLoading || (sessions.length > 0 && sessions.every(session => session.checkOut))}
+  className={`btn px-6 py-3 text-lg font-semibold shadow-lg transition-all duration-300 ${
+    sessions.length > 0 && sessions.every(session => session.checkOut)
+      ? "bg-gradient-to-br from-emerald-500 via-emerald-600 to-emerald-700 border-0 text-white cursor-not-allowed shadow-emerald-200/50" 
+      : todayAttendance.isCheckedIn 
+        ? "bg-gradient-to-r from-amber-500 to-amber-600 border-0 hover:from-amber-600 hover:to-amber-700 text-white shadow-amber-200/30" 
+        : "bg-gradient-to-r from-green-600 to-green-700 border-0 hover:from-green-700 hover:to-green-800 text-white shadow-green-200/30"
+  } ${isAttendanceLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
 >
   {isAttendanceLoading ? (
     <>
       <span className="loading loading-spinner loading-sm"></span>
       {todayAttendance.isCheckedIn ? "Checking Out..." : "Checking In..."}
     </>
+  ) : sessions.length > 0 && sessions.every(session => session.checkOut) ? (
+    <div className="flex items-center justify-center gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+      </svg>
+      <span>Attendance Completed</span>
+    </div>
+  ) : todayAttendance.isCheckedIn ? (
+    <div className="flex items-center justify-center gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+      </svg>
+      <span>Check Out</span>
+    </div>
   ) : (
-    todayAttendance.isCheckedIn ? 'Check Out' : 'Check In'
+    <div className="flex items-center justify-center gap-2">
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+      </svg>
+      <span>Check In</span>
+    </div>
   )}
 </button>
-              </div>
-              <p className={`mb-6 ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`}>
-                Track your daily attendance and view attendance history
-              </p>
 
-              {/* Today's Working Hours */}
-              <div className={`p-4 rounded-lg shadow mb-6 ${theme === 'light' ? 'bg-white' : 'bg-slate-800'}`}>
-                <h2 className={`text-xl font-semibold mb-2 ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>Today's Working Status</h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="flex flex-col">
-                    <span className={`text-sm ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Check In Time</span>
-                    <span className={`text-xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`}>
-                      {/* {formatTime(todayAttendance.checkInTime)} */}
-                      {displayTime(todayAttendance.checkInTime)}
-                    </span>
-                  </div>
-                  <div className="flex flex-col">                  
-                    <span className={`text-sm ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Check Out Time</span>     
-                    <span className={`text-xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`}>
-                      {displayTime(todayAttendance.checkOutTime)}
-                      {/* {formatTime(todayAttendance.checkOutTime)} */}
-                    </span>               
-                  </div>             
-                  <div className="flex flex-col">            
-                    <span className={`text-sm ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Working Hours</span>                
-                    <WorkingTimeCounter sessions={sessions.map(s => ({ id: s.id, checkIn: s.checkIn, checkOut: s.checkOut }))} 
-                    isCheckedIn={todayAttendance.isCheckedIn } 
-                     className={`text-xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`} displayFormat="digital" />           
-                  </div>
+        {/* Tooltip for Completed Attendance */}
+        {sessions.length > 0 && sessions.every(session => session.checkOut) && (
+          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block z-10 w-64">
+            <div className={`relative p-3 rounded-lg shadow-lg ${
+              theme === 'light' 
+                ? 'bg-slate-800 text-white' 
+                : 'bg-slate-200 text-slate-800'
+            }`}>
+              <div className="flex items-start gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="text-sm">
+                  <div className="font-semibold mb-1">Attendance Completed</div>
+                  <p>You have already completed your check-in and check-out for today.</p>
                 </div>
               </div>
+              {/* Tooltip arrow */}
+              <div className={`absolute top-full left-1/2 transform -translate-x-1/2 border-8 border-transparent ${
+                theme === 'light' 
+                  ? 'border-t-slate-800' 
+                  : 'border-t-slate-200'
+              }`}></div>
             </div>
-          )}
+          </div>
+        )}
+      </div>
+    </div>
+    
+    <p className={`mb-6 ${theme === 'light' ? 'text-gray-600' : 'text-slate-400'}`}>
+      Track your daily attendance and view attendance history
+    </p>
+
+    {/* Today's Working Hours */}
+    <div className={`p-4 rounded-lg shadow mb-6 ${theme === 'light' ? 'bg-white' : 'bg-slate-800'}`}>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className={`text-xl font-semibold ${theme === 'light' ? 'text-gray-700' : 'text-slate-300'}`}>
+          Today's Working Status
+        </h2>
+
+        {todayAttendance.isCheckedIn && sessions.some(session => !session.checkOut) && (
+          <div className="badge badge-lg gap-2 bg-green-100 text-green-800 border-green-200 py-2 px-3">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Currently Working
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="flex flex-col">
+          <span className={`text-sm ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Check In Time</span>
+          <span className={`text-xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`}>
+            {displayTime(todayAttendance.checkInTime)}
+          </span>
+        </div>
+        <div className="flex flex-col">                  
+          <span className={`text-sm ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Check Out Time</span>     
+          <span className={`text-xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`}>
+            {displayTime(todayAttendance.checkOutTime)}
+          </span>               
+        </div>             
+        <div className="flex flex-col">            
+          <span className={`text-sm ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Working Hours</span>                
+          <WorkingTimeCounter 
+            sessions={sessions.map(s => ({ 
+              id: s.id, 
+              checkIn: s.checkIn, 
+              checkOut: s.checkOut 
+            }))} 
+            isCheckedIn={todayAttendance.isCheckedIn} 
+            className={`text-xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`} 
+            displayFormat="digital" 
+          />           
+        </div>
+      </div>
+
+      {/* Additional info for completed sessions */}
+      {/* {sessions.length > 0 && sessions.every(session => session.checkOut) && (
+        <div className={`mt-4 p-3 rounded-lg ${
+          theme === 'light' 
+            ? 'bg-emerald-50 border border-emerald-200' 
+            : 'bg-emerald-900 border border-emerald-700'
+        }`}>
+          <div className="flex items-center gap-2 text-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className={theme === 'light' ? 'text-emerald-700' : 'text-emerald-300'}>
+              Your attendance for today has been recorded. Thank you!
+            </span>
+          </div>
+        </div>
+      )} */}
+    </div>
+  </div>
+)}
 
           {/* Main Content */}
           {role !== 'admin' && (
@@ -5543,17 +5355,11 @@ useEffect(() => {
           <td className={`${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
             {(item as any).worked_hours || '0.00'}
           </td>
- {/* Check-in IP Details */}
+
+{/* Check-in IP Details */}
 <td>
   {(item as any).check_in_ip || (item as any).check_in_public_ip ? (
     <div className="text-xs space-y-1">
-      {/* Internal IP */}
-      {/* {(item as any).check_in_ip && (
-        <div>
-          <span className="font-medium">Internal: </span>
-          <span className="font-mono">{(item as any).check_in_ip}</span>
-        </div>
-      )} */}
       {/* Public IP */}
       {(item as any).check_in_public_ip && (
         <div>
@@ -5561,22 +5367,51 @@ useEffect(() => {
           <span className="font-mono">{(item as any).check_in_public_ip}</span>
         </div>
       )}
-{/* IP Status */}
-{(item as any).check_in_ip_match_status && (
-  <div className="flex items-center gap-1 mt-1">
-    <span className={`badge badge-xs ${
-      (item as any).check_in_ip_match_status === 'IN_WHITELIST' ? 'badge-success' : 
-      (item as any).check_in_ip_match_status === 'NOT_IN_WHITELIST' ? 'badge-error' : 
-      'badge-warning'
-    }`}>
-      {getIPStatusDisplay((item as any).check_in_ip_match_status)}
-    </span>
-  </div>
-)}
+
+      {/* Enhanced IP Status with Debug Info */}
+      {(item as any).check_in_ip_match_status && (
+        <div className="space-y-1 mt-1">
+          <div className="flex items-center gap-1 flex-wrap">
+            <span className={`badge badge-xs ${
+              (item as any).check_in_ip_match_status === 'IN_WHITELIST' ? 'badge-success' : 
+              (item as any).check_in_ip_match_status === 'NOT_IN_WHITELIST' ? 'badge-error' : 
+              (item as any).check_in_ip_match_status === 'NO_IP' ? 'badge-warning' :
+              (item as any).check_in_ip_match_status === 'NO_EVENT' ? 'badge-neutral' :
+              'badge-warning'
+            }`}>
+              {getIPStatusDisplay((item as any).check_in_ip_match_status)}
+            </span>
+            
+            {/* Show override badge if employee override was used */}
+            {(item as any).check_in_ip_used_override && (
+              <span className="badge badge-xs badge-info">Override</span>
+            )}
+          </div>
+          
+          {/* Show matching rule for debugging */}
+          {(item as any).check_in_ip_matched_rule && (
+            <div 
+              className="text-xs opacity-70 truncate cursor-help" 
+              title={(item as any).check_in_ip_matched_rule}
+            >
+              📍 {(item as any).check_in_ip_matched_rule}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Policy Mode */}
       {(item as any).check_in_ip_policy_mode && (
         <div className="text-xs opacity-70">
           Policy: {(item as any).check_in_ip_policy_mode}
+        </div>
+      )}
+
+      {/* Employee Override Info */}
+      {(item as any).employee_override_ip && (item as any).employee_override_active && (
+        <div className="text-xs opacity-70 mt-1 p-1 bg-blue-50 dark:bg-blue-900 rounded">
+          ⭐ Override: {(item as any).employee_override_ip}
+          {(item as any).employee_override_label && ` (${(item as any).employee_override_label})`}
         </div>
       )}
     </div>
@@ -5589,13 +5424,6 @@ useEffect(() => {
 <td>
   {(item as any).check_out_ip || (item as any).check_out_public_ip ? (
     <div className="text-xs space-y-1">
-      {/* Internal IP */}
-      {/* {(item as any).check_out_ip && (
-        <div>
-          <span className="font-medium">Internal: </span>
-          <span className="font-mono">{(item as any).check_out_ip}</span>
-        </div>
-      )} */}
       {/* Public IP */}
       {(item as any).check_out_public_ip && (
         <div>
@@ -5603,22 +5431,51 @@ useEffect(() => {
           <span className="font-mono">{(item as any).check_out_public_ip}</span>
         </div>
       )}
-{/* IP Status */}
-{(item as any).check_out_ip_match_status && (
-  <div className="flex items-center gap-1 mt-1">
-    <span className={`badge badge-xs ${
-      (item as any).check_out_ip_match_status === 'IN_WHITELIST' ? 'badge-success' : 
-      (item as any).check_out_ip_match_status === 'NOT_IN_WHITELIST' ? 'badge-error' : 
-      'badge-warning'
-    }`}>
-      {getIPStatusDisplay((item as any).check_out_ip_match_status)}
-    </span>
-  </div>
-)}
+
+      {/* Enhanced IP Status with Debug Info */}
+      {(item as any).check_out_ip_match_status && (
+        <div className="space-y-1 mt-1">
+          <div className="flex items-center gap-1 flex-wrap">
+            <span className={`badge badge-xs ${
+              (item as any).check_out_ip_match_status === 'IN_WHITELIST' ? 'badge-success' : 
+              (item as any).check_out_ip_match_status === 'NOT_IN_WHITELIST' ? 'badge-error' : 
+              (item as any).check_out_ip_match_status === 'NO_IP' ? 'badge-warning' :
+              (item as any).check_out_ip_match_status === 'NO_EVENT' ? 'badge-neutral' :
+              'badge-warning'
+            }`}>
+              {getIPStatusDisplay((item as any).check_out_ip_match_status)}
+            </span>
+            
+            {/* Show override badge if employee override was used */}
+            {(item as any).check_out_ip_used_override && (
+              <span className="badge badge-xs badge-info">Override</span>
+            )}
+          </div>
+          
+          {/* Show matching rule for debugging */}
+          {(item as any).check_out_ip_matched_rule && (
+            <div 
+              className="text-xs opacity-70 truncate cursor-help" 
+              title={(item as any).check_out_ip_matched_rule}
+            >
+             {(item as any).check_out_ip_matched_rule}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Policy Mode */}
       {(item as any).check_out_ip_policy_mode && (
         <div className="text-xs opacity-70">
           Policy: {(item as any).check_out_ip_policy_mode}
+        </div>
+      )}
+
+      {/* Employee Override Info */}
+      {(item as any).employee_override_ip && (item as any).employee_override_active && (
+        <div className="text-xs opacity-70 mt-1 p-1 bg-blue-50 dark:bg-blue-900 rounded">
+           Override: {(item as any).employee_override_ip}
+          {(item as any).employee_override_label && ` (${(item as any).employee_override_label})`}
         </div>
       )}
     </div>
@@ -5626,17 +5483,18 @@ useEffect(() => {
     <span className="text-xs text-gray-500">No IP data</span>
   )}
 </td>
-{/*Status */}
-                    <td>
-                      <span className={`badge ${item.status === 'present' ? 'badge-success' :
-                          item.status === 'late' ? 'badge-warning' :
-                            item.status === 'absent' ? 'badge-error' :
-                              item.status === 'partial' ? 'badge-info' :
-                                'badge-neutral'
-                        }`}>
-                        {item.status.toUpperCase()}
-                      </span>
-                    </td>
+
+            {/*Status */}
+          <td>
+            <span className={`badge ${item.status === 'present' ? 'badge-success' :
+                item.status === 'late' ? 'badge-warning' :
+                  item.status === 'absent' ? 'badge-error' :
+                    item.status === 'partial' ? 'badge-info' :
+                      'badge-neutral'
+              }`}>
+              {item.status.toUpperCase()}
+            </span>
+          </td>
         </tr>
       ))}
     </tbody>
