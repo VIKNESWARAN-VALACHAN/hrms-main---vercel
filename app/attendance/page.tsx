@@ -1516,7 +1516,7 @@ const fetchAttendanceFilterData = async (currentTab = activeTab, filters: Record
         whitelisted_cidr: item.whitelisted_cidr || '',
         
         // Keep raw data for debugging
-        //_raw: item
+        _raw: item
       };
     });
 
@@ -2954,79 +2954,8 @@ async function handleExportWithLeaves(exportData = amendAttendanceData) {
     setActiveQuickDate(option);
   };
 
-  const handleActiveTabChange = async (tab: string) => {
-  try {
-    // 1. Set loading state immediately
-    setIsLoading(true);
-    
-    // 2. Update URL and state
-    router.push(`/attendance?tab=${tab}`);
-    setActiveTab(tab);
-    setActiveQuickDate(null);
-    
-    // 3. Reset filters with proper defaults
-    const today = format(new Date(), 'yyyy-MM-dd');
-    const newFilters = {
-      fromDate: today,
-      toDate: today,
-      department: '',
-      company: '',
-      status: ''
-    };
-    
-    await setFilters(newFilters); // If your setState supports await
-    setSelectedCompany(0);
-    setIsFilterOpen(false);
-    setCurrentPage(1);
-    
-    // 4. Load tab-specific data
-    switch (tab) {
-      case 'attendance':
-        setIsAttendanceLoading(true);
-        await fetchAttendanceFilterData(tab, newFilters);
-        break;
-        
-      case 'amend':
-        setIsAmendLoading(true);
-        await fetchAttendanceFilterData(tab, newFilters);
-        break;
-        
-      case 'appeal':
-        setIsAppealLoading(true);
-        await fetchAppealData(newFilters);
-        break;
-        
-      case 'overtime':
-        setIsLoadingOvertime(true);
-        await fetchOvertimeData(1, true);
-        break;
-        
-      case 'overview':
-        // Load overview data if needed
-        if (role === 'admin' || role === 'manager') {
-          await fetchAttendanceStats();
-          await fetchDepartmentAttendance(selectedCompany, 1);
-        }
-        break;
-        
-      default:
-        break;
-    }
-    
-  } catch (error) {
-    console.error(`Error switching to tab ${tab}:`, error);
-    showNotification('Failed to switch tab', 'error');
-  } finally {
-    // Reset loading states
-    setIsLoading(false);
-    setIsAttendanceLoading(false);
-    setIsAmendLoading(false);
-    setIsAppealLoading(false);
-    setIsLoadingOvertime(false);
-  }
-};
 
-  const handleActiveTabChange2811 = (tab: string) => {
+  const handleActiveTabChange = (tab: string) => {
     router.push(`/attendance?tab=${tab}`);
     setActiveTab(tab);
     setActiveQuickDate(null);
@@ -5394,7 +5323,7 @@ useEffect(() => {
               className="text-xs opacity-70 truncate cursor-help" 
               title={(item as any).check_in_ip_matched_rule}
             >
-              📍 {(item as any).check_in_ip_matched_rule}
+              {(item as any).check_in_ip_matched_rule}
             </div>
           )}
         </div>
@@ -5410,7 +5339,7 @@ useEffect(() => {
       {/* Employee Override Info */}
       {(item as any).employee_override_ip && (item as any).employee_override_active && (
         <div className="text-xs opacity-70 mt-1 p-1 bg-blue-50 dark:bg-blue-900 rounded">
-          ⭐ Override: {(item as any).employee_override_ip}
+          Override: {(item as any).employee_override_ip}
           {(item as any).employee_override_label && ` (${(item as any).employee_override_label})`}
         </div>
       )}
