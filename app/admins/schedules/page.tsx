@@ -2962,6 +2962,8 @@ const SearchBox = React.memo(({
   );
 });
 
+SearchBox.displayName = 'SearchBox';
+
 // SearchBox for Template tab
 const TemplateSearchBox = React.memo(({
   onSearchApply,
@@ -3021,6 +3023,8 @@ const TemplateSearchBox = React.memo(({
     </div>
   );
 });
+
+TemplateSearchBox.displayName = 'TemplateSearchBox';
 
 // SearchBox for Pattern tab
 const PatternSearchBox = React.memo(({
@@ -3082,6 +3086,7 @@ const PatternSearchBox = React.memo(({
   );
 });
 
+PatternSearchBox.displayName = 'PatternSearchBox';
 
 /* =========================== Page =========================== */
 export default function HRMSScheduler(): JSX.Element {
@@ -5198,116 +5203,6 @@ const applyBulkPattern = () => {
     </div>
   );
 
-  // const TemplatesTab1 = () => {
-  //   const filteredTemplates = useMemo(() => {
-  //     const q = templateQuery.trim().toLowerCase();
-  //     if (!q) return shiftTemplates;
-  //     return shiftTemplates.filter(t =>
-  //       t.name.toLowerCase().includes(q) ||
-  //       (t.label ?? '').toLowerCase().includes(q) ||
-  //       (t.description ?? '').toLowerCase().includes(q)
-  //     );
-  //   }, [shiftTemplates, templateQuery]);
-
-  //   const confirmDeleteTemplate = async () => {
-  //     if (!templateToDelete) return;
-  //     try {
-  //       const res = await fetch(
-  //         `${API_BASE_URL}/api/schedules/templates/${templateToDelete.id}`,
-  //         { method: 'DELETE' }
-  //       );
-  //       if (!res.ok) throw new Error(`Delete template HTTP ${res.status}`);
-  //       setShiftTemplates(prev => prev.filter(t => t.id !== templateToDelete.id));
-  //     } catch (e) {
-  //       console.error(e);
-  //       alert('Failed to delete template');
-  //     } finally {
-  //       setTemplateToDelete(null);
-  //     }
-  //   };
-
-  //   return (
-  //     <div className="space-y-6">
-  //       <div className="flex items-center justify-between">
-  //         <div>
-  //           <h2 className="text-2xl font-bold">Shift Templates</h2>
-  //           <p className="opacity-70">Create, edit and delete templates.</p>
-  //         </div>
-  //         <div className="flex items-center gap-3">
-  //           <input
-  //             className="input input-bordered"
-  //             placeholder="Search templates…"
-  //             value={templateQuery}
-  //             onChange={(e) => setTemplateQuery(e.target.value)}
-  //           />
-  //           <button className="btn btn-primary" onClick={() => { setEditingTemplate(null); setShowTemplateModal(true); }}>
-  //             <Plus className="w-4 h-4" /> New Template
-  //           </button>
-  //         </div>
-  //       </div>
-
-  //       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-  //         {filteredTemplates.map(t => (
-  //           <div key={t.id} className="card bg-base-100 shadow-lg border">
-  //             <div className="card-body">
-  //               <div className="flex items-center justify-between mb-4">
-  //                 <div className={`badge ${t.color} badge-lg`}>{t.name}</div>
-  //                 <div className="flex gap-2">
-  //                   <button className="btn btn-ghost btn-sm" onClick={()=>{ setEditingTemplate(t); setShowTemplateModal(true); }}>
-  //                     <Edit className="w-4 h-4" />
-  //                   </button>
-  //                   <button
-  //                     className="btn btn-ghost btn-sm text-error"
-  //                     onClick={() => setTemplateToDelete(t)}
-  //                   >
-  //                     <Trash2 className="w-4 h-4" />
-  //                   </button>
-  //                 </div>
-  //               </div>
-
-  //               <div className="grid grid-cols-2 gap-y-2 text-sm">
-  //                 <span className="opacity-70">Start</span><span className="font-semibold">{t.start}</span>
-  //                 <span className="opacity-70">End</span><span className="font-semibold">{t.end}</span>
-  //                 <span className="opacity-70">Break</span><span className="font-semibold">{t.break_mins} mins</span>
-  //                 <span className="opacity-70">Net</span>
-  //                 <span className="font-semibold text-primary">{formatHours(calcNetHours(t.start,t.end,!!t.overnight,t.break_mins))}</span>
-  //               </div>
-  //               {t.overnight && <div className="flex items-center gap-1 text-secondary mt-2"><Moon className="w-4 h-4" /><span>Overnight</span></div>}
-  //               {t.description && <div className="mt-4 pt-4 border-t opacity-70 text-sm">{t.description}</div>}
-  //             </div>
-  //           </div>
-  //         ))}
-  //       </div>
-
-  //       <TemplateModal />
-
-  //       {templateToDelete && (
-  //         <div className="modal modal-open">
-  //           <div className="modal-box">
-  //             <h4 className="font-semibold mb-2">Delete template?</h4>
-  //             <p className="text-sm opacity-70 mb-4">
-  //               "{templateToDelete.name}" will be permanently removed.
-  //             </p>
-  //             <div className="modal-action">
-  //               <button
-  //                 className="btn btn-ghost"
-  //                 onClick={() => setTemplateToDelete(null)}
-  //               >
-  //                 Cancel
-  //               </button>
-  //               <button
-  //                 className="btn btn-error"
-  //                 onClick={confirmDeleteTemplate}
-  //               >
-  //                 Delete
-  //               </button>
-  //             </div>
-  //           </div>
-  //         </div>
-  //       )}
-  //     </div>
-  //   );
-  // };
 
   const TemplatesTab = () => {
   const filteredTemplates = useMemo(() => {
@@ -5591,100 +5486,6 @@ const PatternsTab = () => {
   );
 };
 
-  // const PatternsTab = () => {
-  //   const filteredPatterns = useMemo(() => {
-  //     const q = patternQuery.trim().toLowerCase();
-  //     if (!q) return patterns;
-  //     return patterns.filter(p =>
-  //       p.name.toLowerCase().includes(q) ||
-  //       (p.description ?? '').toLowerCase().includes(q)
-  //     );
-  //   }, [patterns, patternQuery]);
-
-  //   return (
-  //     <div className="space-y-6">
-  //       <div className="flex items-center justify-between">
-  //         <div>
-  //           <h2 className="text-2xl font-bold">Work Patterns</h2>
-  //           <p className="opacity-70">Create, edit and delete patterns.</p>
-  //         </div>
-  //         <div className="flex items-center gap-3">
-  //           <input
-  //             className="input input-bordered"
-  //             placeholder="Search patterns…"
-  //             value={patternQuery}
-  //             onChange={(e) => setPatternQuery(e.target.value)}
-  //           />
-  //           <button className="btn btn-primary" onClick={() => { setEditingPattern(null); setShowPatternModal(true); }}>
-  //             <Plus className="w-4 h-4" /> New Pattern
-  //           </button>
-  //         </div>
-  //       </div>
-
-  //       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-  //         {filteredPatterns.map(p => (
-  //           <div key={p.id} className="card bg-base-100 shadow-lg border">
-  //             <div className="card-body">
-  //               <div className="flex items-center justify-between mb-4">
-  //                 <div>
-  //                   <h3 className="font-semibold">{p.name}</h3>
-  //                   <p className="text-sm opacity-70">{p.description}</p>
-  //                 </div>
-  //                 <div className="flex gap-2">
-  //                   <button className="btn btn-ghost btn-sm" onClick={()=>{ setEditingPattern(p); setShowPatternModal(true); }}>
-  //                     <Edit className="w-4 h-4" />
-  //                   </button>
-  //                   <button
-  //                     className="btn btn-ghost btn-sm text-error"
-  //                     onClick={async () => {
-  //                       if (!confirm('Delete this pattern?')) return;
-  //                       try {
-  //                         const res = await fetch(`${API_BASE_URL}/api/schedules/patterns/${p.id}`, { method: 'DELETE' });
-  //                         if (!res.ok) throw new Error(`Delete pattern HTTP ${res.status}`);
-  //                         setPatterns(prev => prev.filter(x => x.id !== p.id));
-  //                       } catch (e) {
-  //                         console.error(e);
-  //                         alert('Failed to delete pattern');
-  //                       }
-  //                     }}
-  //                   >
-  //                     <Trash2 className="w-4 h-4" />
-  //                   </button>
-  //                 </div>
-  //               </div>
-
-  //               <div className="mb-4">
-  //                 <div className="font-medium text-sm mb-2">Preview</div>
-  //                 <div className="grid grid-cols-7 gap-1">
-  //                   {p.sequence.slice(0,7).map((s, i) => {
-  //                     const tpl = s.type==='work' ? shiftTemplates.find(t => t.id === (s as PatternStepWork).template) : undefined;
-  //                     return (
-  //                       <div key={i} className="aspect-square border rounded">
-  //                         {s.type==='work' && tpl
-  //                           ? <div className={`w-full h-full rounded flex flex-col justify-center items-center text-xs ${tpl.color}`}>
-  //                               <div className="font-bold">{tpl.start}</div>
-  //                               <div>{tpl.end}</div>
-  //                             </div>
-  //                           : <div className="w-full h-full flex items-center justify-center opacity-50">Off</div>}
-  //                       </div>
-  //                     );
-  //                   })}
-  //                 </div>
-  //               </div>
-
-  //               <div className="text-sm opacity-70">
-  //                 {p.sequence.filter(s=>s.type==='work').length} work days, {p.sequence.filter(s=>s.type==='off').length} off days
-  //               </div>
-  //             </div>
-  //           </div>
-  //         ))}
-  //       </div>
-
-  //       <PatternModal />
-  //     </div>
-  //   );
-  // };
-
   /* ================= Main Render ================= */
   return (
     <div className="min-h-screen bg-base-100">
@@ -5817,13 +5618,6 @@ const PatternsTab = () => {
     )}
   </select>
 </div>
-                {/* <div>
-                  <label className="label">Employee</label>
-                  <select className="select select-bordered w-full" value={String(selectedEmployeeId)} onChange={(e)=>setSelectedEmployeeId(e.target.value==='All'?'All':e.target.value)}>
-                    <option value="All">All Employees</option>
-                    {employeesForDropdown.map(e => <option key={e.id} value={String(e.id)}>{e.name}</option>)}
-                  </select>
-                </div> */}
 
 <div>
   <label className="label">Employee</label>
