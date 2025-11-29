@@ -2732,7 +2732,7 @@
 
 
 'use client';
-
+import { TimezoneUtils } from '../../utils/timezoneUtils'; // adjust path as needed
 import React, { useState, useMemo, useEffect, useCallback, useRef, JSX } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -2840,11 +2840,7 @@ interface ApiPattern {
 }
 
 /* =========================== Helpers =========================== */
-const TZ_OPTIONS = [
-  'Asia/Kuala_Lumpur', 'Asia/Singapore', 'Asia/Jakarta', 'Asia/Manila', 'Asia/Bangkok',
-  'Asia/Tokyo', 'Asia/Seoul', 'Asia/Dubai', 'Europe/London', 'Europe/Berlin',
-  'America/New_York', 'America/Los_Angeles', 'Australia/Sydney', 'Australia/Melbourne'
-];
+const TZ_OPTIONS = TimezoneUtils.TZ_OPTIONS;
 
 const labelToColor = (label?: string | null) => {
   const l = (label || '').toLowerCase();
@@ -2903,6 +2899,190 @@ const forEachDayISO = (startISO: string, endISO: string, fn: (iso: string, date:
   }
 };
 
+// SearchBox for Scheduler Tab
+const SearchBox = React.memo(({
+  onSearchApply,
+  onClearSearch
+}: {
+  onSearchApply: (term: string) => void;
+  onClearSearch: () => void;
+}) => {
+  const [localSearchInput, setLocalSearchInput] = useState<string>('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleApplySearch = () => {
+    onSearchApply(localSearchInput);
+  };
+
+  const handleClear = () => {
+    setLocalSearchInput('');
+    onClearSearch();
+    inputRef.current?.focus();
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleApplySearch();
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3 w-full md:w-auto">
+      <div className="relative flex-1 max-w-2xl min-w-[260px]">
+        <input
+          ref={inputRef}
+          className="input input-bordered w-full pl-10"
+          placeholder="Search employees..."
+          value={localSearchInput}
+          onChange={(e) => setLocalSearchInput(e.target.value)}
+          onKeyPress={handleKeyPress}
+        />
+        <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 opacity-50" viewBox="0 0 24 24" fill="none">
+          <path stroke="currentColor" strokeWidth="2" d="m21 21-4.3-4.3M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/>
+        </svg>
+        {localSearchInput && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-2 top-1/2 -translate-y-1/2 btn btn-xs btn-ghost"
+            aria-label="Clear search"
+          >
+            ×
+          </button>
+        )}
+      </div>
+      <button
+        className="btn btn-primary"
+        onClick={handleApplySearch}
+        disabled={!localSearchInput.trim()}
+      >
+        Search
+      </button>
+    </div>
+  );
+});
+
+// SearchBox for Template tab
+const TemplateSearchBox = React.memo(({
+  onSearchApply,
+  onClearSearch
+}: {
+  onSearchApply: (term: string) => void;
+  onClearSearch: () => void;
+}) => {
+  const [localSearchInput, setLocalSearchInput] = useState<string>('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleApplySearch = () => {
+    onSearchApply(localSearchInput);
+  };
+
+  const handleClear = () => {
+    setLocalSearchInput('');
+    onClearSearch();
+    inputRef.current?.focus();
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleApplySearch();
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="relative">
+        <input
+          ref={inputRef}
+          className="input input-bordered input-sm"
+          placeholder="Search templates…"
+          value={localSearchInput}
+          onChange={(e) => setLocalSearchInput(e.target.value)}
+          onKeyPress={handleKeyPress}
+        />
+        {localSearchInput && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-2 top-1/2 -translate-y-1/2 btn btn-xs btn-ghost"
+            aria-label="Clear search"
+          >
+            ×
+          </button>
+        )}
+      </div>
+      <button
+        className="btn btn-primary btn-sm"
+        onClick={handleApplySearch}
+        disabled={!localSearchInput.trim()}
+      >
+        Search
+      </button>
+    </div>
+  );
+});
+
+// SearchBox for Pattern tab
+const PatternSearchBox = React.memo(({
+  onSearchApply,
+  onClearSearch
+}: {
+  onSearchApply: (term: string) => void;
+  onClearSearch: () => void;
+}) => {
+  const [localSearchInput, setLocalSearchInput] = useState<string>('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleApplySearch = () => {
+    onSearchApply(localSearchInput);
+  };
+
+  const handleClear = () => {
+    setLocalSearchInput('');
+    onClearSearch();
+    inputRef.current?.focus();
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleApplySearch();
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <div className="relative">
+        <input
+          ref={inputRef}
+          className="input input-bordered input-sm"
+          placeholder="Search patterns…"
+          value={localSearchInput}
+          onChange={(e) => setLocalSearchInput(e.target.value)}
+          onKeyPress={handleKeyPress}
+        />
+        {localSearchInput && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-2 top-1/2 -translate-y-1/2 btn btn-xs btn-ghost"
+            aria-label="Clear search"
+          >
+            ×
+          </button>
+        )}
+      </div>
+      <button
+        className="btn btn-primary btn-sm"
+        onClick={handleApplySearch}
+        disabled={!localSearchInput.trim()}
+      >
+        Search
+      </button>
+    </div>
+  );
+});
+
+
 /* =========================== Page =========================== */
 export default function HRMSScheduler(): JSX.Element {
   const router = useRouter();
@@ -2922,11 +3102,15 @@ export default function HRMSScheduler(): JSX.Element {
   const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth());
   const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
   const [selectedCompany, setSelectedCompany] = useState<string | number>('All');
-  const [selectedDepartmentId, setSelectedDepartmentId] = useState<string | number>('All');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('All');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | number>('All');
   const [selectedStatus, setSelectedStatus] = useState<'All' | ShiftStatus>('All');
-  const [searchTerm, setSearchTerm] = useState<string>('');
+
+  const [searchInput, setSearchInput] = useState<string>(''); // Input field value
+  const [appliedSearchTerm, setAppliedSearchTerm] = useState<string>('');
+  const [appliedTemplateSearch, setAppliedTemplateSearch] = useState<string>('');
+  const [appliedPatternSearch, setAppliedPatternSearch] = useState<string>('');
+
   const [dateFrom, setDateFrom] = useState<string>(() => monthDateToISO(now.getFullYear(), now.getMonth(), 1));
   const [dateTo, setDateTo] = useState<string>(() => monthDateToISO(now.getFullYear(), now.getMonth(), daysInMonth(now.getFullYear(), now.getMonth())));
 
@@ -2961,8 +3145,8 @@ export default function HRMSScheduler(): JSX.Element {
   const [changedKeys, setChangedKeys] = useState<Set<string>>(new Set());
 
   /* ---- UI State ---- */
-  const [templateQuery, setTemplateQuery] = useState<string>('');
-  const [patternQuery, setPatternQuery] = useState<string>('');
+  //const [templateQuery, setTemplateQuery] = useState<string>('');
+  //const [patternQuery, setPatternQuery] = useState<string>('');
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ShiftTemplate | null>(null);
   const [showPatternModal, setShowPatternModal] = useState(false);
@@ -2974,16 +3158,6 @@ export default function HRMSScheduler(): JSX.Element {
   const [pendingRemove, setPendingRemove] = useState<number | null>(null);
   const [userCompanyId, setUserCompanyId] = useState<string | number | null>(null);
 
-  /* ================= Auth & Data Fetching ================= */
-  // useEffect(() => {
-  //   const userStr = localStorage.getItem('hrms_user');
-  //   const isAuthenticated = localStorage.getItem('hrms_authenticated');
-  //   if (!userStr || isAuthenticated !== 'true') {
-  //     router.push('/auth/login');
-  //     return;
-  //   }
-  //   try { setUser(JSON.parse(userStr)); } catch { router.push('/auth/login'); }
-  // }, [router]);
 useEffect(() => {
   const userStr = localStorage.getItem('hrms_user');
   const isAuthenticated = localStorage.getItem('hrms_authenticated');
@@ -3114,47 +3288,35 @@ const fetchAllEmployees = useCallback(async () => {
   }
 }, [user]);
 
-  const _allfetchAllEmployees = useCallback(async () => {
-    if (!user) return;
-    try {
-      setLoading(true);
-      const queryParams = new URLSearchParams();
-      if (user?.role === 'manager') queryParams.append('manager_id', String(user.id));
-      const res = await fetch(`${API_BASE_URL}/api/admin/employees${queryParams.toString() ? `?${queryParams}` : ''}`);
-      if (!res.ok) throw new Error(`Employees HTTP ${res.status}`);
-      const data: any[] = await res.json();
-      const mapped: Employee[] = data
-        .filter((emp: any) => emp.role !== 'admin')
-        .map((emp: any): Employee => ({
-          id: emp.id,
-          name: emp.name,
-          email: emp.email,
-          position: emp.position || '',
-          department_id: emp.department_id ?? '',
-          company_id: emp.company_id ?? '',
-          status: (emp.status?.toLowerCase() || 'active'),
-          activation: emp.activation || 'Activated',
-          joined_date: emp.joined_date || '',
-          employee_no: emp.employee_no || '',
-          employment_type: emp.employment_type || '',
-          gender: emp.gender || '',
-          role: emp.role || 'employee',
-          race: emp.race ?? null,
-          religion: emp.religion ?? null,
-          job_level: emp.job_level ?? null,
-          department_name: emp.department_name ?? null,
-          passport_expired_date: emp.passport_expired_date || '',
-          visa_expired_date: emp.visa_expired_date || '',
-          nationality: emp.nationality || '',
-          time_zone: emp.time_zone || 'Asia/Kuala_Lumpur'
-        }));
-      setAllEmployees(mapped);
-    } catch (e) {
-      console.error('fetch employees failed', e);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+
+//SearchBox for Schedular tab
+const handleSearchApply = useCallback((term: string) => {
+  setAppliedSearchTerm(term);
+  setTablePage(1);
+}, []);
+
+const handleClearSearch = useCallback(() => {
+  setAppliedSearchTerm('');
+  setTablePage(1);
+}, []);
+
+//SearchBox for Template tab
+const handleTemplateSearchApply = useCallback((term: string) => {
+  setAppliedTemplateSearch(term);
+}, []);
+
+const handleTemplateSearchClear = useCallback(() => {
+  setAppliedTemplateSearch('');
+}, []);
+
+//SearchBox for Pattern tab
+const handlePatternSearchApply = useCallback((term: string) => {
+  setAppliedPatternSearch(term);
+}, []);
+
+const handlePatternSearchClear = useCallback(() => {
+  setAppliedPatternSearch('');
+}, []);
 
   useEffect(() => {
     if (!user) return;
@@ -3454,23 +3616,7 @@ const employeesForDropdown = useMemo(() => {
   return filtered.filter(e => selectedDepartment === 'All' ? true : (e.department_name || '') === selectedDepartment);
 }, [allEmployees, user, userCompanyId, selectedCompany, selectedDepartment]);
 
-  // const baseFilteredEmployees: Employee[] = useMemo(() => {
-  //   let out = allEmployees;
-  //   if (selectedCompany !== 'All') out = out.filter(e => String(e.company_id ?? '') === String(selectedCompany));
-  //   if (selectedDepartment !== 'All') out = out.filter(e => (e.department_name || '') === selectedDepartment);
-  //   if (selectedEmployeeId !== 'All') out = out.filter(e => String(e.id) === String(selectedEmployeeId));
-  //   if (searchTerm.trim()) {
-  //     const t = searchTerm.toLowerCase();
-  //     out = out.filter(e =>
-  //       e.name.toLowerCase().includes(t) ||
-  //       (e.employee_no || '').toLowerCase().includes(t) ||
-  //       (e.department_name || '').toLowerCase().includes(t)
-  //     );
-  //   }
-  //   return out;
-  // }, [allEmployees, selectedCompany, selectedDepartment, selectedEmployeeId, searchTerm]);
-
-  const baseFilteredEmployees: Employee[] = useMemo(() => {
+const baseFilteredEmployees: Employee[] = useMemo(() => {
   let out = allEmployees;
   
   // For employees, automatically filter to their company only
@@ -3483,8 +3629,10 @@ const employeesForDropdown = useMemo(() => {
   // Rest of the existing filters...
   if (selectedDepartment !== 'All') out = out.filter(e => (e.department_name || '') === selectedDepartment);
   if (selectedEmployeeId !== 'All') out = out.filter(e => String(e.id) === String(selectedEmployeeId));
-  if (searchTerm.trim()) {
-    const t = searchTerm.toLowerCase();
+  
+  // Use appliedSearchTerm here
+  if (appliedSearchTerm.trim()) {
+    const t = appliedSearchTerm.toLowerCase();
     out = out.filter(e =>
       e.name.toLowerCase().includes(t) ||
       (e.employee_no || '').toLowerCase().includes(t) ||
@@ -3492,9 +3640,9 @@ const employeesForDropdown = useMemo(() => {
     );
   }
   return out;
-}, [allEmployees, user, userCompanyId, selectedCompany, selectedDepartment, selectedEmployeeId, searchTerm]);
+}, [allEmployees, user, userCompanyId, selectedCompany, selectedDepartment, selectedEmployeeId, appliedSearchTerm]);
 
-  const employeeIds = useMemo(() => baseFilteredEmployees.map(e => e.id), [baseFilteredEmployees]);
+const employeeIds = useMemo(() => baseFilteredEmployees.map(e => e.id), [baseFilteredEmployees]);
 
   useEffect(() => {
     if (!employeeIds.length) return;
@@ -3701,8 +3849,14 @@ const employeesForDropdown = useMemo(() => {
     });
   };
 
-  useEffect(() => { setTablePage(1); setSelectedRowIds(new Set()); }, [selectedCompany, selectedDepartment, selectedEmployeeId, selectedStatus, selectedYear, selectedMonth, dateFrom, dateTo, searchTerm]);
+  //useEffect(() => { setTablePage(1); setSelectedRowIds(new Set()); }, [selectedCompany, selectedDepartment, selectedEmployeeId, selectedStatus, selectedYear, selectedMonth, dateFrom, dateTo, searchTerm]);
 
+
+  useEffect(() => { 
+  setTablePage(1); 
+  setSelectedRowIds(new Set()); 
+}, [selectedCompany, selectedDepartment, selectedEmployeeId, selectedStatus, selectedYear, selectedMonth, dateFrom, dateTo, appliedSearchTerm]); // Changed to appliedSearchTerm
+  
   /* ================= Row Updates ================= */
   const statusOptions: ShiftStatus[] = ['working', 'off', 'leave'];
 
@@ -4124,7 +4278,9 @@ const applyBulkPattern = () => {
     setSelectedDepartment('All');
     setSelectedEmployeeId('All');
     setSelectedStatus('All');
-    setSearchTerm('');
+    //setSearchTerm('');
+      setSearchInput(''); // Clear input
+  setAppliedSearchTerm(''); // Clear applied filter
     setDateFrom(monthDateToISO(selectedYear, selectedMonth, 1));
     setDateTo(monthDateToISO(selectedYear, selectedMonth, totalDays));
     setTablePage(1);
@@ -4769,28 +4925,33 @@ const applyBulkPattern = () => {
   const ScheduleListTable = () => (
     <div className="card bg-base-100 shadow-lg">
       <div className="card-body p-0">
-        {/* Header Controls */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 border-b">
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            <div className="relative flex-1 max-w-2xl min-w-[260px]">
-              <input
-                className="input input-bordered w-full pl-10"
-                placeholder="Search employees..."
-                value={searchTerm}
-                onChange={(e) => { setSearchTerm(e.target.value); setTablePage(1); }}
-              />
-              <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 opacity-50" viewBox="0 0 24 24" fill="none">
-                <path stroke="currentColor" strokeWidth="2" d="m21 21-4.3-4.3M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/>
-              </svg>
-            </div>
-            <button
-              onClick={() => setShowFilters(s => !s)}
-              className={`btn ${showFilters ? 'btn-primary' : 'btn-ghost'}`}
-            >
-              <Filter className="w-4 h-4" /> Filters
-            </button>
-          </div>
-        </div>
+        
+{/* Header Controls */}
+<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 border-b">
+  <div className="flex items-center gap-3 w-full md:w-auto">
+    <SearchBox
+      onSearchApply={handleSearchApply}
+      onClearSearch={handleClearSearch}
+    />
+    <button
+      onClick={() => setShowFilters(s => !s)}
+      className={`btn ${showFilters ? 'btn-primary' : 'btn-ghost'}`}
+    >
+      <Filter className="w-4 h-4" /> Filters
+    </button>
+  </div>
+  
+  {/* Search status indicator */}
+  {appliedSearchTerm && (
+    <div className="flex items-center gap-2 text-sm">
+      <span className="opacity-70">Search:</span>
+      <span className="font-semibold">"{appliedSearchTerm}"</span>
+      <span className="opacity-70">•</span>
+      <span className="opacity-70">{baseFilteredEmployees.length} results</span>
+    </div>
+  )}
+</div>
+
 
         {/* Table Controls */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 p-4 bg-base-200">
@@ -5037,210 +5198,492 @@ const applyBulkPattern = () => {
     </div>
   );
 
+  // const TemplatesTab1 = () => {
+  //   const filteredTemplates = useMemo(() => {
+  //     const q = templateQuery.trim().toLowerCase();
+  //     if (!q) return shiftTemplates;
+  //     return shiftTemplates.filter(t =>
+  //       t.name.toLowerCase().includes(q) ||
+  //       (t.label ?? '').toLowerCase().includes(q) ||
+  //       (t.description ?? '').toLowerCase().includes(q)
+  //     );
+  //   }, [shiftTemplates, templateQuery]);
+
+  //   const confirmDeleteTemplate = async () => {
+  //     if (!templateToDelete) return;
+  //     try {
+  //       const res = await fetch(
+  //         `${API_BASE_URL}/api/schedules/templates/${templateToDelete.id}`,
+  //         { method: 'DELETE' }
+  //       );
+  //       if (!res.ok) throw new Error(`Delete template HTTP ${res.status}`);
+  //       setShiftTemplates(prev => prev.filter(t => t.id !== templateToDelete.id));
+  //     } catch (e) {
+  //       console.error(e);
+  //       alert('Failed to delete template');
+  //     } finally {
+  //       setTemplateToDelete(null);
+  //     }
+  //   };
+
+  //   return (
+  //     <div className="space-y-6">
+  //       <div className="flex items-center justify-between">
+  //         <div>
+  //           <h2 className="text-2xl font-bold">Shift Templates</h2>
+  //           <p className="opacity-70">Create, edit and delete templates.</p>
+  //         </div>
+  //         <div className="flex items-center gap-3">
+  //           <input
+  //             className="input input-bordered"
+  //             placeholder="Search templates…"
+  //             value={templateQuery}
+  //             onChange={(e) => setTemplateQuery(e.target.value)}
+  //           />
+  //           <button className="btn btn-primary" onClick={() => { setEditingTemplate(null); setShowTemplateModal(true); }}>
+  //             <Plus className="w-4 h-4" /> New Template
+  //           </button>
+  //         </div>
+  //       </div>
+
+  //       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+  //         {filteredTemplates.map(t => (
+  //           <div key={t.id} className="card bg-base-100 shadow-lg border">
+  //             <div className="card-body">
+  //               <div className="flex items-center justify-between mb-4">
+  //                 <div className={`badge ${t.color} badge-lg`}>{t.name}</div>
+  //                 <div className="flex gap-2">
+  //                   <button className="btn btn-ghost btn-sm" onClick={()=>{ setEditingTemplate(t); setShowTemplateModal(true); }}>
+  //                     <Edit className="w-4 h-4" />
+  //                   </button>
+  //                   <button
+  //                     className="btn btn-ghost btn-sm text-error"
+  //                     onClick={() => setTemplateToDelete(t)}
+  //                   >
+  //                     <Trash2 className="w-4 h-4" />
+  //                   </button>
+  //                 </div>
+  //               </div>
+
+  //               <div className="grid grid-cols-2 gap-y-2 text-sm">
+  //                 <span className="opacity-70">Start</span><span className="font-semibold">{t.start}</span>
+  //                 <span className="opacity-70">End</span><span className="font-semibold">{t.end}</span>
+  //                 <span className="opacity-70">Break</span><span className="font-semibold">{t.break_mins} mins</span>
+  //                 <span className="opacity-70">Net</span>
+  //                 <span className="font-semibold text-primary">{formatHours(calcNetHours(t.start,t.end,!!t.overnight,t.break_mins))}</span>
+  //               </div>
+  //               {t.overnight && <div className="flex items-center gap-1 text-secondary mt-2"><Moon className="w-4 h-4" /><span>Overnight</span></div>}
+  //               {t.description && <div className="mt-4 pt-4 border-t opacity-70 text-sm">{t.description}</div>}
+  //             </div>
+  //           </div>
+  //         ))}
+  //       </div>
+
+  //       <TemplateModal />
+
+  //       {templateToDelete && (
+  //         <div className="modal modal-open">
+  //           <div className="modal-box">
+  //             <h4 className="font-semibold mb-2">Delete template?</h4>
+  //             <p className="text-sm opacity-70 mb-4">
+  //               "{templateToDelete.name}" will be permanently removed.
+  //             </p>
+  //             <div className="modal-action">
+  //               <button
+  //                 className="btn btn-ghost"
+  //                 onClick={() => setTemplateToDelete(null)}
+  //               >
+  //                 Cancel
+  //               </button>
+  //               <button
+  //                 className="btn btn-error"
+  //                 onClick={confirmDeleteTemplate}
+  //               >
+  //                 Delete
+  //               </button>
+  //             </div>
+  //           </div>
+  //         </div>
+  //       )}
+  //     </div>
+  //   );
+  // };
+
   const TemplatesTab = () => {
-    const filteredTemplates = useMemo(() => {
-      const q = templateQuery.trim().toLowerCase();
-      if (!q) return shiftTemplates;
-      return shiftTemplates.filter(t =>
-        t.name.toLowerCase().includes(q) ||
-        (t.label ?? '').toLowerCase().includes(q) ||
-        (t.description ?? '').toLowerCase().includes(q)
-      );
-    }, [shiftTemplates, templateQuery]);
-
-    const confirmDeleteTemplate = async () => {
-      if (!templateToDelete) return;
-      try {
-        const res = await fetch(
-          `${API_BASE_URL}/api/schedules/templates/${templateToDelete.id}`,
-          { method: 'DELETE' }
-        );
-        if (!res.ok) throw new Error(`Delete template HTTP ${res.status}`);
-        setShiftTemplates(prev => prev.filter(t => t.id !== templateToDelete.id));
-      } catch (e) {
-        console.error(e);
-        alert('Failed to delete template');
-      } finally {
-        setTemplateToDelete(null);
-      }
-    };
-
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold">Shift Templates</h2>
-            <p className="opacity-70">Create, edit and delete templates.</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              className="input input-bordered"
-              placeholder="Search templates…"
-              value={templateQuery}
-              onChange={(e) => setTemplateQuery(e.target.value)}
-            />
-            <button className="btn btn-primary" onClick={() => { setEditingTemplate(null); setShowTemplateModal(true); }}>
-              <Plus className="w-4 h-4" /> New Template
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredTemplates.map(t => (
-            <div key={t.id} className="card bg-base-100 shadow-lg border">
-              <div className="card-body">
-                <div className="flex items-center justify-between mb-4">
-                  <div className={`badge ${t.color} badge-lg`}>{t.name}</div>
-                  <div className="flex gap-2">
-                    <button className="btn btn-ghost btn-sm" onClick={()=>{ setEditingTemplate(t); setShowTemplateModal(true); }}>
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      className="btn btn-ghost btn-sm text-error"
-                      onClick={() => setTemplateToDelete(t)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-y-2 text-sm">
-                  <span className="opacity-70">Start</span><span className="font-semibold">{t.start}</span>
-                  <span className="opacity-70">End</span><span className="font-semibold">{t.end}</span>
-                  <span className="opacity-70">Break</span><span className="font-semibold">{t.break_mins} mins</span>
-                  <span className="opacity-70">Net</span>
-                  <span className="font-semibold text-primary">{formatHours(calcNetHours(t.start,t.end,!!t.overnight,t.break_mins))}</span>
-                </div>
-                {t.overnight && <div className="flex items-center gap-1 text-secondary mt-2"><Moon className="w-4 h-4" /><span>Overnight</span></div>}
-                {t.description && <div className="mt-4 pt-4 border-t opacity-70 text-sm">{t.description}</div>}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <TemplateModal />
-
-        {templateToDelete && (
-          <div className="modal modal-open">
-            <div className="modal-box">
-              <h4 className="font-semibold mb-2">Delete template?</h4>
-              <p className="text-sm opacity-70 mb-4">
-                "{templateToDelete.name}" will be permanently removed.
-              </p>
-              <div className="modal-action">
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => setTemplateToDelete(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="btn btn-error"
-                  onClick={confirmDeleteTemplate}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+  const filteredTemplates = useMemo(() => {
+    const q = appliedTemplateSearch.trim().toLowerCase(); // Use appliedTemplateSearch instead of templateQuery
+    if (!q) return shiftTemplates;
+    return shiftTemplates.filter(t =>
+      t.name.toLowerCase().includes(q) ||
+      (t.label ?? '').toLowerCase().includes(q) ||
+      (t.description ?? '').toLowerCase().includes(q)
     );
+  }, [shiftTemplates, appliedTemplateSearch]); // Changed to appliedTemplateSearch
+
+  const confirmDeleteTemplate = async () => {
+    if (!templateToDelete) return;
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/schedules/templates/${templateToDelete.id}`,
+        { method: 'DELETE' }
+      );
+      if (!res.ok) throw new Error(`Delete template HTTP ${res.status}`);
+      setShiftTemplates(prev => prev.filter(t => t.id !== templateToDelete.id));
+    } catch (e) {
+      console.error(e);
+      alert('Failed to delete template');
+    } finally {
+      setTemplateToDelete(null);
+    }
   };
 
-  const PatternsTab = () => {
-    const filteredPatterns = useMemo(() => {
-      const q = patternQuery.trim().toLowerCase();
-      if (!q) return patterns;
-      return patterns.filter(p =>
-        p.name.toLowerCase().includes(q) ||
-        (p.description ?? '').toLowerCase().includes(q)
-      );
-    }, [patterns, patternQuery]);
-
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold">Work Patterns</h2>
-            <p className="opacity-70">Create, edit and delete patterns.</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <input
-              className="input input-bordered"
-              placeholder="Search patterns…"
-              value={patternQuery}
-              onChange={(e) => setPatternQuery(e.target.value)}
-            />
-            <button className="btn btn-primary" onClick={() => { setEditingPattern(null); setShowPatternModal(true); }}>
-              <Plus className="w-4 h-4" /> New Pattern
-            </button>
-          </div>
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Shift Templates</h2>
+          <p className="opacity-70">Create, edit and delete templates.</p>
         </div>
+        <div className="flex items-center gap-3">
+          <TemplateSearchBox
+            onSearchApply={handleTemplateSearchApply}
+            onClearSearch={handleTemplateSearchClear}
+          />
+          <button className="btn btn-primary" onClick={() => { setEditingTemplate(null); setShowTemplateModal(true); }}>
+            <Plus className="w-4 h-4" /> New Template
+          </button>
+        </div>
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {filteredPatterns.map(p => (
-            <div key={p.id} className="card bg-base-100 shadow-lg border">
-              <div className="card-body">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="font-semibold">{p.name}</h3>
-                    <p className="text-sm opacity-70">{p.description}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button className="btn btn-ghost btn-sm" onClick={()=>{ setEditingPattern(p); setShowPatternModal(true); }}>
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      className="btn btn-ghost btn-sm text-error"
-                      onClick={async () => {
-                        if (!confirm('Delete this pattern?')) return;
-                        try {
-                          const res = await fetch(`${API_BASE_URL}/api/schedules/patterns/${p.id}`, { method: 'DELETE' });
-                          if (!res.ok) throw new Error(`Delete pattern HTTP ${res.status}`);
-                          setPatterns(prev => prev.filter(x => x.id !== p.id));
-                        } catch (e) {
-                          console.error(e);
-                          alert('Failed to delete pattern');
-                        }
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
+      {/* Search status indicator */}
+      {appliedTemplateSearch && (
+        <div className="flex items-center gap-2 text-sm p-3 bg-base-200 rounded-lg">
+          <span className="opacity-70">Searching templates:</span>
+          <span className="font-semibold">"{appliedTemplateSearch}"</span>
+          <span className="opacity-70">•</span>
+          <span className="opacity-70">{filteredTemplates.length} results</span>
+          <button
+            className="btn btn-xs btn-ghost"
+            onClick={handleTemplateSearchClear}
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
-                <div className="mb-4">
-                  <div className="font-medium text-sm mb-2">Preview</div>
-                  <div className="grid grid-cols-7 gap-1">
-                    {p.sequence.slice(0,7).map((s, i) => {
-                      const tpl = s.type==='work' ? shiftTemplates.find(t => t.id === (s as PatternStepWork).template) : undefined;
-                      return (
-                        <div key={i} className="aspect-square border rounded">
-                          {s.type==='work' && tpl
-                            ? <div className={`w-full h-full rounded flex flex-col justify-center items-center text-xs ${tpl.color}`}>
-                                <div className="font-bold">{tpl.start}</div>
-                                <div>{tpl.end}</div>
-                              </div>
-                            : <div className="w-full h-full flex items-center justify-center opacity-50">Off</div>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="text-sm opacity-70">
-                  {p.sequence.filter(s=>s.type==='work').length} work days, {p.sequence.filter(s=>s.type==='off').length} off days
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredTemplates.map(t => (
+          <div key={t.id} className="card bg-base-100 shadow-lg border">
+            <div className="card-body">
+              <div className="flex items-center justify-between mb-4">
+                <div className={`badge ${t.color} badge-lg`}>{t.name}</div>
+                <div className="flex gap-2">
+                  <button className="btn btn-ghost btn-sm" onClick={()=>{ setEditingTemplate(t); setShowTemplateModal(true); }}>
+                    <Edit className="w-4 h-4" />
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm text-error"
+                    onClick={() => setTemplateToDelete(t)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
 
-        <PatternModal />
+              <div className="grid grid-cols-2 gap-y-2 text-sm">
+                <span className="opacity-70">Start</span><span className="font-semibold">{t.start}</span>
+                <span className="opacity-70">End</span><span className="font-semibold">{t.end}</span>
+                <span className="opacity-70">Break</span><span className="font-semibold">{t.break_mins} mins</span>
+                <span className="opacity-70">Net</span>
+                <span className="font-semibold text-primary">{formatHours(calcNetHours(t.start,t.end,!!t.overnight,t.break_mins))}</span>
+              </div>
+              {t.overnight && <div className="flex items-center gap-1 text-secondary mt-2"><Moon className="w-4 h-4" /><span>Overnight</span></div>}
+              {t.description && <div className="mt-4 pt-4 border-t opacity-70 text-sm">{t.description}</div>}
+            </div>
+          </div>
+        ))}
       </div>
+
+      {filteredTemplates.length === 0 && appliedTemplateSearch && (
+        <div className="text-center py-8">
+          <div className="text-4xl mb-4">🔍</div>
+          <h3 className="text-lg font-medium">No templates found</h3>
+          <p className="mt-1 text-sm opacity-70">No templates match "{appliedTemplateSearch}"</p>
+          <button
+            className="btn btn-ghost btn-sm mt-2"
+            onClick={handleTemplateSearchClear}
+          >
+            Clear search
+          </button>
+        </div>
+      )}
+
+      <TemplateModal />
+
+      {templateToDelete && (
+        <div className="modal modal-open">
+          <div className="modal-box">
+            <h4 className="font-semibold mb-2">Delete template?</h4>
+            <p className="text-sm opacity-70 mb-4">
+              "{templateToDelete.name}" will be permanently removed.
+            </p>
+            <div className="modal-action">
+              <button
+                className="btn btn-ghost"
+                onClick={() => setTemplateToDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-error"
+                onClick={confirmDeleteTemplate}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const PatternsTab = () => {
+  const filteredPatterns = useMemo(() => {
+    const q = appliedPatternSearch.trim().toLowerCase();
+    if (!q) return patterns;
+    return patterns.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      (p.description ?? '').toLowerCase().includes(q)
     );
-  };
+  }, [patterns, appliedPatternSearch]);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Work Patterns</h2>
+          <p className="opacity-70">Create, edit and delete patterns.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <TemplateSearchBox // Reusing the same component
+            onSearchApply={handlePatternSearchApply}
+            onClearSearch={handlePatternSearchClear}
+          />
+          <button className="btn btn-primary" onClick={() => { setEditingPattern(null); setShowPatternModal(true); }}>
+            <Plus className="w-4 h-4" /> New Pattern
+          </button>
+        </div>
+      </div>
+
+      {/* Search status indicator */}
+      {appliedPatternSearch && (
+        <div className="flex items-center gap-2 text-sm p-3 bg-base-200 rounded-lg">
+          <span className="opacity-70">Searching patterns:</span>
+          <span className="font-semibold">"{appliedPatternSearch}"</span>
+          <span className="opacity-70">•</span>
+          <span className="opacity-70">{filteredPatterns.length} results</span>
+          <button
+            className="btn btn-xs btn-ghost"
+            onClick={handlePatternSearchClear}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {filteredPatterns.map(p => (
+          <div key={p.id} className="card bg-base-100 shadow-lg border">
+            <div className="card-body">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-semibold">{p.name}</h3>
+                  <p className="text-sm opacity-70">{p.description}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button className="btn btn-ghost btn-sm" onClick={()=>{ setEditingPattern(p); setShowPatternModal(true); }}>
+                    <Edit className="w-4 h-4" />
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-sm text-error"
+                    onClick={async () => {
+                      if (!confirm('Delete this pattern?')) return;
+                      try {
+                        const res = await fetch(`${API_BASE_URL}/api/schedules/patterns/${p.id}`, { method: 'DELETE' });
+                        if (!res.ok) throw new Error(`Delete pattern HTTP ${res.status}`);
+                        setPatterns(prev => prev.filter(x => x.id !== p.id));
+                      } catch (e) {
+                        console.error(e);
+                        alert('Failed to delete pattern');
+                      }
+                    }}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <div className="font-medium text-sm mb-2">Preview</div>
+                <div className="grid grid-cols-7 gap-1">
+                  {p.sequence.slice(0,7).map((s, i) => {
+                    const tpl = s.type==='work' ? shiftTemplates.find(t => t.id === (s as PatternStepWork).template) : undefined;
+                    return (
+                      <div key={i} className="aspect-square border rounded">
+                        {s.type==='work' && tpl
+                          ? <div className={`w-full h-full rounded flex flex-col justify-center items-center text-xs ${tpl.color}`}>
+                              <div className="font-bold">{tpl.start}</div>
+                              <div>{tpl.end}</div>
+                            </div>
+                          : <div className="w-full h-full flex items-center justify-center opacity-50">Off</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="text-sm opacity-70">
+                {p.sequence.filter(s=>s.type==='work').length} work days, {p.sequence.filter(s=>s.type==='off').length} off days
+              </div>
+
+              {p.meta && (
+                <div className="mt-3 pt-3 border-t text-xs opacity-60">
+                  <div>Align: {p.meta.align === 'next-monday' ? 'Next Monday' : 'Range Start'}</div>
+                  <div>Weekends: {p.meta.weekendPolicy === 'weekends-off' ? 'Off' : 'Ignore'}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {filteredPatterns.length === 0 && appliedPatternSearch && (
+        <div className="text-center py-8">
+          <div className="text-4xl mb-4">🔍</div>
+          <h3 className="text-lg font-medium">No patterns found</h3>
+          <p className="mt-1 text-sm opacity-70">No patterns match "{appliedPatternSearch}"</p>
+          <button
+            className="btn btn-ghost btn-sm mt-2"
+            onClick={handlePatternSearchClear}
+          >
+            Clear search
+          </button>
+        </div>
+      )}
+
+      {filteredPatterns.length === 0 && !appliedPatternSearch && (
+        <div className="text-center py-8">
+          <div className="text-4xl mb-4">📊</div>
+          <h3 className="text-lg font-medium">No patterns created yet</h3>
+          <p className="mt-1 text-sm opacity-70">Create your first work pattern to get started</p>
+          <button
+            className="btn btn-primary mt-4"
+            onClick={() => { setEditingPattern(null); setShowPatternModal(true); }}
+          >
+            <Plus className="w-4 h-4 mr-2" /> Create Pattern
+          </button>
+        </div>
+      )}
+
+      <PatternModal />
+    </div>
+  );
+};
+
+  // const PatternsTab = () => {
+  //   const filteredPatterns = useMemo(() => {
+  //     const q = patternQuery.trim().toLowerCase();
+  //     if (!q) return patterns;
+  //     return patterns.filter(p =>
+  //       p.name.toLowerCase().includes(q) ||
+  //       (p.description ?? '').toLowerCase().includes(q)
+  //     );
+  //   }, [patterns, patternQuery]);
+
+  //   return (
+  //     <div className="space-y-6">
+  //       <div className="flex items-center justify-between">
+  //         <div>
+  //           <h2 className="text-2xl font-bold">Work Patterns</h2>
+  //           <p className="opacity-70">Create, edit and delete patterns.</p>
+  //         </div>
+  //         <div className="flex items-center gap-3">
+  //           <input
+  //             className="input input-bordered"
+  //             placeholder="Search patterns…"
+  //             value={patternQuery}
+  //             onChange={(e) => setPatternQuery(e.target.value)}
+  //           />
+  //           <button className="btn btn-primary" onClick={() => { setEditingPattern(null); setShowPatternModal(true); }}>
+  //             <Plus className="w-4 h-4" /> New Pattern
+  //           </button>
+  //         </div>
+  //       </div>
+
+  //       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+  //         {filteredPatterns.map(p => (
+  //           <div key={p.id} className="card bg-base-100 shadow-lg border">
+  //             <div className="card-body">
+  //               <div className="flex items-center justify-between mb-4">
+  //                 <div>
+  //                   <h3 className="font-semibold">{p.name}</h3>
+  //                   <p className="text-sm opacity-70">{p.description}</p>
+  //                 </div>
+  //                 <div className="flex gap-2">
+  //                   <button className="btn btn-ghost btn-sm" onClick={()=>{ setEditingPattern(p); setShowPatternModal(true); }}>
+  //                     <Edit className="w-4 h-4" />
+  //                   </button>
+  //                   <button
+  //                     className="btn btn-ghost btn-sm text-error"
+  //                     onClick={async () => {
+  //                       if (!confirm('Delete this pattern?')) return;
+  //                       try {
+  //                         const res = await fetch(`${API_BASE_URL}/api/schedules/patterns/${p.id}`, { method: 'DELETE' });
+  //                         if (!res.ok) throw new Error(`Delete pattern HTTP ${res.status}`);
+  //                         setPatterns(prev => prev.filter(x => x.id !== p.id));
+  //                       } catch (e) {
+  //                         console.error(e);
+  //                         alert('Failed to delete pattern');
+  //                       }
+  //                     }}
+  //                   >
+  //                     <Trash2 className="w-4 h-4" />
+  //                   </button>
+  //                 </div>
+  //               </div>
+
+  //               <div className="mb-4">
+  //                 <div className="font-medium text-sm mb-2">Preview</div>
+  //                 <div className="grid grid-cols-7 gap-1">
+  //                   {p.sequence.slice(0,7).map((s, i) => {
+  //                     const tpl = s.type==='work' ? shiftTemplates.find(t => t.id === (s as PatternStepWork).template) : undefined;
+  //                     return (
+  //                       <div key={i} className="aspect-square border rounded">
+  //                         {s.type==='work' && tpl
+  //                           ? <div className={`w-full h-full rounded flex flex-col justify-center items-center text-xs ${tpl.color}`}>
+  //                               <div className="font-bold">{tpl.start}</div>
+  //                               <div>{tpl.end}</div>
+  //                             </div>
+  //                           : <div className="w-full h-full flex items-center justify-center opacity-50">Off</div>}
+  //                       </div>
+  //                     );
+  //                   })}
+  //                 </div>
+  //               </div>
+
+  //               <div className="text-sm opacity-70">
+  //                 {p.sequence.filter(s=>s.type==='work').length} work days, {p.sequence.filter(s=>s.type==='off').length} off days
+  //               </div>
+  //             </div>
+  //           </div>
+  //         ))}
+  //       </div>
+
+  //       <PatternModal />
+  //     </div>
+  //   );
+  // };
 
   /* ================= Main Render ================= */
   return (
