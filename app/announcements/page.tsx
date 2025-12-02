@@ -5901,20 +5901,6 @@ const AdminTableView = ({
     );
   };
 
-  // const formatDateTime = (dateString: string) =>
-  //   new Date(dateString).toLocaleDateString('en-GB', {
-  //     day: '2-digit',
-  //     month: '2-digit',
-  //     year: 'numeric',
-  //   }) +
-  //   ' ' +
-  //   new Date(dateString).toLocaleTimeString('en-GB', {
-  //     hour: '2-digit',
-  //     minute: '2-digit',
-  //     second: '2-digit',
-  //   });
-
-
   const resetFilters = () =>
     setFilters({
       status: '',
@@ -6508,23 +6494,35 @@ const headerDate = (): string => {
           </div>
         </div>
 
-        {/* Attachments */}
-        {announcement.attachments && announcement.attachments.length > 0 && (
-          <div className="mb-4">
-            <div
-              className={`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full ${
-                theme === 'light'
-                  ? 'text-blue-600 bg-blue-50 border border-blue-200'
-                  : 'text-blue-400 bg-blue-900/30 border border-blue-700'
-              }`}
-            >
-              <FaPaperclip className="w-3 h-3" />
-              <span>
-                {announcement.attachments.length} attachment{announcement.attachments.length > 1 ? 's' : ''}
-              </span>
-            </div>
-          </div>
-        )}
+{/* Attachments */}
+{announcement.attachments && announcement.attachments.length > 0 && (
+  <div className="mb-4">
+    <div className="flex flex-wrap gap-2">
+      {announcement.attachments.map((attachment) => (
+        <a
+          key={attachment.id}
+          href={attachment.download_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`inline-flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full transition-colors ${
+            theme === 'light'
+              ? 'text-blue-600 bg-blue-50 border border-blue-200 hover:bg-blue-100'
+              : 'text-blue-400 bg-blue-900/30 border border-blue-700 hover:bg-blue-900/50'
+          }`}
+          title={`${attachment.original_filename} (${(attachment.file_size / 1024).toFixed(1)} KB)`}
+        >
+          <FaPaperclip className="w-3 h-3" />
+          <span className="truncate max-w-[150px]">
+            {attachment.original_filename}
+          </span>
+          <span className={`text-xs ${theme === 'light' ? 'text-blue-500' : 'text-blue-300'}`}>
+            ({(attachment.file_size / 1024).toFixed(1)} KB)
+          </span>
+        </a>
+      ))}
+    </div>
+  </div>
+)}
 
         {/* Status & actions */}
         <div className="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-slate-700">
@@ -6699,7 +6697,7 @@ const VerticalScrollableSection = ({
       >
 {announcements.length > 0 ? (
   minimal && role !== 'admin' ? (
-    // Minimal list: Title + Release Date
+    // Enhanced Minimal list: Title + Release Date + Attachments
     <div className="space-y-4">
       {announcements.map((a) => (
         <div
@@ -6708,13 +6706,58 @@ const VerticalScrollableSection = ({
             theme === 'light' ? 'border-gray-200' : 'border-slate-700'
           }`}
         >
-          <div className={`text-sm font-semibold ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>
-            {a.title}
-          </div>
-          <div className={`text-xs ${theme === 'light' ? 'text-gray-500' : 'text-gray-400'}`}>
-           {format(publishedAt(a), 'MMM dd, yyyy')}
-           {/* {format(toSingaporeTime(publishedAt(a)), 'MMM dd, yyyy')} */}
-            {/* {format(publishedAt(a).getTime(), 'MMM dd, yyyy')} */}
+          <div className="flex justify-between items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <div className={`text-sm font-semibold mb-1 ${theme === 'light' ? 'text-gray-900' : 'text-white'}`}>
+                {a.title}
+              </div>
+              <div className={`text-xs ${theme === 'light' ? 'text-gray-500' : 'text-gray-400'}`}>
+                {format(publishedAt(a), 'MMM dd, yyyy')}
+              </div>
+              
+              {/* Attachments in minimal view */}
+              {a.attachments && a.attachments.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {a.attachments.slice(0, 3).map((attachment) => (
+                    <a
+                      key={attachment.id}
+                      href={attachment.download_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded ${
+                        theme === 'light'
+                          ? 'text-blue-600 bg-blue-50 border border-blue-200 hover:bg-blue-100'
+                          : 'text-blue-400 bg-blue-900/30 border border-blue-700 hover:bg-blue-900/50'
+                      }`}
+                      title={`${attachment.original_filename} (${(attachment.file_size / 1024).toFixed(1)} KB)`}
+                    >
+                      <FaPaperclip className="w-2.5 h-2.5 flex-shrink-0" />
+                      <span className="truncate max-w-[100px]">{attachment.original_filename}</span>
+                    </a>
+                  ))}
+                  {a.attachments.length > 3 && (
+                    <span className={`text-xs px-2 py-1 ${
+                      theme === 'light' ? 'text-gray-500' : 'text-gray-400'
+                    }`}>
+                      +{a.attachments.length - 3} more
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {/* Quick status indicator */}
+            <div className="flex-shrink-0">
+              {a.attachments && a.attachments.length > 0 && (
+                <span className={`text-xs px-2 py-1 rounded-full ${
+                  theme === 'light' 
+                    ? 'bg-blue-100 text-blue-600' 
+                    : 'bg-blue-900/30 text-blue-300'
+                }`}>
+                  {a.attachments.length} file{a.attachments.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       ))}
