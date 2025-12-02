@@ -65,6 +65,13 @@ export const API_ROUTES = {
   models: '/api/inventory/master/models',
 
 
+   // New filtering routes
+  filteredCompanies: '/api/admin/filter/companies',
+  filteredDepartments: '/api/admin/filter/departments', 
+  filteredPositions: '/api/admin/filter/positions',
+  filteredEmployees: '/api/admin/filter/employees',
+  allFilterData: '/api/admin/filter/all-data',
+  
     // Overtime Routes
   employeeOvertime: '/api/attendance/overtime/employee',
   overtimeDetails: '/api/attendance/overtime',
