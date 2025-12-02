@@ -909,6 +909,7 @@
 // }
 
 
+
 'use client';
 
 import { useState, useEffect, ChangeEvent } from 'react';
@@ -953,6 +954,8 @@ interface CompaniesSelectionProps {
   searchTerm: string;
   onToggleItem: (rowId: string, itemId: string) => void;
   onSearchChange: (e: ChangeEvent<HTMLInputElement>, type: 'company' | 'department' | 'position' | 'employee') => void;
+  totalCount: number;
+  isLoading?: boolean;
 }
 
 export interface TargetRow {
@@ -986,6 +989,13 @@ interface TargetRowCardProps {
   isAnyCompanySelected: () => boolean;
   isAnyDepartmentSelected: () => boolean;
   isAnyPositionSelected: () => boolean;
+  totalCounts?: {
+    companies: number;
+    departments: number;
+    positions: number;
+    employees: number;
+  };
+  isLoadingData?: boolean;
 }
 
 interface SelectionProps {
@@ -1000,6 +1010,8 @@ interface SelectionProps {
   isAnyPositionSelected?: () => boolean;
   onToggleItem: (rowId: string, itemId: string) => void;
   onSearchChange: (e: ChangeEvent<HTMLInputElement>, type: 'company' | 'department' | 'position' | 'employee') => void;
+  totalCount: number;
+  isLoading?: boolean;
 }
 
 interface CompanyTabConfig {
@@ -1042,12 +1054,15 @@ export function Selection({
   isAnyDepartmentSelected,
   isAnyPositionSelected,
   onToggleItem,
-  onSearchChange
+  onSearchChange,
+  totalCount,
+  isLoading = false
 }: SelectionProps) {
   const { theme } = useTheme();
   
-  // Change to track selectAll state per row per tab
+  // Track selectAll state per row per tab
   const [selectAllState, setSelectAllState] = useState(false);
+  const [selectingAll, setSelectingAll] = useState(false);
 
   // Map tab types to their corresponding properties
   const tabConfig: TabConfig = {
@@ -1091,8 +1106,6 @@ export function Selection({
     }
   };
 
-  
-
   const config = tabConfig[activeTab];
   const nameField = config.nameField as keyof (Company | Department | Position | Employee);
   const searchType = config.searchType as 'company' | 'department' | 'position' | 'employee';
@@ -1101,15 +1114,6 @@ export function Selection({
   let filteredItems = (dataItems as any[]).filter(item =>
     item && item[nameField] && String(item[nameField]).toLowerCase().includes((searchTerm || '').toLowerCase())
   );
-    // Update selectAll state when items change
-  useEffect(() => {
-    if (filteredItems.length > 0) {
-      const allSelected = filteredItems.every(item => selectedItems.includes(item.id));
-      setSelectAllState(allSelected);
-    } else {
-      setSelectAllState(false);
-    }
-  }, [selectedItems, filteredItems]);
 
   // Apply parent dependency filtering for departments, positions, employees
   if (activeTab !== 'companies') {
@@ -1148,40 +1152,71 @@ export function Selection({
     }
   }
 
-  // Handle "Select All" functionality
-  const handleSelectAll = () => {
-    if (filteredItems.length === 0) return;
+  // Handle "Select All" functionality with count display
+  const handleSelectAll = async () => {
+    if (filteredItems.length === 0 || isLoading) return;
 
     const willSelectAll = !selectAllState;
     setSelectAllState(willSelectAll);
+    setSelectingAll(true);
 
-    if (willSelectAll) {
-      // Select all filtered items
-      filteredItems.forEach(item => {
-        if (!selectedItems.includes(item.id)) {
-          onToggleItem(rowId, item.id);
-        }
-      });
-    } else {
-      // Deselect all filtered items
-      filteredItems.forEach(item => {
-        if (selectedItems.includes(item.id)) {
-          onToggleItem(rowId, item.id);
-        }
-      });
+    try {
+      if (willSelectAll) {
+        // Select all filtered items
+        filteredItems.forEach(item => {
+          if (!selectedItems.includes(item.id)) {
+            onToggleItem(rowId, item.id);
+          }
+        });
+      } else {
+        // Deselect all filtered items
+        filteredItems.forEach(item => {
+          if (selectedItems.includes(item.id)) {
+            onToggleItem(rowId, item.id);
+          }
+        });
+      }
+    } finally {
+      setSelectingAll(false);
     }
   };
 
-
+  // Update selectAll state when items change
+  useEffect(() => {
+    if (filteredItems.length > 0) {
+      const allSelected = filteredItems.every(item => selectedItems.includes(item.id));
+      setSelectAllState(allSelected);
+    } else {
+      setSelectAllState(false);
+    }
+  }, [selectedItems, filteredItems]);
 
   // Determine checkbox state
   const allSelected = filteredItems.length > 0 && selectedItems.length === filteredItems.length;
   const someSelected = selectedItems.length > 0 && selectedItems.length < filteredItems.length;
 
+  // Get total count message
+  const getTotalCountMessage = () => {
+    if (isLoading) return "Loading...";
+    
+    const displayedCount = filteredItems.length;
+    const total = totalCount || 0;
+    
+    if (displayedCount < total) {
+      return `Showing ${displayedCount} of ${total} items`;
+    }
+    return `${total} items`;
+  };
+
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-4">
-        <h3 className={`text-lg font-medium ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{config.title}</h3>
+        <div>
+          <h3 className={`text-lg font-medium ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>{config.title}</h3>
+          <div className={`text-sm ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+            {getTotalCountMessage()}
+          </div>
+        </div>
         <div className="relative">
           <input
             type="text"
@@ -1189,7 +1224,13 @@ export function Selection({
             className={`input input-sm w-64 border ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900 focus:border-blue-500' : 'bg-slate-700 border-slate-600 text-slate-100 focus:border-blue-400'} rounded px-3 py-2`}
             value={searchTerm}
             onChange={(e) => onSearchChange(e, searchType)}
+            disabled={isLoading}
           />
+          {isLoading && (
+            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+              <div className="w-4 h-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1207,73 +1248,108 @@ export function Selection({
           {/* Select All Checkbox */}
           {filteredItems.length > 0 && (
             <div
-              className={`border rounded-lg p-3 mb-3 cursor-pointer transition-colors ${theme === 'light' ? 'bg-slate-100 hover:bg-slate-200 border-slate-300' : 'bg-slate-700 hover:bg-slate-600 border-slate-600'}`}
-              onClick={handleSelectAll}
+              className={`border rounded-lg p-3 mb-3 cursor-pointer transition-colors ${isLoading || selectingAll ? 'opacity-50 cursor-not-allowed' : ''} ${theme === 'light' ? 'bg-slate-100 hover:bg-slate-200 border-slate-300' : 'bg-slate-700 hover:bg-slate-600 border-slate-600'}`}
+              onClick={isLoading || selectingAll ? undefined : handleSelectAll}
             >
               <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  className={`checkbox checkbox-md mr-3 ${theme === 'light' ? 'checkbox-primary' : 'checkbox-accent'}`}
-                  checked={allSelected}
-                  ref={checkbox => {
-                    if (checkbox) {
-                      checkbox.indeterminate = someSelected;
-                    }
-                  }}
-                  onChange={() => { }}
-                  onClick={(e) => e.stopPropagation()}
-                />
+                {(isLoading || selectingAll) && (
+                  <div className="mr-3">
+                    <div className="w-4 h-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></div>
+                  </div>
+                )}
+                {!isLoading && !selectingAll && (
+                  <input
+                    type="checkbox"
+                    className={`checkbox checkbox-md mr-3 ${theme === 'light' ? 'checkbox-primary' : 'checkbox-accent'}`}
+                    checked={allSelected}
+                    ref={checkbox => {
+                      if (checkbox) {
+                        checkbox.indeterminate = someSelected;
+                      }
+                    }}
+                    onChange={() => { }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                )}
                 <span className={`font-medium ${theme === 'light' ? 'text-slate-900' : 'text-slate-100'}`}>
-                  Select All {filteredItems.length > 0 ? `(${filteredItems.length})` : ""}
+                  {selectingAll ? 'Processing...' : `Select All (${filteredItems.length} shown)`}
                 </span>
+                {totalCount > filteredItems.length && (
+                  <span className={`ml-2 text-xs ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                    of {totalCount} total
+                  </span>
+                )}
               </div>
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {filteredItems.map(item => (
-              <div
-                key={item.id}
-                className={`border rounded-lg p-3 cursor-pointer transition-colors ${selectedItems.includes(item.id)
-                    ? theme === 'light'
-                      ? 'bg-blue-50 border-blue-600 text-blue-900'
-                      : 'bg-blue-900 border-blue-400 text-blue-100'
-                    : theme === 'light'
-                      ? 'border-slate-300 hover:border-blue-500 bg-white'
-                      : 'border-slate-600 hover:border-blue-400 bg-slate-800'
-                  }`}
-                onClick={() => onToggleItem(rowId, item.id)}
-              >
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    className={`checkbox checkbox-sm mr-3 ${theme === 'light' ? 'checkbox-primary' : 'checkbox-accent'}`}
-                    checked={selectedItems.includes(item.id)}
-                    onChange={() => { }}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <div className="w-full">
-                    <div className="font-medium">{String(item[nameField])}</div>
-                    {activeTab === 'departments' ? (
-                      <div className={`text-xs ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
-                        {(item as Department).company_name}
-                      </div>
-                    ) : activeTab === 'positions' ? (
-                      <div className={`text-xs ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
-                        {(item as Position).company_name} • {(item as Position).department_name}
-                      </div>
-                    ) : activeTab === 'employees' ? (
-                      <div className={`text-xs ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
-                        {(item as Employee).company_name} • {(item as Employee).department_name} • {(item as Employee).position_title} • {(item as Employee).job_level}
-                      </div>
-                    ) : null}
+          {/* Loading Skeleton */}
+          {isLoading && filteredItems.length === 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div
+                  key={i}
+                  className={`border rounded-lg p-3 ${theme === 'light' ? 'bg-slate-100 border-slate-300' : 'bg-slate-700 border-slate-600'}`}
+                >
+                  <div className="flex items-center">
+                    <div className={`w-5 h-5 mr-3 rounded ${theme === 'light' ? 'bg-slate-300' : 'bg-slate-600'} animate-pulse`}></div>
+                    <div className="w-full">
+                      <div className={`h-4 rounded ${theme === 'light' ? 'bg-slate-300' : 'bg-slate-600'} animate-pulse mb-2`}></div>
+                      <div className={`h-3 w-3/4 rounded ${theme === 'light' ? 'bg-slate-200' : 'bg-slate-500'} animate-pulse`}></div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
-          {filteredItems.length === 0 && (
+          {/* Results Grid */}
+          {!isLoading && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {filteredItems.map(item => (
+                <div
+                  key={item.id}
+                  className={`border rounded-lg p-3 cursor-pointer transition-colors ${selectedItems.includes(item.id)
+                      ? theme === 'light'
+                        ? 'bg-blue-50 border-blue-600 text-blue-900'
+                        : 'bg-blue-900 border-blue-400 text-blue-100'
+                      : theme === 'light'
+                        ? 'border-slate-300 hover:border-blue-500 bg-white'
+                        : 'border-slate-600 hover:border-blue-400 bg-slate-800'
+                    }`}
+                  onClick={() => onToggleItem(rowId, item.id)}
+                >
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      className={`checkbox checkbox-sm mr-3 ${theme === 'light' ? 'checkbox-primary' : 'checkbox-accent'}`}
+                      checked={selectedItems.includes(item.id)}
+                      onChange={() => { }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <div className="w-full">
+                      <div className="font-medium truncate">{String(item[nameField])}</div>
+                      {activeTab === 'departments' ? (
+                        <div className={`text-xs truncate ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {(item as Department).company_name}
+                        </div>
+                      ) : activeTab === 'positions' ? (
+                        <div className={`text-xs truncate ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {(item as Position).company_name} • {(item as Position).department_name}
+                        </div>
+                      ) : activeTab === 'employees' ? (
+                        <div className={`text-xs truncate ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {(item as Employee).company_name} • {(item as Employee).department_name} • {(item as Employee).position_title}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!isLoading && filteredItems.length === 0 && (
             <div className="text-center py-8">
               <div className={`${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>
                 {activeTab === 'companies'
@@ -1310,9 +1386,55 @@ export default function TargetRowCard({
   onSearchChange,
   isAnyCompanySelected,
   isAnyDepartmentSelected,
-  isAnyPositionSelected
+  isAnyPositionSelected,
+  totalCounts = { companies: 0, departments: 0, positions: 0, employees: 0 },
+  isLoadingData = false
 }: TargetRowCardProps) {
   const { theme } = useTheme();
+
+  // Get total count for current tab
+  const getCurrentTotalCount = () => {
+    switch (row.activeTab) {
+      case 'companies': return totalCounts.companies;
+      case 'departments': return totalCounts.departments;
+      case 'positions': return totalCounts.positions;
+      case 'employees': return totalCounts.employees;
+      default: return 0;
+    }
+  };
+
+  // Get data items for current tab
+  const getCurrentDataItems = () => {
+    switch (row.activeTab) {
+      case 'companies': return companies;
+      case 'departments': return departments;
+      case 'positions': return positions;
+      case 'employees': return employees;
+      default: return [];
+    }
+  };
+
+  // Get search term for current tab
+  const getCurrentSearchTerm = () => {
+    switch (row.activeTab) {
+      case 'companies': return companySearchTerm;
+      case 'departments': return departmentSearchTerm;
+      case 'positions': return positionSearchTerm;
+      case 'employees': return employeeSearchTerm;
+      default: return '';
+    }
+  };
+
+  // Get selected items for current tab
+  const getCurrentSelectedItems = () => {
+    switch (row.activeTab) {
+      case 'companies': return row.selectedCompanies;
+      case 'departments': return row.selectedDepartments;
+      case 'positions': return row.selectedPositions;
+      case 'employees': return row.selectedEmployees;
+      default: return [];
+    }
+  };
 
   return (
     <div className={`border rounded-lg ${theme === 'light' ? 'border-slate-300 bg-white' : 'border-slate-600 bg-slate-800'}`}>
@@ -1325,8 +1447,14 @@ export default function TargetRowCard({
             Target Group {index + 1}
           </span>
           <span className={`text-sm ${theme === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>
-            ({row.selectedCompanies.length + row.selectedDepartments.length + row.selectedPositions.length + row.selectedEmployees.length} selected)
+            ({getCurrentSelectedItems().length} selected)
           </span>
+          {isLoadingData && (
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></div>
+              <span className={`text-xs ${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`}>Updating...</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1335,29 +1463,30 @@ export default function TargetRowCard({
         {/* Tab Navigation */}
         <div className={`tabs tabs-boxed border-b ${theme === 'light' ? 'bg-white border-slate-200' : 'bg-slate-800 border-slate-700'}`}>
           <a
-            className={`tab tab-sm ${row.activeTab === 'companies' ? 'tab-active' : ''} ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}
-            onClick={() => onChangeTab(row.id, 'companies', '')}
+            className={`tab tab-sm ${row.activeTab === 'companies' ? 'tab-active' : ''} ${isLoadingData ? 'opacity-50 cursor-not-allowed' : ''} ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}
+            onClick={() => !isLoadingData && onChangeTab(row.id, 'companies', '')}
+            title={isLoadingData ? 'Please wait...' : ''}
           >
             Companies
           </a>
           <a
-            className={`tab tab-sm ${row.activeTab === 'departments' ? 'tab-active' : ''} ${!isAnyCompanySelected() ? 'opacity-50 cursor-not-allowed' : ''} ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}
-            onClick={() => isAnyCompanySelected() && onChangeTab(row.id, 'departments', 'companies')}
-            title={!isAnyCompanySelected() ? 'Select a company first' : ''}
+            className={`tab tab-sm ${row.activeTab === 'departments' ? 'tab-active' : ''} ${!isAnyCompanySelected() || isLoadingData ? 'opacity-50 cursor-not-allowed' : ''} ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}
+            onClick={() => !isLoadingData && isAnyCompanySelected() && onChangeTab(row.id, 'departments', 'companies')}
+            title={isLoadingData ? 'Please wait...' : !isAnyCompanySelected() ? 'Select a company first' : ''}
           >
             Departments
           </a>
           <a
-            className={`tab tab-sm ${row.activeTab === 'positions' ? 'tab-active' : ''} ${!isAnyDepartmentSelected() ? 'opacity-50 cursor-not-allowed' : ''} ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}
-            onClick={() => isAnyDepartmentSelected() && onChangeTab(row.id, 'positions', 'departments')}
-            title={!isAnyDepartmentSelected() ? 'Select a department first' : ''}
+            className={`tab tab-sm ${row.activeTab === 'positions' ? 'tab-active' : ''} ${!isAnyDepartmentSelected() || isLoadingData ? 'opacity-50 cursor-not-allowed' : ''} ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}
+            onClick={() => !isLoadingData && isAnyDepartmentSelected() && onChangeTab(row.id, 'positions', 'departments')}
+            title={isLoadingData ? 'Please wait...' : !isAnyDepartmentSelected() ? 'Select a department first' : ''}
           >
             Positions
           </a>
           <a
-            className={`tab tab-sm ${row.activeTab === 'employees' ? 'tab-active' : ''} ${!isAnyPositionSelected() ? 'opacity-50 cursor-not-allowed' : ''} ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}
-            onClick={() => isAnyPositionSelected() && onChangeTab(row.id, 'employees', 'positions')}
-            title={!isAnyPositionSelected() ? 'Select a position first' : ''}
+            className={`tab tab-sm ${row.activeTab === 'employees' ? 'tab-active' : ''} ${!isAnyPositionSelected() || isLoadingData ? 'opacity-50 cursor-not-allowed' : ''} ${theme === 'light' ? 'text-slate-700' : 'text-slate-300'}`}
+            onClick={() => !isLoadingData && isAnyPositionSelected() && onChangeTab(row.id, 'employees', 'positions')}
+            title={isLoadingData ? 'Please wait...' : !isAnyPositionSelected() ? 'Select a position first' : ''}
           >
             Employees
           </a>
@@ -1366,33 +1495,9 @@ export default function TargetRowCard({
         <div className="p-4">
           <Selection
             rowId={row.id}
-            selectedItems={
-              row.activeTab === 'companies'
-                ? row.selectedCompanies
-                : row.activeTab === 'departments'
-                  ? row.selectedDepartments
-                  : row.activeTab === 'positions'
-                    ? row.selectedPositions
-                    : row.selectedEmployees
-            }
-            dataItems={
-              row.activeTab === 'companies'
-                ? companies
-                : row.activeTab === 'departments'
-                  ? departments
-                  : row.activeTab === 'positions'
-                    ? positions
-                    : employees
-            }
-            searchTerm={
-              row.activeTab === 'companies'
-                ? companySearchTerm
-                : row.activeTab === 'departments'
-                  ? departmentSearchTerm
-                  : row.activeTab === 'positions'
-                    ? positionSearchTerm
-                    : employeeSearchTerm
-            }
+            selectedItems={getCurrentSelectedItems()}
+            dataItems={getCurrentDataItems()}
+            searchTerm={getCurrentSearchTerm()}
             targetRows={targetRows}
             activeTab={row.activeTab}
             isAnyCompanySelected={isAnyCompanySelected}
@@ -1400,6 +1505,8 @@ export default function TargetRowCard({
             isAnyPositionSelected={isAnyPositionSelected}
             onToggleItem={onToggleItem}
             onSearchChange={onSearchChange}
+            totalCount={getCurrentTotalCount()}
+            isLoading={isLoadingData}
           />
         </div>
       </div>
