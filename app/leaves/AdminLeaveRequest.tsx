@@ -2970,6 +2970,9 @@ const AdminLeaveRequest = () => {
   const [filteredEmployees, setFilteredEmployees] = useState<Array<{id: number; name: string; email: string; employee_no: string}>>([]);
   const [leaveBalances, setLeaveBalances] = useState<LeaveBalance[]>([]);
 
+const [rejectAllReason, setRejectAllReason] = useState('');
+const [rejectAllError, setRejectAllError] = useState<string>('');
+
   // Advanced Filters State
   const [filters, setFilters] = useState({
     department_id: '',
@@ -5023,11 +5026,18 @@ const openEditModal = async (request: LeaveRequest) => {
   };
 
   const handleRejectAllApproved = () => {
+  if (!selectedRequest) return;
+  setRejectAllReason(''); // Clear previous reason
+  setRejectAllError(''); // Clear previous error
+  setIsRejectAllConfirmModalOpen(true);
+};
+
+  const handleRejectAllApproved0812 = () => {
     if (!selectedRequest) return;
     setIsRejectAllConfirmModalOpen(true);
   };
 
-  const confirmRejectAllApproved = async () => {
+  const confirmRejectAllApproved0812 = async () => {
     if (!selectedRequest) return;
 
     try {
@@ -5055,6 +5065,79 @@ const openEditModal = async (request: LeaveRequest) => {
       showNotification('Failed to reject all approved leave. Please try again.', 'error');
     }
   };
+
+const confirmRejectAllApproved = async () => {
+  if (!selectedRequest) return;
+
+  // Validate reason
+  if (!rejectAllReason.trim()) {
+    setRejectAllError('Please provide a reason for rejection');
+    return;
+  }
+
+  setRejectAllError('');
+
+  try {
+    // Get all dates between start and end date
+    const startDate = new Date(selectedRequest.start_date);
+    const endDate = new Date(selectedRequest.end_date);
+    const dates_to_reject = [];
+    
+    for (let dt = new Date(startDate); dt <= endDate; dt.setDate(dt.getDate() + 1)) {
+      dates_to_reject.push(dt.toISOString().split('T')[0]);
+    }
+
+    console.log('Dates to reject:', dates_to_reject);
+    console.log('Rejecting all days for leave:', selectedRequest.id);
+
+    // Call the correct endpoint for rejecting approved leaves
+    const response = await axios.post(
+      `${API_BASE_URL}/api/v1/leaves/${selectedRequest.id}/reject-approved`, // CORRECT ENDPOINT
+      {
+        approver_id: user?.id,
+        reason: rejectAllReason.trim(),
+        dates_to_reject: dates_to_reject
+      }, 
+      {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('hrms_token')}`
+        }
+      }
+    );
+
+    console.log('Rejection successful:', response.data);
+
+    // Refresh the leave requests list
+    await fetchLeaveRequests();
+    showNotification('All approved leave days rejected successfully', 'success');
+
+    setIsRejectAllConfirmModalOpen(false);
+    setIsViewModalOpen(false);
+    setSelectedRequest(null);
+    setRejectAllReason('');
+    setRejectAllError('');
+  } catch (err: any) {
+    console.error('Error rejecting all approved leave:', err);
+    
+    // Show specific error message from API
+    const errorMessage = err.response?.data?.error || 
+                        err.response?.data?.message || 
+                        'Failed to reject all approved leave. Please try again.';
+    showNotification(errorMessage, 'error');
+    
+    // Log detailed error for debugging
+    console.error('Error details:', {
+      status: err.response?.status,
+      data: err.response?.data,
+      config: err.config
+    });
+    
+    // If it's a validation error (like empty reason), show it in the form
+    if (err.response?.data?.error?.includes('reason')) {
+      setRejectAllError(err.response.data.error);
+    }
+  }
+};
 
   // Smart pagination functions
   const getPageNumbers = (currentPage: number, totalPages: number) => {
@@ -7083,23 +7166,29 @@ const openEditModal = async (request: LeaveRequest) => {
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-500">Dates:</span>
                     <span className="font-medium">
-                      {/* {new Date(selectedRequest.start_date).toLocaleDateString('en-GB', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric'
-                      })} */}
-                       {formatDateDDMMMYYYY(selectedRequest.start_date)}
-                       - 
-                       {formatDateDDMMMYYYY(selectedRequest.end_date)}
-                       {/* {new Date(selectedRequest.end_date).toLocaleDateString('en-GB', {
-                        day: 'numeric',
-                        month: 'short',
-                        year: 'numeric'
-                      })} */}
-
-                      
+                      {formatDateDDMMMYYYY(selectedRequest.start_date)} - {formatDateDDMMMYYYY(selectedRequest.end_date)}
                     </span>
                   </div>
+                </div>
+
+                {/* ADD THIS REASON INPUT FIELD */}
+                <div className="form-control">
+                  <label className="label">
+                    <span className="label-text font-medium text-sm sm:text-base">
+                      Rejection Reason <span className="text-error">*</span>
+                    </span>
+                  </label>
+                  <textarea
+                    className="textarea textarea-bordered h-20 w-full"
+                    placeholder="Please provide a reason for rejecting all leave days..."
+                    value={rejectAllReason}
+                    onChange={(e) => setRejectAllReason(e.target.value)}
+                  ></textarea>
+                  {rejectAllError && (
+                    <div className="text-error text-sm mt-1">
+                      {rejectAllError}
+                    </div>
+                  )}
                 </div>
 
                 {/* Confirmation Question */}
@@ -7116,25 +7205,34 @@ const openEditModal = async (request: LeaveRequest) => {
           <div className="bg-base-200 px-4 sm:px-6 py-3 border-t border-base-300 flex justify-end gap-2">
             <button
               className="btn btn-sm sm:btn-md btn-ghost"
-              onClick={() => setIsRejectAllConfirmModalOpen(false)}
+              onClick={() => {
+                setIsRejectAllConfirmModalOpen(false);
+                setRejectAllReason('');
+                setRejectAllError('');
+              }}
             >
               Cancel
             </button>
             <button
               className="btn btn-sm sm:btn-md btn-error"
               onClick={confirmRejectAllApproved}
+              disabled={!rejectAllReason.trim()}
             >
               Yes, Reject All Leave
             </button>
           </div>
         </div>
         <form method="dialog" className="modal-backdrop">
-          <button onClick={() => setIsRejectAllConfirmModalOpen(false)}>close</button>
+          <button onClick={() => {
+            setIsRejectAllConfirmModalOpen(false);
+            setRejectAllReason('');
+            setRejectAllError('');
+          }}>close</button>
         </form>
       </dialog>
+
     </>
   )
 }
 
 export default AdminLeaveRequest
-
