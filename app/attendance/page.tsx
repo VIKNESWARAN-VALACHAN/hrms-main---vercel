@@ -21,8 +21,6 @@ import { formatInTimeZone } from 'date-fns-tz';
 
 const SG_TZ = 'Asia/Kuala_Lumpur';
 
-
-
 // Always produce a YYYY-MM-DD key in Singapore time
 const ymdSG = (d: Date | string) => {
   const dateObj = typeof d === 'string' ? new Date(d) : d;
@@ -275,6 +273,7 @@ interface AppealData {
   employee_name: string;
   department_name: string;
   employee_no: string;
+  employee_id: string;
   date: string;
   status: string;
   company_name: string;
@@ -1769,7 +1768,9 @@ const fetchAttendanceFilterData = async (currentTab = activeTab, filters: Record
       checkOut,
       status,
       attendanceDayId: rec.attendance_day_id,
-      appealStatus: rec.appeal_status || ''
+      appealStatus: rec.appeal_status || '',
+      employee_id: rec.employee_id,
+      attendance_date: rec.attendance_date
     };
   });
 
@@ -2233,7 +2234,30 @@ useEffect(() => {
     setIsAppealModalOpen(true);
   };
 
-  const hasAppealForRecord = (record: AttendanceRecord): AppealData | null => {
+// Replace the existing hasAppealForRecord function with this improved version:
+const hasAppealForRecord = (record: AttendanceRecord): AppealData | null => {
+  if (!record.attendanceDayId || !employeeId) return null;
+  
+  const employeeTimezone = employee?.time_zone || timeZone;
+  const recordDate = formatInTimeZone(record.date, employeeTimezone, 'yyyy-MM-dd');
+  
+  return appealData.find(appeal => {
+    const appealDate = new Date(appeal.attendance_date);
+    const appealDateFormatted = formatInTimeZone(appealDate, employeeTimezone, 'yyyy-MM-dd');
+    
+    // Check both attendanceDayId AND date match
+    const isMatch = appealDateFormatted === recordDate && 
+                   appeal.attendance_day_id === record.attendanceDayId;
+    
+    // Also check if this appeal belongs to the current employee
+    const isCurrentEmployee = appeal.employee_no?.toString() === employeeId.toString() || 
+                             appeal.employee_id?.toString() === employeeId.toString();
+    
+    return isMatch && isCurrentEmployee;
+  }) || null;
+};
+
+  const hasAppealForRecord1512 = (record: AttendanceRecord): AppealData | null => {
   const employeeTimezone = employee?.time_zone || timeZone;
   const recordDate = formatInTimeZone(record.date, employeeTimezone, 'yyyy-MM-dd');
   
@@ -4103,6 +4127,16 @@ useEffect(() => {
                                         record.status === 'partial' ? 'bg-blue-500' :
                                         record.status === 'absent' ? 'bg-red-500' : 'bg-gray-500'}
                                     `}></div>
+
+                                    {/* ADD: Appeal indicator badge */}
+                                    {hasAppealForRecord(record) && (
+                                      <div className="absolute top-0.5 right-0.5">
+                                        <div className="tooltip" data-tip="Appeal submitted">
+                                          <div className="h-2 w-2 rounded-full bg-orange-500 animate-pulse"></div>
+                                        </div>
+                                      </div>
+                                    )}
+
                                   </div>
                                 )}
                                 {/* NEW: Tiny label at bottom (uses first item type for color) */}
@@ -4265,7 +4299,7 @@ useEffect(() => {
                       }
                     })()} */}
 
-                    {(() => {
+                    {/* {(() => {
   const employeeTimezone = employee?.time_zone || timeZone;
   const formattedSelectedDate = formatInTimeZone(calendarDate, employeeTimezone, 'yyyy-MM-dd');
   const selectedRecord = attendanceRecords.find(r => ymdSG(r.date) === formattedSelectedDate);
@@ -4303,6 +4337,87 @@ useEffect(() => {
               <button
                 className="btn btn-xs btn-outline"
                 onClick={() => openEmployeeAppealViewModal(hasAppealForRecord(selectedRecord) as AppealData)}
+              >
+                View Appeal
+              </button>
+            ) : (
+              <button
+                className="btn btn-xs btn-outline"
+                onClick={() => openAppealRequestModal(selectedRecord)}
+              >
+                Submit Appeal
+              </button>
+            )}
+          </span>
+        </div>
+      </div>
+    );
+  } else {
+    return (
+      <div className={`flex flex-col items-center py-2 ${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span>No attendance record found for this date</span>
+      </div>
+    );
+  }
+})()} */}
+
+{(() => {
+  const employeeTimezone = employee?.time_zone || timeZone;
+  const formattedSelectedDate = formatInTimeZone(calendarDate, employeeTimezone, 'yyyy-MM-dd');
+  const selectedRecord = attendanceRecords.find(r => ymdSG(r.date) === formattedSelectedDate);
+  const appealRecord = selectedRecord ? hasAppealForRecord(selectedRecord) : null;
+  
+  if (selectedRecord) {
+    return (
+      <div className="grid grid-cols-1 gap-4 text-sm">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <span className={`${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Check-in:</span>
+            <span className={`ml-2 font-medium ${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`}>
+              {selectedRecord.checkIn 
+                ? displayTime(selectedRecord.checkIn)
+                : '--:--'}
+            </span>
+          </div>
+          <div>
+            <span className={`${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Check-out:</span>
+            <span className={`ml-2 font-medium ${theme === 'light' ? 'text-gray-900' : 'text-slate-100'}`}>
+              {selectedRecord.checkOut 
+                ? displayTime(selectedRecord.checkOut)
+                : '--:--'}
+            </span>
+          </div>
+        </div>
+        
+        <div>
+          <span className={`${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Status:</span>
+          <span className={`ml-2 badge ${getStatusBadgeClass(selectedRecord.status)}`}>
+            {selectedRecord.status}
+          </span>
+          
+          {/* ADD: Appeal Status Badge */}
+          {appealRecord && (
+            <span className={`ml-2 badge ${
+              appealRecord.appeal_status === 'pending' ? 'badge-warning' :
+              appealRecord.appeal_status === 'approved' ? 'badge-success' :
+              appealRecord.appeal_status === 'rejected' ? 'badge-error' :
+              'badge-info'
+            }`}>
+              Appeal: {appealRecord.appeal_status}
+            </span>
+          )}
+        </div>
+        
+        <div>
+          <span className={`${theme === 'light' ? 'text-gray-500' : 'text-slate-400'}`}>Action:</span>
+          <span className="ml-2">
+            {appealRecord ? (
+              <button
+                className="btn btn-xs btn-outline btn-warning"
+                onClick={() => openEmployeeAppealViewModal(appealRecord)}
               >
                 View Appeal
               </button>
