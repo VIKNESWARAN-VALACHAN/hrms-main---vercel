@@ -1120,6 +1120,7 @@ interface Allowance {
 
 type FormAllowance = Omit<Allowance, 'id' | 'created_at' | 'updated_at'>;
 
+
 export default function AllowancePage() {
   const [allowances, setAllowances] = useState<Allowance[]>([]);
   const [search, setSearch] = useState('');
@@ -1137,7 +1138,7 @@ export default function AllowancePage() {
   const [formData, setFormData] = useState<FormAllowance>({
     name: '',
     is_taxable: false,
-    max_limit: 0,
+    max_limit: null,
     is_bonus: false,
     is_epf_eligible: false,
     is_socso_eligible: false,
@@ -1176,7 +1177,57 @@ export default function AllowancePage() {
     fetchAllowances();
   }, []);
 
+
   const handleSave = async () => {
+  if (!formData.name?.trim()) {
+    toast.error('Name is required');
+    return;
+  }
+  const method = editing ? 'PUT' : 'POST';
+  const url = editing
+    ? `${API_BASE_URL}/api/master-data/allowances/${editing.id}`
+    : `${API_BASE_URL}/api/master-data/allowances`;
+
+  try {
+    // Process max_limit: convert empty string or 0 to null
+    const processedMaxLimit = 
+      formData.max_limit === undefined || 
+      formData.max_limit === null || 
+      formData.max_limit === 0
+        ? null
+        : Number(formData.max_limit);
+
+    const payload = {
+      ...formData,
+      max_limit: processedMaxLimit, // Use the processed value
+      is_taxable: Boolean(formData.is_taxable),
+      is_bonus: Boolean(formData.is_bonus),
+      is_epf_eligible: Boolean(formData.is_epf_eligible),
+      is_socso_eligible: Boolean(formData.is_socso_eligible),
+      is_eis_eligible: Boolean(formData.is_eis_eligible),
+      prorate_by_percentage: Boolean(formData.prorate_by_percentage),
+    };
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({} as any));
+      throw new Error(err.error || 'Failed to save');
+    }
+    toast.success(`Allowance ${editing ? 'updated' : 'created'} successfully`);
+    setShowModal(false);
+    setEditing(null);
+    resetForm();
+    fetchAllowances();
+  } catch (e: any) {
+    toast.error(e?.message || 'Failed to save allowance');
+  }
+};
+
+  const handleSave1412 = async () => {
     if (!formData.name?.trim()) {
       toast.error('Name is required');
       return;
@@ -1253,7 +1304,7 @@ export default function AllowancePage() {
     setFormData({
       name: '',
       is_taxable: false,
-      max_limit: 0,
+      max_limit: null,
       is_bonus: false,
       is_epf_eligible: false,
       is_socso_eligible: false,
@@ -1617,7 +1668,7 @@ export default function AllowancePage() {
                   <label className="label">
                     <span className="label-text text-black font-medium">Max Limit (RM)</span>
                   </label>
-                  <input
+                  {/* <input
                     type="number"
                     step="0.01"
                     className="input input-bordered w-full text-black"
@@ -1629,7 +1680,22 @@ export default function AllowancePage() {
                       })
                     }
                     placeholder="0.00"
-                  />
+                  /> */}
+<input
+  type="number"
+  step="0.01"
+  min="0" // Optional: if you want to prevent negative values
+  className="input input-bordered w-full text-black"
+  value={formData.max_limit === null || formData.max_limit === 0 ? '' : (formData.max_limit?.toString() || '')}
+  onChange={(e) => {
+    const value = e.target.value;
+    setFormData({
+      ...formData,
+      max_limit: value === '' ? null : (parseFloat(value) || 0),
+    });
+  }}
+  placeholder="Leave empty for no limit"
+/>
                   <div className="label">
                     <span className="label-text-alt text-gray-500">Leave empty for no limit</span>
                   </div>
