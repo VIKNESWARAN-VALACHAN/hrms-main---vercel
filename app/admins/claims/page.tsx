@@ -2075,6 +2075,7 @@ interface ClaimRow {
   company_id: number;
   benefit_type_id: number;
   benefit_type: string;
+  benefit_type_name: string;
   claim_date: string;
   amount: string;
   approved_amount: string | null;
@@ -2217,6 +2218,10 @@ interface Filters {
   };
   employee_name: string;
   search: string;
+    application_datetime: {  // Add this
+    start: string;
+    end: string;
+  };
 }
 
 /* =========================== Professional MultiSelectFilter Component =========================== */
@@ -2606,7 +2611,11 @@ export default function AdminClaimListPage() {
       max: ''
     },
     employee_name: '',
-    search: ''
+    search: '',
+    application_datetime: {  // Add this
+    start: '',
+    end: ''
+  }
   });
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   
@@ -2661,7 +2670,11 @@ export default function AdminClaimListPage() {
         max: ''
       },
       employee_name: '',
-      search: ''
+      search: '',
+      application_datetime: {  // Reset this too
+      start: '',
+      end: ''
+    }
     });
     setCurrentPage(1);
   };
@@ -2742,14 +2755,35 @@ export default function AdminClaimListPage() {
         return amount >= min && amount <= max;
       };
 
+      // Application datetime filter
+      const matchesApplicationDatetime = () => {
+  if (!filters.application_datetime.start && !filters.application_datetime.end) return true;
+  
+  const claimCreatedAt = new Date(claim.created_at);
+  const startDatetime = filters.application_datetime.start ? new Date(filters.application_datetime.start) : null;
+  const endDatetime = filters.application_datetime.end ? new Date(filters.application_datetime.end) : null;
+  
+  if (startDatetime && endDatetime) {
+    return claimCreatedAt >= startDatetime && claimCreatedAt <= endDatetime;
+  } else if (startDatetime) {
+    return claimCreatedAt >= startDatetime;
+  } else if (endDatetime) {
+    return claimCreatedAt <= endDatetime;
+  }
+  return true;
+      };
+      
+
       // Employee name filter
       const matchesEmployeeName = !filters.employee_name || 
         (claim.employee_name && claim.employee_name.toLowerCase().includes(filters.employee_name.toLowerCase()));
 
       return matchesSearch && matchesCompany && matchesBenefitType && 
-             matchesStatus && matchesDateRange() && matchesAmountRange() && matchesEmployeeName;
+             matchesStatus && matchesDateRange() && matchesAmountRange() && matchesEmployeeName && matchesApplicationDatetime();
     });
   }, [allClaims, filters]);
+
+  
 
   // Update pagination based on filtered claims
   useEffect(() => {
@@ -3695,7 +3729,7 @@ export default function AdminClaimListPage() {
       <div className="max-w-7xl mx-auto">
         {/* Header Section */}
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Claim Benefit Dashboard</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Claim Benefit</h1>
           <div className="flex gap-2">
             <button 
               onClick={() => setIsReportModalOpen(true)}
@@ -3818,6 +3852,19 @@ export default function AdminClaimListPage() {
                   <button 
                     onClick={() => handleAmountRangeChange('', '')}
                     className="ml-2 w-4 h-4 flex items-center justify-center hover:bg-red-100 rounded-full"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+
+              {(filters.application_datetime.start || filters.application_datetime.end) && (
+                <span className="inline-flex items-center px-3 py-1 text-sm bg-white text-indigo-800 rounded-full border border-indigo-200">
+                  Application: {filters.application_datetime.start ? new Date(filters.application_datetime.start).toLocaleString() : 'Start'} - 
+                  {filters.application_datetime.end ? new Date(filters.application_datetime.end).toLocaleString() : 'End'}
+                  <button 
+                    onClick={() => handleFilterChange('application_datetime', { start: '', end: '' })}
+                    className="ml-2 w-4 h-4 flex items-center justify-center hover:bg-indigo-100 rounded-full"
                   >
                     ×
                   </button>
@@ -3959,6 +4006,43 @@ export default function AdminClaimListPage() {
                         />
                       </div>
                     </div>
+                  </div>
+                </div>
+              </div>
+
+
+              {/* Application Date & Time Range */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <label className="block mb-3">
+                  <span className="label-text font-semibold text-gray-700">Application Date</span>
+                </label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">From</label>
+                    <input
+                      type="datetime-local"
+                      className="input input-bordered w-full text-sm"
+                      value={filters.application_datetime.start}
+                      onChange={(e) => handleFilterChange('application_datetime', {
+                        ...filters.application_datetime,
+                        start: e.target.value
+                      })}
+                      max={filters.application_datetime.end || new Date().toISOString().slice(0, 16)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">To</label>
+                    <input
+                      type="datetime-local"
+                      className="input input-bordered w-full text-sm"
+                      value={filters.application_datetime.end}
+                      onChange={(e) => handleFilterChange('application_datetime', {
+                        ...filters.application_datetime,
+                        end: e.target.value
+                      })}
+                      min={filters.application_datetime.start}
+                      max={new Date().toISOString().slice(0, 16)}
+                    />
                   </div>
                 </div>
               </div>
@@ -4318,12 +4402,14 @@ export default function AdminClaimListPage() {
               {selectedClaim.department_name && (
                 <div className="flex items-center"><Users size={16} className="mr-2 text-teal-500" /><strong>Department:</strong><span className="ml-1">{selectedClaim.department_name}</span></div>
               )}
-              <div className="flex items-center"><Tag size={16} className="mr-2 text-green-500" /><strong>Benefit Type:</strong><span className="ml-1">{selectedClaim.benefit_type}</span></div>
+              <div className="flex items-center"><Tag size={16} className="mr-2 text-green-500" /><strong>Benefit Type:</strong><span className="ml-1">{selectedClaim.benefit_type_name || 'Not specified'}</span></div>
+              {/* <div className="flex items-center"><Tag size={16} className="mr-2 text-green-500" /><strong>Benefit Type:</strong><span className="ml-1">{selectedClaim.benefit_type}</span></div> */}
               <div className="flex items-center"><DollarSign size={16} className="mr-2 text-orange-500" /><strong>Claimed Amount:</strong><span className="ml-1 font-semibold">{formatCurrency(selectedClaim.amount)}</span></div>
               {selectedClaim.approved_amount !== null && (
                 <div className="flex items-center"><DollarSign size={16} className="mr-2 text-lime-600" /><strong>Approved Amount:</strong><span className="ml-1 font-semibold">{formatCurrency(selectedClaim.approved_amount)}</span></div>
               )}
-              <div className="flex items-center"><CalendarDays size={16} className="mr-2 text-red-500" /><strong>Claim Date:</strong><span className="ml-1">{new Date(selectedClaim.claim_date).toLocaleDateString()}</span></div>
+              <div className="flex items-center"><CalendarDays size={16} className="mr-2 text-red-500" /><strong>Claim Date:</strong><span className="ml-1">{new Date(selectedClaim.claim_date).toLocaleDateString()} {new Date(selectedClaim.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
+              {/* <div className="flex items-center"><CalendarDays size={16} className="mr-2 text-red-500" /><strong>Claim Date:</strong><span className="ml-1">{new Date(selectedClaim.claim_date).toLocaleDateString()}</span></div> */}
               <div className="flex items-center">
                 <Info size={16} className="mr-2 text-gray-500" /><strong>Status:</strong>
                 <span
