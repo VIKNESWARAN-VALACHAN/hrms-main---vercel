@@ -3173,9 +3173,15 @@ const LeaveEntitlementManagement = () => {
                                 <div className="flex justify-between items-start">
                                   <div>
                                     <div className="font-medium">{entitlement.leave_type_name || 'Unknown'}</div>
-                                    <div className="text-sm text-slate-500">
+                                    {/* <div className="text-sm text-slate-500">
                                       {getYosSummary(entitlement.yos_brackets)}
-                                    </div>
+                                    </div> */}
+                                                  <div className="flex items-center gap-2 text-sm text-slate-500 mt-1">
+                <code className="font-mono bg-base-200 px-2 py-0.5 rounded text-xs">
+                  {entitlement.leave_type_code  || 'N/A'}
+                </code>
+                <span className="text-xs">• {getYosSummary(entitlement.yos_brackets)}</span>
+              </div>
                                   </div>
                                   <button
                                     onClick={() => {
