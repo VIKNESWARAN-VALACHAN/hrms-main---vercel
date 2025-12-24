@@ -5859,7 +5859,7 @@ export default function ManageEmployees() {
                         </button>
                       )}
                       <Link 
-                        href={`/employees/view/${employee.id}`} 
+                        href={`/employees/${employee.id}`} 
                         className={`btn btn-sm ${theme === 'light' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-400 hover:bg-blue-500'} text-white border-0`}
                       >
                         {isCurrentUser ? 'View My Profile' : 'View'}
