@@ -7477,7 +7477,7 @@ const ProfessionalMultiSelectFilter = ({
     if (isOpen && searchInputRef.current) {
       setTimeout(() => {
         searchInputRef.current?.focus();
-      }, 150);
+      }, 15000);
     }
   }, [isOpen]);
 
@@ -7488,7 +7488,7 @@ const ProfessionalMultiSelectFilter = ({
         if (optionsContainerRef.current) {
           optionsContainerRef.current.scrollTop = 0;
         }
-      }, 100);
+      }, 100000);
     } else {
       document.body.style.overflow = 'unset';
     }
@@ -7601,215 +7601,214 @@ const ProfessionalMultiSelectFilter = ({
         </button>
       </div>
 
-      {/* Professional Modal */}
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={`Select ${placeholder}`}>
-          {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-200"
-            onClick={handleApply}
-            aria-hidden="true"
-          />
-          
-          {/* Modal Content */}
-          <div 
-            ref={modalRef}
-            className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden z-10"
-            onClick={(e) => e.stopPropagation()} // Prevent click from closing
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b bg-white">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-800">Select {placeholder}</h3>
-                <p className="text-sm text-slate-600 mt-1">
-                  Choose multiple options to filter your results
-                </p>
-              </div>
-              <button 
-                onClick={handleApply}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
-                type="button"
-                aria-label="Close modal"
-              >
-                <div className="w-4 h-4 relative">
-                  <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-500 transform -rotate-45" />
-                  <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-500 transform rotate-45" />
-                </div>
-              </button>
-            </div>
+{/* Professional Modal */}
+{isOpen && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    {/* Backdrop - Only closes when clicking directly on backdrop */}
+    <div 
+      className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-200"
+      onClick={handleApply}
+      aria-hidden="true"
+    />
+    
+    {/* Modal Content */}
+    <div 
+      ref={modalRef}
+      className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden z-10"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between p-6 border-b bg-white">
+        <div>
+          <h3 className="text-lg font-semibold text-slate-800">Select {placeholder}</h3>
+          <p className="text-sm text-slate-600 mt-1">
+            Choose multiple options to filter your results
+          </p>
+        </div>
+        <button 
+          onClick={handleApply}
+          className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
+          type="button"
+          aria-label="Close modal"
+        >
+          <div className="w-4 h-4 relative">
+            <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-500 transform -rotate-45" />
+            <div className="absolute top-1/2 left-0 w-full h-0.5 bg-slate-500 transform rotate-45" />
+          </div>
+        </button>
+      </div>
 
-            {/* Search and Stats Bar */}
-            <div className="p-4 border-b bg-slate-50">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="form-control flex-1">
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    placeholder={`Search ${placeholder.toLowerCase()}...`}
-                    className="input input-bordered w-full bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    aria-label={`Search ${placeholder}`}
-                  />
-                </div>
-              </div>
-
-              {/* Progress and Actions */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="text-sm text-slate-600">
-                    <span className="font-semibold">{value.length}</span> of{' '}
-                    <span className="font-semibold">{validOptions.length}</span> selected
-                  </div>
-                  <div className="w-20 h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-green-500 transition-all duration-500"
-                      style={{ width: `${selectedPercentage}%` }}
-                    />
-                  </div>
-                </div>
-                
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleSelectAll}
-                    className="px-3 py-1 text-sm text-slate-600 hover:text-slate-800 hover:bg-white rounded border border-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={value.length === validOptions.length}
-                    type="button"
-                    aria-label="Select all options"
-                  >
-                    Select All
-                  </button>
-                  {value.length > 0 && (
-                    <button
-                      onClick={handleClear}
-                      className="px-3 py-1 text-sm text-red-600 hover:text-red-800 hover:bg-white rounded border border-red-300 transition-colors"
-                      type="button"
-                      aria-label="Clear all selections"
-                    >
-                      Clear All
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Options List */}
-            <div 
-              ref={optionsContainerRef}
-              className="flex-1 overflow-y-auto min-h-[200px] max-h-[400px] bg-white"
-              onScroll={() => setClickedFromBottom(null)}
-            >
-              {filteredOptions.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
-                  <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center mb-4">
-                    <div className="w-6 h-0.5 bg-slate-400 rotate-45 absolute" />
-                    <div className="w-6 h-0.5 bg-slate-400 -rotate-45 absolute" />
-                  </div>
-                  <h4 className="font-semibold text-slate-700 mb-2">No options found</h4>
-                  <p className="text-slate-500 text-sm">
-                    {searchTerm ? `No matches for "${searchTerm}"` : 'No options available'}
-                  </p>
-                </div>
-              ) : (
-                <div className="p-4 space-y-2">
-                  {filteredOptions.map((option, index) => {
-                    const displayName = optionMap.get(option.id) || option.name;
-                    const isSelected = value.includes(option.id);
-                    
-                    return (
-                      <div
-                        key={`${name}-${option.id}`}
-                        id={`option-${option.id}`}
-                        className={`flex items-center gap-4 p-4 rounded-lg cursor-pointer border transition-all duration-200 ${
-                          isSelected
-                            ? 'bg-blue-50 border-blue-200 shadow-sm'
-                            : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300'
-                        }`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleToggle(option.id, e);
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            handleToggle(option.id, e as any);
-                          }
-                        }}
-                        role="checkbox"
-                        aria-checked={isSelected}
-                        tabIndex={0}
-                        aria-label={`${displayName} ${isSelected ? 'selected' : 'not selected'}`}
-                      >
-                        {/* Custom checkbox */}
-                        <div 
-                          className={`flex-shrink-0 w-5 h-5 border-2 rounded transition-all duration-200 flex items-center justify-center ${
-                            isSelected 
-                              ? 'bg-blue-600 border-blue-600' 
-                              : 'border-slate-300 bg-white'
-                          }`}
-                          aria-hidden="true"
-                        >
-                          {isSelected && (
-                            <svg 
-                              className="w-3 h-3 text-white" 
-                              fill="none" 
-                              viewBox="0 0 24 24" 
-                              stroke="currentColor"
-                            >
-                              <path 
-                                strokeLinecap="round" 
-                                strokeLinejoin="round" 
-                                strokeWidth="3" 
-                                d="M5 13l4 4L19 7" 
-                              />
-                            </svg>
-                          )}
-                        </div>
-                        
-                        {/* Option label */}
-                        <div className="flex-1 min-w-0">
-                          <span className="font-medium text-slate-800 break-words">
-                            {displayName}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  
-                  <div className="h-4" />
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-4 border-t bg-white">
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-slate-600">
-                  <span className="font-medium">{value.length}</span> options selected
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleApply}
-                    className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
-                    type="button"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleApply}
-                    className="px-6 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-colors font-medium"
-                    type="button"
-                    aria-label="Apply selections"
-                  >
-                    Apply
-                  </button>
-                </div>
-              </div>
-            </div>
+      {/* Search and Stats Bar */}
+      <div className="p-4 border-b bg-slate-50">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="form-control flex-1">
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder={`Search ${placeholder.toLowerCase()}...`}
+              className="input input-bordered w-full bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              aria-label={`Search ${placeholder}`}
+            />
           </div>
         </div>
-      )}
+
+        {/* Progress and Actions */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-slate-600">
+              <span className="font-semibold">{value.length}</span> of{' '}
+              <span className="font-semibold">{validOptions.length}</span> selected
+            </div>
+            <div className="w-20 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-green-500 transition-all duration-500"
+                style={{ width: `${selectedPercentage}%` }}
+              />
+            </div>
+          </div>
+          
+          <div className="flex gap-2">
+            <button
+              onClick={handleSelectAll}
+              className="px-3 py-1 text-sm text-slate-600 hover:text-slate-800 hover:bg-white rounded border border-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={value.length === validOptions.length}
+              type="button"
+              aria-label="Select all options"
+            >
+              Select All
+            </button>
+            {value.length > 0 && (
+              <button
+                onClick={handleClear}
+                className="px-3 py-1 text-sm text-red-600 hover:text-red-800 hover:bg-white rounded border border-red-300 transition-colors"
+                type="button"
+                aria-label="Clear all selections"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Options List */}
+      <div 
+        ref={optionsContainerRef}
+        className="flex-1 overflow-y-auto min-h-[200px] max-h-[400px] bg-white"
+        onScroll={() => setClickedFromBottom(null)}
+      >
+        {filteredOptions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
+            <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center mb-4">
+              <div className="w-6 h-0.5 bg-slate-400 rotate-45 absolute" />
+              <div className="w-6 h-0.5 bg-slate-400 -rotate-45 absolute" />
+            </div>
+            <h4 className="font-semibold text-slate-700 mb-2">No options found</h4>
+            <p className="text-slate-500 text-sm">
+              {searchTerm ? `No matches for "${searchTerm}"` : 'No options available'}
+            </p>
+          </div>
+        ) : (
+          <div className="p-4 space-y-2">
+            {filteredOptions.map((option, index) => {
+              const displayName = optionMap.get(option.id) || option.name;
+              const isSelected = value.includes(option.id);
+              
+              return (
+                <div
+                  key={`${name}-${option.id}`}
+                  id={`option-${option.id}`}
+                  className={`flex items-center gap-4 p-4 rounded-lg cursor-pointer border transition-all duration-200 ${
+                    isSelected
+                      ? 'bg-blue-50 border-blue-200 shadow-sm'
+                      : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation(); // Prevent event from bubbling
+                    handleToggle(option.id, e);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleToggle(option.id, e as any);
+                    }
+                  }}
+                  role="checkbox"
+                  aria-checked={isSelected}
+                  tabIndex={0}
+                  aria-label={`${displayName} ${isSelected ? 'selected' : 'not selected'}`}
+                >
+                  {/* Custom checkbox */}
+                  <div 
+                    className={`flex-shrink-0 w-5 h-5 border-2 rounded transition-all duration-200 flex items-center justify-center ${
+                      isSelected 
+                        ? 'bg-blue-600 border-blue-600' 
+                        : 'border-slate-300 bg-white'
+                    }`}
+                    aria-hidden="true"
+                  >
+                    {isSelected && (
+                      <svg 
+                        className="w-3 h-3 text-white" 
+                        fill="none" 
+                        viewBox="0 0 24 24" 
+                        stroke="currentColor"
+                      >
+                        <path 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                          strokeWidth="3" 
+                          d="M5 13l4 4L19 7" 
+                        />
+                      </svg>
+                    )}
+                  </div>
+                  
+                  {/* Option label */}
+                  <div className="flex-1 min-w-0">
+                    <span className="font-medium text-slate-800 break-words">
+                      {displayName}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+            
+            <div className="h-4" />
+          </div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="p-4 border-t bg-white">
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-slate-600">
+            <span className="font-medium">{value.length}</span> options selected
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleApply}
+              className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+              type="button"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleApply}
+              className="px-6 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-colors font-medium"
+              type="button"
+              aria-label="Apply selections"
+            >
+              Apply
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
     </>
   );
 };
@@ -7994,24 +7993,6 @@ const AdminLeaveRequest = () => {
   const [activeQuickDate, setActiveQuickDate] = useState<string | null>(null);
   const [companiesWithDepartmentsData, setCompaniesWithDepartmentsData] = useState<any[]>([]);
 
-  // Fetch dynamic filter options
-  const fetchFilterOptions1 = useCallback(async () => {
-    try {
-      const token = localStorage.getItem('hrms_token');
-      const response = await axios.post(`${API_BASE_URL}/api/v1/leaves/filter-options`, {
-        selectedFilters: filters
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (response.data.success) {
-        setFilterOptions(response.data.options);
-      }
-    } catch (error) {
-      console.error('Error fetching filter options:', error);
-    }
-  }, [filters]);
-
-
   // Add this to your component state variables (near other useState declarations)
 const [dateRangeLimits, setDateRangeLimits] = useState<{
   application: { min: string; max: string };
@@ -8095,38 +8076,10 @@ useEffect(() => {
   if (user) {
     const handler = setTimeout(() => {
       fetchFilterOptions();
-    }, 300); // Add debounce
+    }, 30000); // Add debounce
     return () => clearTimeout(handler);
   }
 }, [user, filters, fetchFilterOptions]);  // ✅ Add filters dependency
-
-  // Fetch leave requests
-  const fetchLeaveRequests11 = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const token = localStorage.getItem('hrms_token');
-      const response = await axios.get(`${API_BASE_URL}/api/v1/leaves`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: {
-          ...filters,
-          searchTerm,
-          page: currentPage,
-          limit: itemsPerPage
-        }
-      });
-      if (response.data.success) {
-        setLeaveRequests(response.data.data);
-        setError('');
-      }
-    } catch (err) {
-      console.error('Error fetching leave requests:', err);
-      setError('Failed to load leave requests. Please try again.');
-      showNotification('Failed to fetch leave requests', 'error');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [filters, searchTerm, currentPage, showNotification]);
-
 
   const fetchLeaveRequests = useCallback(async () => {
   setIsLoading(true);
@@ -8194,23 +8147,6 @@ useEffect(() => {
     }
   };
 
-  const fetchLeaveTypesByEmployeeId1 = async (employeeId: number) => {
-    try {
-      const response = await axios.get(`${API_BASE_URL}/api/v1/leave-types/leave-types-by-employee-id`, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('hrms_token')}`
-        },
-        params: {
-          employeeId: employeeId
-        }
-      });
-      setLeaveTypesByEmployeeId(response.data);
-    } catch (err) {
-      console.error('Error fetching leave types:', err);
-      showNotification('Failed to load leave types. Please try again.', 'error');
-    }
-  };
-
   const fetchLeaveTypesByEmployeeId = async (employeeId: number) => {
   try {
     const response = await axios.get(`${API_BASE_URL}/api/v1/leave-types/leave-types-by-employee-id`, {
@@ -8242,19 +8178,6 @@ useEffect(() => {
     showNotification('Failed to load leave types. Please try again.', 'error');
   }
 };
-
-  const fetchLeaveBalances1 = async (employeeId: number) => {
-    const response = await axios.get(`${API_BASE_URL}/api/v1/leaves/balance`, {
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem('hrms_token')}`
-      },
-      params: {
-        employeeId: employeeId,
-        year: new Date().getFullYear()
-      }
-    });
-    setLeaveBalances(response.data);
-  };
 
  const fetchLeaveBalances = async (employeeId: number) => {
   try {
@@ -8357,15 +8280,11 @@ useEffect(() => {
 
   useEffect(() => {
     if (user) {
-      const handler = setTimeout(() => fetchLeaveRequests(), 500);
+      const handler = setTimeout(() => fetchLeaveRequests(), 50000);
       return () => clearTimeout(handler);
     }
   }, [user, fetchLeaveRequests]);
 
-  const handleFilterChange1 = (name: keyof Filters, value: any) => {
-    setFilters(prev => ({ ...prev, [name]: value }));
-    setCurrentPage(1);
-  };
 
   const handleFilterChange = (name: keyof Filters, value: any) => {
   setFilters(prev => {
@@ -8508,16 +8427,6 @@ useEffect(() => {
     setFilteredEmployees(filtered);
   }, [searchTerm, employees]);
 
-  const handleEmployeeSelect1 = (employee: { id: number; name: string; email: string; employee_no: string }) => {
-    setFormData(prev => ({
-      ...prev,
-      employee_id: employee.id
-    }));
-    setSearchTerm(employee.name);
-    fetchLeaveTypesByEmployeeId(employee.id);
-    fetchEmployeeLeaveApplications(employee.id);
-    fetchLeaveBalances(employee.id);
-  };
 
 // Update handleEmployeeSelect
 const handleEmployeeSelect = async (employee: { id: number; name: string; email: string; employee_no: string }) => {
@@ -8595,22 +8504,6 @@ const handleEmployeeSelect = async (employee: { id: number; name: string; email:
     setSelectedRequest(request);
     setIsApproveModalOpen(true);
   };
-
-  const handleApplicationDateChange1 = (date: string, type: 'start' | 'end') => {
-  let newDateRange = [...(filters.application_date_range || [])];
-  
-  if (type === 'start') {
-    newDateRange[0] = date;
-    // If end date exists and is before new start date, clear it
-    if (newDateRange[1] && date > newDateRange[1]) {
-      newDateRange[1] = '';
-    }
-  } else {
-    newDateRange[1] = date;
-  }
-  
-  handleFilterChange('application_date_range', newDateRange);
-};
 
 // Add these handler functions
 const handleApplicationDateChange = (type: 'start' | 'end', date: string) => {
@@ -8836,142 +8729,6 @@ const clearLeaveDateRange = () => {
   });
 }, [leaveRequests, searchTerm, filters, employees]);
 
-  const filteredData1 = useMemo(() => {
-    return leaveRequests.filter(request => {
-      // Search term filter
-      // const matchesSearch = !searchTerm || 
-      //   request.employee_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      //   request.leave_type_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      //   (request.employee_name && request.employee_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      //   (request.employee_name && request.employee_name.toLowerCase().includes(searchTerm.toLowerCase()));
-
-          const matchesSearch = !searchTerm || 
-      (request.employee_name && request.employee_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (request.leave_type_name && request.leave_type_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (request.employee_no && request.employee_no.toLowerCase().includes(searchTerm.toLowerCase()));
-
-
-      // Employee status filter
-      const employee = employees.find(emp => emp.id === request.employee_id);
-      const matchesEmployeeStatus = filters.employee_status.length === 0 || 
-        (employee?.status && filters.employee_status.includes(employee.status));
-
-      // Leave status filter
-      const matchesLeaveStatus = filters.leaveStatus.length === 0 || 
-        filters.leaveStatus.includes(request.status);
-
-      // Date range filter
-      // REMOVE old date range filter logic
-      // const matchesDateRange = () => {
-      //   if (!filters.dateRangeStart && !filters.dateRangeEnd) return true;
-        
-      //   const startDate = filters.dateRangeStart ? new Date(filters.dateRangeStart) : null;
-      //   const endDate = filters.dateRangeEnd ? new Date(filters.dateRangeEnd) : null;
-      //   const requestStartDate = new Date(request.start_date);
-        
-      //   if (startDate && requestStartDate < startDate) return false;
-      //   if (endDate && requestStartDate > endDate) return false;
-        
-      //   return true;
-      // };
-
-       const matchesApplicationDateRange1 = () => {
-      if (!filters.application_date_range || filters.application_date_range.length !== 2) {
-        return true;
-      }
-      
-      const [startDateStr, endDateStr] = filters.application_date_range;
-      if (!startDateStr || !endDateStr) return true;
-      
-      const appDate = new Date(request.created_at);
-      const startDate = new Date(startDateStr);
-      const endDate = new Date(endDateStr);
-      
-      // Reset time part for comparison
-      appDate.setHours(0, 0, 0, 0);
-      startDate.setHours(0, 0, 0, 0);
-      endDate.setHours(0, 0, 0, 0);
-      
-      return appDate >= startDate && appDate <= endDate;
-    };
-// Update the matchesApplicationDateRange function:
-const matchesApplicationDateRange = () => {
-  if (!filters.application_date_range || filters.application_date_range.length < 2) {
-    return true;
-  }
-  
-  const [startDateStr, endDateStr] = filters.application_date_range;
-  if (!startDateStr || !endDateStr) return true;
-  
-  const appDate = new Date(request.created_at);
-  const startDate = new Date(startDateStr);
-  const endDate = new Date(endDateStr);
-  
-  // Reset time part for comparison
-  appDate.setHours(0, 0, 0, 0);
-  startDate.setHours(0, 0, 0, 0);
-  endDate.setHours(0, 0, 0, 0);
-  
-  return appDate >= startDate && appDate <= endDate;
-};
-
-// Add leave date range matching:
-const matchesLeaveDateRange = () => {
-  if (!filters.leave_date_range || filters.leave_date_range.length < 2) {
-    return true;
-  }
-  
-  const [startDateStr, endDateStr] = filters.leave_date_range;
-  if (!startDateStr || !endDateStr) return true;
-  
-  const leaveStartDate = new Date(request.start_date);
-  const leaveEndDate = new Date(request.end_date);
-  const filterStartDate = new Date(startDateStr);
-  const filterEndDate = new Date(endDateStr);
-  
-  // Check if the leave period overlaps with the filter period
-  return leaveStartDate <= filterEndDate && leaveEndDate >= filterStartDate;
-};
-    
-
-      // Company filter
-      const matchesCompany = filters.company_id.length === 0 || 
-        (request.company_name && filters.company_id.includes(request.company_name));
-
-      // Department filter
-      const matchesDepartment = filters.department_id.length === 0 || 
-        (request.department_name && filters.department_id.includes(request.department_name));
-
-      // For other filters, we would need additional employee data
-      const employeeForFilters = employees.find(emp => emp.id === request.employee_id);
-      const matchesPosition = filters.position.length === 0 || 
-        (employeeForFilters?.position && filters.position.includes(employeeForFilters.position));
-      
-      const matchesEmploymentType = filters.type.length === 0 || 
-        (employeeForFilters?.employment_type && filters.type.includes(employeeForFilters.employment_type));
-      
-      const matchesNationality = filters.nationality.length === 0 || 
-        (employeeForFilters?.nationality && filters.nationality.includes(employeeForFilters.nationality));
-      
-      const matchesJobLevel = filters.jobLevel.length === 0 || 
-        (employeeForFilters?.job_level && filters.jobLevel.includes(employeeForFilters.job_level));
-
-      // Leave type filter
-      const matchesLeaveType = filters.leave_type_id.length === 0 ||
-        filters.leave_type_id.includes(request.leave_type_id.toString());
-
-      // Employee filter
-      const matchesEmployee = filters.employee_id.length === 0 ||
-        filters.employee_id.includes(request.employee_id.toString());
-//matchesDateRange() 
-      return matchesSearch && matchesEmployeeStatus && matchesLeaveStatus 
-             && matchesApplicationDateRange() && matchesLeaveDateRange() &&
-      matchesCompany && matchesDepartment && matchesPosition && 
-             matchesEmploymentType && matchesNationality && matchesJobLevel &&
-             matchesLeaveType && matchesEmployee;
-    });
-  }, [leaveRequests, searchTerm, filters, employees]);
-  
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
   const paginatedRequests = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
@@ -9353,99 +9110,6 @@ if (formData.type && formData.type !== 'Select' && formData.type !== 'unpaid lea
   return isValid;
 };
 
-  const validateForm1 = () => {
-    let isValid = true;
-    const newErrors = { 
-      employee_id: '',
-      type: '',
-      reason: '',
-      startDate: '',
-      endDate: '',
-      attachment: '',
-      general: ''
-    };
-
-    if (!formData.type || formData.type === 'Select') {
-      newErrors.type = 'Please select a leave type';
-      isValid = false;
-    }
-
-    if (!formData.employee_id) {
-      newErrors.employee_id = 'Please select an employee';
-      isValid = false;
-    }
-
-    if (!formData.reason.trim()) {
-      newErrors.reason = 'Please provide a reason for your leave request';
-      isValid = false;
-    }
-
-    if (!formData.startDate) {
-      newErrors.startDate = 'Please select a start date';
-      isValid = false;
-    }
-
-    if (!formData.endDate) {
-      newErrors.endDate = 'Please select an end date';
-      isValid = false;
-    }
-
-    if (formData.startDate && formData.endDate && formData.startDate > formData.endDate) {
-      newErrors.endDate = 'End date cannot be before start date';
-      isValid = false;
-    }
-
-    // Check if attachment is required based on leave type
-    const selectedLeaveType = leaveTypesByEmployeeId.find(type => type.leave_type_name.toLowerCase() === formData.type.toLowerCase());
-    if (selectedLeaveType?.requires_documentation && selectedLeaveDocuments.length === 0) {
-      newErrors.attachment = 'Please upload required documentation';
-      isValid = false;
-    }
-
-    // Check if request duration exceeds remaining balance
-    // if (formData.type !== 'unpaid leave') {
-    //   const requestDuration = getRequestDuration();
-    //   const remainingDays = getRemainingDays();
-    //   if (requestDuration > remainingDays) {
-    //     const message = `Request duration (${requestDuration} days) exceeds remaining balance (${remainingDays} days)`;
-    //     showNotification(message, 'error');
-    //     isValid = false;
-    //   }
-    // }
-
-    // Check if request duration exceeds remaining balance
-if (formData.type !== 'unpaid leave') {
-  // Only check if we have the data
-  if (leaveTypesByEmployeeId.length > 0 && leaveBalances.length > 0) {
-    const requestDuration = getRequestDuration();
-    const remainingDays = getRemainingDays();
-    
-    console.log('Validation check:', {
-      requestDuration,
-      remainingDays,
-      type: formData.type
-    });
-    
-    if (remainingDays > 0 && requestDuration > remainingDays) {
-      const message = `Request duration (${requestDuration} days) exceeds remaining balance (${remainingDays} days)`;
-      showNotification(message, 'error');
-      isValid = false;
-    } else if (remainingDays <= 0) {
-      const message = `No leave balance available for this leave type`;
-      showNotification(message, 'error');
-      isValid = false;
-    }
-  } else {
-    console.log('Data not loaded yet, skipping balance check');
-    // Optionally show a loading message
-    showNotification('Loading leave balance...', 'info');
-  }
-}
-
-    setErrors(newErrors);
-    return isValid;
-  };
-
   const handleLeaveRequestDateChange = async (date: string, isStartDate: boolean) => {
       const newFormData = { ...formData };
       const dateObj = date ? new Date(date) : undefined;
@@ -9544,27 +9208,6 @@ if (formData.type !== 'unpaid leave') {
     return calculateDuration(formData.startDate, formData.endDate);
   };
 
-  const getRemainingDays1 = () => {
-    if (!formData.type) return 0;
-    const selectedType = leaveTypesByEmployeeId.find(type => type.leave_type_name.toLowerCase() === formData.type.toLowerCase());
-    if (!selectedType) return 0;
-    
-    const leaveBalance = leaveBalances.find(balance => balance.leave_type_id === selectedType.id.toString());
-    if (!leaveBalance) return 0;
-    console.log(leaveBalance);
-    // For total days calculation
-    if (leaveBalance.is_total) {
-      return leaveBalance.total_days - leaveBalance.used_days;
-    }
-    
-    // For dividend-based calculation
-    if (leaveBalance.is_divident) {
-      return leaveBalance.accrual_remaining_days;
-    }
-
-    // Default case: return total days minus used days
-    return leaveBalance.total_days - leaveBalance.used_days;
-  };
 
 // Update the getRemainingDays function with detailed logging
 const getRemainingDays = () => {
@@ -9869,30 +9512,7 @@ const getRemainingDays = () => {
       />
 
       <div className={`container mx-auto p-6 min-h-full ${theme === 'light' ? 'bg-white text-slate-900' : 'bg-slate-900 text-slate-100'}`}>
-        {/* Search and Filter Button */}
-        {/* <div className="flex flex-col md:flex-row gap-4 mb-6">
-          <div className="form-control flex-1">
-            <div className="input-group flex space-x-2">
-              <input 
-                type="text" 
-                placeholder="Search by employee name, number, email, or leave type..." 
-                className={`input input-bordered flex-1 ${theme === 'light' ? 'bg-white border-slate-300 text-slate-900' : 'bg-slate-700 border-slate-600 text-slate-100'}`}
-                value={searchTerm} 
-                onChange={(e) => setSearchTerm(e.target.value|| '')} // Added fallback to empty string
-              />
-              <button
-                className={`btn btn-outline ${theme === 'light' ? 'border-slate-600 text-slate-600 hover:bg-slate-600' : 'border-slate-400 text-slate-400 hover:bg-slate-400'} hover:text-white`}
-                onClick={() => setIsFilterOpen(!isFilterOpen)}
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                </svg>
-                Filters {activeFilterCount > 0 ? `(${activeFilterCount})` : ''}
-              </button>
-            </div>
-          </div>
-        </div> */}
-
+       
         {/* Search and Filter Button */}
 <div className="flex flex-col md:flex-row gap-4 mb-6">
   <div className="form-control flex-1">
