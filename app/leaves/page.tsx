@@ -7104,7 +7104,7 @@ const LeavesPage = () => {
                 <AdminLeaveRequest key={`requests-${key}`} />
               </div>
 
-              <input
+              {/* <input
                 type="radio"
                 name="leaves_tabs"
                 className={`tab whitespace-nowrap ${theme === 'light' ? 'text-slate-700 [--tab-border:theme(colors.slate.300)] [--tab-border-color:theme(colors.blue.500)]' : 'text-slate-300 [--tab-border:theme(colors.slate.600)] [--tab-border-color:theme(colors.blue.400)]'}`}
@@ -7113,7 +7113,7 @@ const LeavesPage = () => {
               />
               <div className={`tab-content ${theme === 'light' ? 'border-slate-300 bg-white' : 'border-slate-600 bg-slate-800'} rounded-lg p-3 sm:p-4 lg:p-6 shadow`}>
                 <LeaveType key={`types-${key}`} />
-              </div>
+              </div> */}
 
  <input
       type="radio"
