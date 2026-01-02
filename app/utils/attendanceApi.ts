@@ -1,122 +1,3 @@
-// // import { QueryClient } from "@tanstack/react-query";
-// // import { API_BASE_URL } from '@/app/config';
-// // export const queryClient = new QueryClient();
-
-// // async function handleResponse(response) {
-// //     if (!response.ok) {
-// //         const errorData = await response.json().catch(() => ({ error: 'Failed to parse error response' }));
-// //         throw new Error(errorData.error || `Request failed with status ${response.status}`);
-// //     }
-// //     return response.json();
-// // }
-
-// // export async function fetchData(tab, filters, page, limit) {
-// //     const params = new URLSearchParams({
-// //         tab,
-// //         page: page.toString(),
-// //         limit: limit.toString(),
-// //         ...filters
-// //     });
-
-// //     // Clean up empty filters
-// //     Object.keys(filters).forEach(key => {
-// //         if (!filters[key]) {
-// //             params.delete(key);
-// //         }
-// //     });
-
-// //     const response = await fetch(`${API_BASE_URL}/api/attendance/data?${params.toString()}`);
-// //     return handleResponse(response);
-// // }
-
-// // export async function fetchFilterOptions() {
-// //     const response = await fetch(`${API_BASE_URL}/api/attendance/filter-options`);
-// //     const data = await handleResponse(response);
-// //     return data.options;
-// // }
-
-// // // You can add other API functions here, e.g., for POST/PATCH requests
-// // export async function updateAttendanceStatus(payload) {
-// //     const response = await fetch(`${API_BASE_URL}/api/attendance/amendment`, {
-// //         method: 'PATCH',
-// //         headers: { 'Content-Type': 'application/json' },
-// //         body: JSON.stringify(payload),
-// //     });
-// //     return handleResponse(response);
-// // }
-
-
-// import { QueryClient } from '@tanstack/react-query';
-// import { API_BASE_URL } from '@/app/config';
-
-// export const queryClient = new QueryClient();
-
-// // type JsonValue = string | number | boolean | null;
-// // type Filters = Record<string, JsonValue | undefined>;
-// // type AttendanceTab = 'overview' | 'overtime' | 'attendance' | 'amend' | 'appeal';
-
-// type JsonValue = string | number | boolean | null;
-
-// export type Filters = Record<string, JsonValue | undefined>;
-// export type AttendanceTab = 'overview' | 'overtime' | 'attendance' | 'amend' | 'appeal';
-
-
-// async function handleResponse<T = unknown>(response: Response): Promise<T> {
-//   if (!response.ok) {
-//     const errorData = (await response.json().catch(() => ({
-//       error: 'Failed to parse error response',
-//     }))) as { error?: string };
-
-//     throw new Error(errorData.error || `Request failed with status ${response.status}`);
-//   }
-
-//   // In case any endpoint returns 204
-//   if (response.status === 204) return undefined as T;
-
-//   return (await response.json()) as T;
-// }
-
-// export async function fetchData<TData = unknown>(
-//   tab: AttendanceTab,
-//   filters: Filters,
-//   page: number,
-//   limit: number
-// ): Promise<TData> {
-//   const params = new URLSearchParams({
-//     tab,
-//     page: String(page),
-//     limit: String(limit),
-//   });
-
-//   // Add filters safely (skip empty)
-//   Object.keys(filters).forEach((key) => {
-//     const val = filters[key];
-//     if (val === undefined || val === null || val === '') return;
-//     params.set(key, String(val));
-//   });
-
-//   const response = await fetch(`${API_BASE_URL}/api/attendance/data?${params.toString()}`);
-//   return handleResponse<TData>(response);
-// }
-
-// export async function fetchFilterOptions<TOptions = Record<string, unknown>>(): Promise<TOptions> {
-//   const response = await fetch(`${API_BASE_URL}/api/attendance/filter-options`);
-//   const data = await handleResponse<{ options: TOptions }>(response);
-//   return data.options;
-// }
-
-// export async function updateAttendanceStatus<TRes = unknown>(
-//   payload: Record<string, unknown>
-// ): Promise<TRes> {
-//   const response = await fetch(`${API_BASE_URL}/api/attendance/amendment`, {
-//     method: 'PATCH',
-//     headers: { 'Content-Type': 'application/json' },
-//     body: JSON.stringify(payload),
-//   });
-
-//   return handleResponse<TRes>(response);
-// }
-
 
 
 import { QueryClient } from '@tanstack/react-query';
@@ -131,11 +12,14 @@ export interface Filters {
   status?: string;
   start_date?: string;
   end_date?: string;
+  position?: string;
+  search?: string;
 }
 
 export interface PaginationParams {
   page?: number;
   limit?: number;
+  signal?: AbortSignal;
 }
 
 export interface ApiResponse<T> {
@@ -154,6 +38,7 @@ export interface FilterOptions {
   employees?: Array<{ id: number; name: string; employee_no: string }>;
   statuses?: Array<{ id: number; name: string }>;
 }
+
 
 /**
  * Build query string from filters and pagination params
@@ -178,7 +63,7 @@ function buildQueryString(filters: Filters, pagination: PaginationParams): strin
 }
 
 /**
- * Fetch attendance records
+ * Fetch attendance records with pagination and filtering
  */
 export async function fetchAttendanceRecords(
   filters: Filters = {},
@@ -193,7 +78,8 @@ export async function fetchAttendanceRecords(
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${localStorage.getItem('hrms_token')}`
-      }
+      },
+      signal: pagination.signal
     });
 
     if (!response.ok) {
@@ -208,7 +94,7 @@ export async function fetchAttendanceRecords(
 }
 
 /**
- * Fetch amend records
+ * Fetch amend records with pagination and filtering
  */
 export async function fetchAmendRecords(
   filters: Filters = {},
@@ -223,7 +109,8 @@ export async function fetchAmendRecords(
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${localStorage.getItem('hrms_token')}`
-      }
+      },
+      signal: pagination.signal
     });
 
     if (!response.ok) {
@@ -238,7 +125,7 @@ export async function fetchAmendRecords(
 }
 
 /**
- * Fetch appeal records
+ * Fetch appeal records with pagination and filtering
  */
 export async function fetchAppealRecords(
   filters: Filters = {},
@@ -253,7 +140,8 @@ export async function fetchAppealRecords(
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${localStorage.getItem('hrms_token')}`
-      }
+      },
+      signal: pagination.signal
     });
 
     if (!response.ok) {
@@ -268,7 +156,8 @@ export async function fetchAppealRecords(
 }
 
 /**
- * Fetch overview statistics
+ * Fetch overview statistics with pagination and filtering
+ * Returns department-level attendance statistics
  */
 export async function fetchOverviewStats(
   filters: Filters = {},
@@ -283,7 +172,8 @@ export async function fetchOverviewStats(
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${localStorage.getItem('hrms_token')}`
-      }
+      },
+      signal: pagination.signal
     });
 
     if (!response.ok) {
@@ -298,7 +188,7 @@ export async function fetchOverviewStats(
 }
 
 /**
- * Fetch filter options
+ * Fetch filter options for dropdowns and selects
  */
 export async function fetchFilterOptions(
   type: string = 'all',
@@ -470,3 +360,5 @@ export function getTabFetchFunction(tab: AttendanceTab) {
       throw new Error(`Unknown tab: ${tab}`);
   }
 }
+
+
