@@ -49,4 +49,5 @@ export interface LeaveType {
   yos_brackets?: YearOfServiceBracket[];
   created_at?: string;
   updated_at?: string;
+  yos_prorate_first_year?: boolean; // Add this line
 }
