@@ -10140,36 +10140,26 @@ const fetchEmployees = useCallback(async () => {
     const token = localStorage.getItem('hrms_token');
     if (!token) return showNotification('Authentication token not found', 'error');
 
-    console.log('Current user:', { 
-      id: user.id, 
-      name: user.name, 
-      role: user.role 
-    });
-
     let url: string;
     
     if (user.role === 'employee') {
-      // FOR EMPLOYEE: Use name-based search
+      // Employee role: fetch only their own data
       const params = new URLSearchParams();
       
-      // Search by name (primary method for employees)
       if (user.name) {
         params.append('search_term', user.name);
-        console.log('Searching by name:', user.name);
       }
       
-      // Also include ID as backup
       if (user.id) {
         params.append('employee_id', user.id.toString());
       }
       
-      params.append('limit', '10'); // Get a few records to find match
+      params.append('limit', '10');
       params.append('page', '1');
       
       url = `${API_BASE_URL}/api/employee/list?${params.toString()}`;
-      console.log('Employee fetch URL:', url);
     } else {
-      // For admin/manager: use normal filters
+      // Admin/Manager role: Use proper pagination with filters
       const queryString = buildQueryString(filters);
       url = `${API_BASE_URL}/api/employee/list?${queryString}`;
     }
@@ -10187,70 +10177,40 @@ const fetchEmployees = useCallback(async () => {
     }
 
     const data = await response.json();
-    console.log('API Response:', data);
     
     if (data.success) {
       let employeesData: Employee[] = [];
       
       if (Array.isArray(data.employees)) {
         employeesData = data.employees;
-        console.log('Found', employeesData.length, 'employees');
         
         // For employee role: Find their own record
         if (user.role === 'employee') {
-          console.log('Looking for employee:', user.name);
-          
-          // Try to find the employee's record using multiple strategies
           const matchedEmployee = employeesData.find((emp: Employee) => {
-            // Strategy 1: Exact name match (case-insensitive)
-            if (user.name && emp.name && 
-                emp.name.toLowerCase().trim() === user.name.toLowerCase().trim()) {
-              console.log('✓ Matched by exact name');
-              return true;
-            }
-            
-            // Strategy 2: Partial name match (first name)
-            if (user.name && emp.name) {
-              const userNameParts = user.name.toLowerCase().split(' ');
-              const empNameParts = emp.name.toLowerCase().split(' ');
-              
-              if (userNameParts.length > 0 && empNameParts.length > 0) {
-                if (userNameParts[0] === empNameParts[0]) {
-                  console.log('✓ Matched by first name');
-                  return true;
-                }
-              }
-            }
-            
-            
-            // Strategy 4: ID match (if IDs are compatible)
+            // Match by ID or name
             const userIdStr = user.id.toString();
             const empIdStr = emp.id.toString();
-            if (userIdStr === empIdStr) {
-              console.log('✓ Matched by ID');
-              return true;
-            }
             
-            return false;
+            return userIdStr === empIdStr || 
+                   (user.name && emp.name && 
+                    emp.name.toLowerCase().includes(user.name.toLowerCase()));
           });
           
           if (matchedEmployee) {
             employeesData = [matchedEmployee];
-            console.log('✓ Found employee record:', matchedEmployee.name);
           } else {
-            console.log('✗ No matching employee found. All names:', 
-              employeesData.map(e => e.name));
             employeesData = [];
-            showNotification('Could not find your profile information', 'warning');
           }
         }
-      } else if (data.employee) {
-        employeesData = [data.employee];
       }
       
-      setFilteredEmployees(employeesData || []);
-      setTotalCount(employeesData.length || 0);
-      setAllEmployees(employeesData || []);
+      setFilteredEmployees(employeesData);
+      
+      // CRITICAL: Set totalCount from API response for pagination
+      // Use data.totalCount if available, otherwise use data.total
+      setTotalCount(data.totalCount || data.total || employeesData.length || 0);
+      
+      setAllEmployees(employeesData);
       
     } else {
       throw new Error(data.message || 'Failed to fetch employees');
